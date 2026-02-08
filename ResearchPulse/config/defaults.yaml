@@ -1,0 +1,119 @@
+# ResearchPulse Configuration Defaults
+# =====================================
+# Non-sensitive configuration defaults.
+# Secrets (API keys, passwords) remain in .env
+#
+# Precedence (highest to lowest):
+# 1. Environment variables
+# 2. .env file
+# 3. /config/defaults.yaml apps.<app> (project overrides)
+# 4. /apps/<app>/config/defaults.yaml (app defaults)
+# 5. Hardcoded Python defaults
+
+# ======================
+# Global Application Settings
+# ======================
+app:
+  enabled_apps: "arxiv_crawler,arxiv_ui"
+  data_dir: "./data"
+
+# ======================
+# Logging Configuration
+# ======================
+# Note: Detailed logging config is in /config/logging.yaml
+# These are convenience overrides via LOG_LEVEL and LOG_FILE env vars
+logging:
+  level: "INFO"
+  file: null
+
+# ======================
+# Email Backend Configuration
+# ======================
+# API keys and credentials remain in .env
+email:
+  from: "tt221204@gmail.com"
+  backends: "smtp"
+  sendgrid:
+    retries: 3
+    retry_backoff: 10.0
+  mailgun:
+    domain: ""
+    retries: 3
+    retry_backoff: 10.0
+  brevo:
+    from_name: "ResearchPulse"
+    retries: 3
+    retry_backoff: 10.0
+
+# ======================
+# App-Specific Configurations
+# ======================
+apps:
+  # -----------------------
+  # arXiv Crawler Settings
+  # -----------------------
+  arxiv_crawler:
+    arxiv:
+      categories: "cs.LG,cs.CV,cs.IR,cs.CL,cs.DC"
+      main_category: ""
+      max_results: 50
+      min_results: 10
+      fallback_days: 7
+      abstract_max_len: 0
+      urls:
+        base: "https://export.arxiv.org/api/query"
+        rss: "https://export.arxiv.org/rss/{category}"
+        html_list: "https://arxiv.org/list/{category}/new"
+        html_search: "https://arxiv.org/search/?query={category}&searchtype=all&abstracts=show&order=-announced_date_first&size={size}"
+
+    schedule:
+      hour: 0
+      minute: 0
+      timezone: "UTC"
+
+    date_window:
+      days: 2
+      timezone: "Asia/Shanghai"
+
+    email:
+      enabled: true
+      html_enabled: true
+      from: "tt221204@gmail.com"
+      to: "tt221204@gmail.com"
+
+    smtp:
+      profiles: "1,2"
+      profile_defaults:
+        "1":
+          host: "smtp.gmail.com"
+          user: "tt221204@gmail.com"
+          port: 587
+          tls: true
+          ssl: false
+        "2":
+          host: "smtp.gmail.com"
+          user: "tt221204@gmail.com"
+          port: 465
+          tls: false
+          ssl: true
+      port: 587
+      ports: ""
+      ssl_ports: "465"
+      timeout: 10.0
+      retries: 5
+      retry_backoff: 30.0
+      tls: true
+      ssl: false
+
+  # -----------------------
+  # arXiv UI Settings
+  # -----------------------
+  arxiv_ui:
+    enabled: true
+    scan_interval: 3600
+    show_all_content: false
+    default_page_size: 20
+    max_content_age_days: 30
+    date_window:
+      days: 2
+      timezone: "Asia/Shanghai"

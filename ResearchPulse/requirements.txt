@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+apscheduler
+pydantic
+pydantic-settings
+python-dotenv
+httpx
+feedparser
+pytest
+pytest-mock
+pytest-asyncio
+jinja2

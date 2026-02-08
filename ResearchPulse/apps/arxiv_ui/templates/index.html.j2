@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ResearchPulse arXiv UI</title>
+  <link rel="stylesheet" href="{{ url_for('arxiv_ui_static', path='css/style.css') }}" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>ResearchPulse arXiv UI</h1>
+      <div class="meta">最新日期：<span id="latestDate">{{ latest_date }}</span></div>
+    </header>
+
+    <section class="controls">
+      <label>
+        分类：
+        <select id="categorySelect">
+          <option value="">全部</option>
+          {% for category in categories %}
+          <option value="{{ category }}">{{ category }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="showAllToggle" {% if default_show_all %}checked{% endif %} />
+        显示全部历史
+      </label>
+      <label>
+        每页条数：
+        <select id="pageSizeSelect">
+          <option value="10">10</option>
+          <option value="20">20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </label>
+    </section>
+
+    <section id="entries"></section>
+    <div id="pagination" class="pagination"></div>
+  </div>
+
+  <script>
+    window.UI_CONFIG = {
+      defaultShowAll: {{ 'true' if default_show_all else 'false' }},
+      defaultPageSize: {{ default_page_size }},
+    };
+  </script>
+  <script src="{{ url_for('arxiv_ui_static', path='js/app.js') }}"></script>
+</body>
+</html>
