@@ -27,6 +27,7 @@ LOG_FILE="${LOG_FILE:-$LOG_DIR/app.log}"
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
 APP_MODULE="${APP_MODULE:-main:app}"
+PYTHON_BIN="/root/myenv/bin/python"
 
 load_env() {
   if [ -f "$BASE_DIR/.env" ]; then
@@ -44,7 +45,7 @@ start() {
     return 0
   fi
   load_env
-  nohup uvicorn "$APP_MODULE" --host "$HOST" --port "$PORT" >>"$LOG_FILE" 2>&1 &
+  nohup ${PYTHON_BIN} -m uvicorn "$APP_MODULE" --host "$HOST" --port "$PORT" >>"$LOG_FILE" 2>&1 &
   echo $! > "$PID_FILE"
   echo "Started (PID $(cat "$PID_FILE"))"
 }
@@ -82,7 +83,7 @@ trigger() {
   if command -v curl >/dev/null 2>&1; then
     curl -sS -X POST "$url"
   else
-    python - <<PY
+    ${PYTHON_BIN} - <<PY
 import urllib.request
 
 url = "http://${HOST}:${PORT}/arxiv/crawler/trigger"
