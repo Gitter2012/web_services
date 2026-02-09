@@ -28,6 +28,13 @@ _date_window_defaults = _app_config.get("date_window", {})
 _email_defaults = _app_config.get("email", {})
 _smtp_defaults = _app_config.get("smtp", {})
 _smtp_profile_defaults = _smtp_defaults.get("profile_defaults", {})
+_html_list_fallback = _urls_defaults.get("html_list", "https://arxiv.org/list/{category}/new")
+_html_list_recent_fallback = _urls_defaults.get("html_list_recent")
+if not _html_list_recent_fallback:
+    if "/new" in _html_list_fallback:
+        _html_list_recent_fallback = _html_list_fallback.replace("/new", "/recent")
+    else:
+        _html_list_recent_fallback = "https://arxiv.org/list/{category}/recent"
 
 
 class ArxivSettings(BaseSettings):
@@ -58,8 +65,16 @@ class ArxivSettings(BaseSettings):
         default=_urls_defaults.get("rss", "https://export.arxiv.org/rss/{category}"),
         validation_alias="ARXIV_RSS_URL",
     )
+    arxiv_html_list_new_url: str = Field(
+        default=_urls_defaults.get("html_list_new", _html_list_fallback),
+        validation_alias="ARXIV_HTML_LIST_NEW_URL",
+    )
+    arxiv_html_list_recent_url: str = Field(
+        default=_html_list_recent_fallback,
+        validation_alias="ARXIV_HTML_LIST_RECENT_URL",
+    )
     arxiv_html_list_url: str = Field(
-        default=_urls_defaults.get("html_list", "https://arxiv.org/list/{category}/new"),
+        default=_html_list_fallback,
         validation_alias="ARXIV_HTML_LIST_URL",
     )
     arxiv_html_search_url: str = Field(

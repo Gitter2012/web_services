@@ -18,7 +18,7 @@ def _make_paper(arxiv_id: str, published: str) -> Paper:
 
 
 def test_run_crawl(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(tasks, "utc_today_str", lambda: "2026-02-07")
+    monkeypatch.setattr(tasks, "today_str", lambda *_args, **_kwargs: "2026-02-07")
     monkeypatch.setattr(tasks.settings, "data_dir", tmp_path)
 
     monkeypatch.setattr(tasks.arxiv_settings, "arxiv_categories", "cs.LG,cs.CV")
@@ -27,7 +27,8 @@ def test_run_crawl(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(tasks.arxiv_settings, "arxiv_fallback_days", 7)
     monkeypatch.setattr(tasks.arxiv_settings, "arxiv_base_url", "http://example.com")
     monkeypatch.setattr(tasks.arxiv_settings, "arxiv_rss_url", "http://example.com/rss")
-    monkeypatch.setattr(tasks.arxiv_settings, "arxiv_html_list_url", "http://example.com/list")
+    monkeypatch.setattr(tasks.arxiv_settings, "arxiv_html_list_new_url", "http://example.com/list/new")
+    monkeypatch.setattr(tasks.arxiv_settings, "arxiv_html_list_recent_url", "http://example.com/list/recent")
     monkeypatch.setattr(tasks.arxiv_settings, "arxiv_html_search_url", "http://example.com/search")
 
     monkeypatch.setattr(tasks.arxiv_settings, "email_enabled", True)
@@ -72,3 +73,4 @@ def test_run_crawl(monkeypatch, tmp_path) -> None:
     assert "### 🔹 cs.LG" in sent.get("body", "")
     assert "### 🔹 cs.CV" not in sent.get("body", "")
     assert sent.get("html_body")
+    assert any("2026-02-07" in path for path in status["last_files"])

@@ -63,6 +63,8 @@ apps:
       urls:
         base: "https://export.arxiv.org/api/query"
         rss: "https://export.arxiv.org/rss/{category}"
+        html_list_new: "https://arxiv.org/list/{category}/new"
+        html_list_recent: "https://arxiv.org/list/{category}/recent"
         html_list: "https://arxiv.org/list/{category}/new"
         html_search: "https://arxiv.org/search/?query={category}&searchtype=all&abstracts=show&order=-announced_date_first&size={size}"
 

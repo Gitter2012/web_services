@@ -60,7 +60,8 @@ def run_crawl() -> dict:
                 fallback_days=arxiv_settings.arxiv_fallback_days,
                 base_url=arxiv_settings.arxiv_base_url,
                 rss_url=arxiv_settings.arxiv_rss_url,
-                list_url=arxiv_settings.arxiv_html_list_url,
+                list_new_url=arxiv_settings.arxiv_html_list_new_url,
+                list_recent_url=arxiv_settings.arxiv_html_list_recent_url,
                 search_url=arxiv_settings.arxiv_html_search_url,
                 run_date=run_date,
             )
@@ -111,7 +112,7 @@ def run_crawl() -> dict:
                     abstract_max_len=arxiv_settings.abstract_max_len,
                 )
 
-                output_path = build_output_path(settings.data_dir, category, date_key)
+                output_path = build_output_path(settings.data_dir, category, run_date)
                 write_markdown(output_path, content)
                 results.append(str(output_path))
 

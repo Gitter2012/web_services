@@ -27,7 +27,7 @@ LOG_FILE="${LOG_FILE:-$LOG_DIR/app.log}"
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
 APP_MODULE="${APP_MODULE:-main:app}"
-PYTHON_BIN="/root/myenv/bin/python"
+[ -x "/root/myenv/bin/python" ] && PYTHON_BIN="/root/myenv/bin/python" || PYTHON_BIN="python"
 
 load_env() {
   if [ -f "$BASE_DIR/.env" ]; then

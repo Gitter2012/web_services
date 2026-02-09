@@ -50,6 +50,66 @@ def _parse_datetime(value: str) -> str:
         return value
 
 
+def _normalize_date_text(value: str) -> str:
+    cleaned = re.sub(r"^[A-Za-z]+,\s*", "", value.strip())
+    cleaned = cleaned.replace(",", " ")
+    cleaned = re.sub(r"\bSept\.?\b", "Sep", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned.title()
+
+
+def _parse_human_date(value: str) -> str:
+    if not value:
+        return ""
+    cleaned = _normalize_date_text(value)
+    for fmt in ("%d %B %Y", "%d %b %Y", "%B %d %Y", "%b %d %Y"):
+        try:
+            return datetime.strptime(cleaned, fmt).date().isoformat()
+        except ValueError:
+            continue
+    return ""
+
+
+def _extract_human_date(text: str) -> str:
+    if not text:
+        return ""
+    normalized = " ".join(text.split())
+    patterns = (
+        r"(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})",
+        r"([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, normalized)
+        if match:
+            date_iso = _parse_human_date(match.group(1))
+            if date_iso:
+                return date_iso
+    return ""
+
+
+def _format_published_date(date_iso: str) -> str:
+    if not date_iso:
+        return ""
+    return f"{date_iso}T00:00:00Z"
+
+
+def _normalize_arxiv_id(arxiv_id: str) -> str:
+    if not arxiv_id:
+        return ""
+    return re.sub(r"v\d+$", "", arxiv_id)
+
+
+def _has_version(arxiv_id: str) -> bool:
+    return bool(re.search(r"v\d+$", arxiv_id))
+
+
+def _extract_list_header_date(html: str) -> str:
+    match = re.search(r"SHOWING (?:NEW|RECENT) LISTINGS FOR\s+([^<]+)", html, re.I)
+    if not match:
+        return ""
+    return _extract_human_date(match.group(1))
+
+
 def _parse_entry(entry: feedparser.FeedParserDict) -> Paper:
     arxiv_id = entry.get("id", "").split("/abs/")[-1]
     title = _clean_text(entry.get("title", ""))
@@ -85,7 +145,7 @@ def _parse_entry(entry: feedparser.FeedParserDict) -> Paper:
 def _parse_rss_entry(entry: feedparser.FeedParserDict) -> Paper:
     arxiv_id = ""
     entry_id = entry.get("id", "") or entry.get("link", "")
-    match = re.search(r"arxiv.org/abs/([\w.]+v\d+)", entry_id)
+    match = re.search(r"arxiv.org/abs/([\w.]+(?:v\d+)?)", entry_id)
     if match:
         arxiv_id = match.group(1)
     title = _clean_text(entry.get("title", ""))
@@ -122,12 +182,16 @@ def _parse_rss_entry(entry: feedparser.FeedParserDict) -> Paper:
     )
 
 
-def _parse_html_list(html: str) -> List[Paper]:
+def _parse_html_list(html: str, run_date: str | None = None) -> List[Paper]:
     papers: List[Paper] = []
+    header_date = _extract_list_header_date(html)
+    if not header_date and run_date:
+        header_date = run_date
+    published = _format_published_date(header_date)
     for match in re.finditer(r"<dt>(.*?)</dt>\s*<dd>(.*?)</dd>", html, re.S):
         dt = match.group(1)
         dd = match.group(2)
-        id_match = re.search(r"/abs/([\w.]+v\d+)", dt)
+        id_match = re.search(r"/abs/([\w.]+(?:v\d+)?)", dt)
         arxiv_id = id_match.group(1) if id_match else ""
 
         title_match = re.search(r"Title:</span>\s*(.*?)</div>", dd, re.S)
@@ -163,18 +227,18 @@ def _parse_html_list(html: str) -> List[Paper]:
                 categories=categories,
                 abstract=abstract,
                 pdf_url=pdf_url,
-                published="",
+                published=published,
             )
         )
 
     return papers
 
 
-def _parse_html_search(html: str) -> List[Paper]:
+def _parse_html_search(html: str, run_date: str | None = None) -> List[Paper]:
     papers: List[Paper] = []
     for match in re.finditer(r"<li class=\"arxiv-result\">(.*?)</li>", html, re.S):
         block = match.group(1)
-        id_match = re.search(r"/abs/([\w.]+v\d+)", block)
+        id_match = re.search(r"/abs/([\w.]+(?:v\d+)?)", block)
         arxiv_id = id_match.group(1) if id_match else ""
 
         title_match = re.search(r"title is-5 mathjax\">(.*?)</p>", block, re.S)
@@ -192,8 +256,20 @@ def _parse_html_search(html: str) -> List[Paper]:
         categories = [_clean_text(subject_match.group(1))] if subject_match else []
         primary_category = categories[0] if categories else ""
 
-        pdf_match = re.search(r"href=\"(/pdf/[\w.]+v\d+)\"", block)
+        pdf_match = re.search(r"href=\"(/pdf/[\w.]+(?:v\d+)?)\"", block)
         pdf_url = f"https://arxiv.org{pdf_match.group(1)}" if pdf_match else ""
+
+        date_iso = ""
+        submitted_match = re.search(r"Submitted\s+([^;<]+)", block, re.I)
+        if submitted_match:
+            date_iso = _extract_human_date(submitted_match.group(1))
+        if not date_iso:
+            announced_match = re.search(r"announced\s+([^;<]+)", block, re.I)
+            if announced_match:
+                date_iso = _extract_human_date(announced_match.group(1))
+        if not date_iso and run_date:
+            date_iso = run_date
+        published = _format_published_date(date_iso)
 
         papers.append(
             Paper(
@@ -204,7 +280,7 @@ def _parse_html_search(html: str) -> List[Paper]:
                 categories=categories,
                 abstract=abstract,
                 pdf_url=pdf_url,
-                published="",
+                published=published,
             )
         )
 
@@ -216,7 +292,7 @@ def fetch_papers_atom(category: str, max_results: int, base_url: str) -> List[Pa
         "search_query": f"cat:{category}",
         "start": 0,
         "max_results": max_results,
-        "sortBy": "submittedDate",
+        "sortBy": "lastUpdatedDate",
         "sortOrder": "descending",
     }
     feed_text = get_text(base_url, params=params)
@@ -230,27 +306,52 @@ def fetch_papers_rss(category: str, rss_url: str) -> List[Paper]:
     return [_parse_rss_entry(entry) for entry in feed.entries]
 
 
-def fetch_papers_html_list(category: str, list_url: str) -> List[Paper]:
+def fetch_papers_html_list(
+    category: str,
+    list_url: str,
+    run_date: str | None = None,
+) -> List[Paper]:
     html = get_text(list_url.format(category=category))
-    return _parse_html_list(html)
+    return _parse_html_list(html, run_date=run_date)
 
 
-def fetch_papers_html_search(category: str, search_url: str, size: int) -> List[Paper]:
+def fetch_papers_html_search(
+    category: str,
+    search_url: str,
+    size: int,
+    run_date: str | None = None,
+) -> List[Paper]:
     html = get_text(search_url.format(category=category, size=size))
-    return _parse_html_search(html)
+    return _parse_html_search(html, run_date=run_date)
 
 
 def merge_unique_by_id(papers: Iterable[Paper]) -> List[Paper]:
-    seen = set()
-    result: List[Paper] = []
+    merged: Dict[str, Paper] = {}
     for paper in papers:
-        if not paper.arxiv_id:
+        key = _normalize_arxiv_id(paper.arxiv_id)
+        if not key:
             continue
-        if paper.arxiv_id in seen:
+        existing = merged.get(key)
+        if not existing:
+            merged[key] = paper
             continue
-        seen.add(paper.arxiv_id)
-        result.append(paper)
-    return result
+        if _paper_date(paper) > _paper_date(existing):
+            existing.published = paper.published
+        if existing.arxiv_id and not _has_version(existing.arxiv_id) and _has_version(paper.arxiv_id):
+            existing.arxiv_id = paper.arxiv_id
+        if not existing.title and paper.title:
+            existing.title = paper.title
+        if not existing.authors and paper.authors:
+            existing.authors = paper.authors
+        if not existing.primary_category and paper.primary_category:
+            existing.primary_category = paper.primary_category
+        if not existing.categories and paper.categories:
+            existing.categories = paper.categories
+        if not existing.abstract and paper.abstract:
+            existing.abstract = paper.abstract
+        if not existing.pdf_url and paper.pdf_url:
+            existing.pdf_url = paper.pdf_url
+    return list(merged.values())
 
 
 def select_by_date_window(
@@ -322,7 +423,8 @@ def fetch_papers_multi(
     fallback_days: int,
     base_url: str,
     rss_url: str,
-    list_url: str,
+    list_new_url: str,
+    list_recent_url: str,
     search_url: str,
     run_date: str,
 ) -> List[Paper]:
@@ -336,12 +438,21 @@ def fetch_papers_multi(
         rss = fetch_papers_rss(category, rss_url)
         combined = merge_unique_by_id([*combined, *rss])
 
-    if len(combined) < min_results:
-        html_list = fetch_papers_html_list(category, list_url)
-        combined = merge_unique_by_id([*combined, *html_list])
+    if list_new_url:
+        html_list_new = fetch_papers_html_list(category, list_new_url, run_date=run_date)
+        combined = merge_unique_by_id([*combined, *html_list_new])
 
-    if len(combined) < min_results:
-        html_search = fetch_papers_html_search(category, search_url, size=max_results)
+    if list_recent_url and list_recent_url != list_new_url:
+        html_list_recent = fetch_papers_html_list(category, list_recent_url, run_date=run_date)
+        combined = merge_unique_by_id([*combined, *html_list_recent])
+
+    if search_url:
+        html_search = fetch_papers_html_search(
+            category,
+            search_url,
+            size=max_results,
+            run_date=run_date,
+        )
         combined = merge_unique_by_id([*combined, *html_search])
 
     combined.sort(key=lambda paper: paper.published, reverse=True)
