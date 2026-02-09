@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>排行榜和房主功能测试</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .player-section {
+            border: 2px solid #00ff00;
+            padding: 15px;
+            margin: 10px 0;
+            background: #0a0a0a;
+        }
+        .owner {
+            border-color: gold;
+        }
+        button {
+            background: #00ff00;
+            color: black;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: monospace;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #00cc00;
+        }
+        .log {
+            background: black;
+            padding: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 10px;
+            border: 1px solid #00ff00;
+        }
+        .log div {
+            margin: 2px 0;
+        }
+        .error {
+            color: #ff0000;
+        }
+        .success {
+            color: #00ff00;
+        }
+        .info {
+            color: #ffff00;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 排行榜和房主功能测试</h1>
+        
+        <!-- Player 1 (Owner) -->
+        <div class="player-section owner" id="player1-section">
+            <h2>Player 1 - Alice (房主)</h2>
+            <div>
+                <button onclick="connect(1, 'Alice')">连接</button>
+                <button onclick="startGame(1)">开始游戏</button>
+                <button onclick="endGame(1)">结束游戏</button>
+                <button onclick="getState(1)">获取状态</button>
+                <button onclick="gameAction(1, 'check')">Check</button>
+                <button onclick="gameAction(1, 'call')">Call</button>
+                <button onclick="gameAction(1, 'fold')">Fold</button>
+            </div>
+            <div class="log" id="log1"></div>
+        </div>
+        
+        <!-- Player 2 -->
+        <div class="player-section" id="player2-section">
+            <h2>Player 2 - Bob</h2>
+            <div>
+                <button onclick="connect(2, 'Bob')">连接</button>
+                <button onclick="startGame(2)">开始游戏</button>
+                <button onclick="endGame(2)">结束游戏（测试权限）</button>
+                <button onclick="getState(2)">获取状态</button>
+                <button onclick="gameAction(2, 'check')">Check</button>
+                <button onclick="gameAction(2, 'call')">Call</button>
+                <button onclick="gameAction(2, 'fold')">Fold</button>
+            </div>
+            <div class="log" id="log2"></div>
+        </div>
+        
+        <!-- Player 3 -->
+        <div class="player-section" id="player3-section">
+            <h2>Player 3 - Charlie</h2>
+            <div>
+                <button onclick="connect(3, 'Charlie')">连接</button>
+                <button onclick="startGame(3)">开始游戏</button>
+                <button onclick="getState(3)">获取状态</button>
+                <button onclick="gameAction(3, 'check')">Check</button>
+                <button onclick="gameAction(3, 'call')">Call</button>
+                <button onclick="gameAction(3, 'fold')">Fold</button>
+            </div>
+            <div class="log" id="log3"></div>
+        </div>
+        
+        <div class="player-section">
+            <h2>测试说明</h2>
+            <ol style="line-height: 1.8;">
+                <li>依次点击三个玩家的"连接"按钮</li>
+                <li>点击Alice(Player 1)的"开始游戏"</li>
+                <li>根据提示轮流使用Check/Call进行游戏（观察谁是当前玩家）</li>
+                <li>游戏结束后，点击"获取状态"查看排行榜数据</li>
+                <li>测试Bob (Player 2)的"结束游戏"按钮（应该失败）</li>
+                <li>点击Alice (Player 1)的"结束游戏"按钮查看最终结果</li>
+            </ol>
+        </div>
+    </div>
+    
+    <script>
+        const players = {
+            1: { ws: null, id: null },
+            2: { ws: null, id: null },
+            3: { ws: null, id: null }
+        };
+        
+        function log(playerNum, message, type = 'info') {
+            const logDiv = document.getElementById(`log${playerNum}`);
+            const time = new Date().toLocaleTimeString();
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = `[${time}] ${message}`;
+            logDiv.appendChild(div);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        function connect(playerNum, name) {
+            if (players[playerNum].ws) {
+                log(playerNum, '已经连接!', 'error');
+                return;
+            }
+            
+            const ws = new WebSocket(`ws://localhost:8000/ws/${name}`);
+            players[playerNum].ws = ws;
+            
+            ws.onopen = () => {
+                log(playerNum, `✓ 已连接为 ${name}`, 'success');
+            };
+            
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                
+                if (msg.type === 'player_id') {
+                    players[playerNum].id = msg.data.player_id;
+                    log(playerNum, `ID: ${msg.data.player_id.substring(0, 8)}...`, 'success');
+                }
+                else if (msg.type === 'game_started') {
+                    log(playerNum, '🎮 游戏开始!', 'success');
+                }
+                else if (msg.type === 'game_state') {
+                    const data = msg.data;
+                    const current = data.current_player_id;
+                    const stage = data.game_stage;
+                    const isCurrent = current === players[playerNum].id;
+                    
+                    if (isCurrent) {
+                        log(playerNum, `👉 轮到你了! (${stage}, min_bet=${data.min_bet})`, 'success');
+                    }
+                    
+                    if (stage === 'showdown') {
+                        const result = data.game_result;
+                        if (result && result.winners) {
+                            log(playerNum, `🎉 获胜者: ${result.winners.map(w => w.name).join(', ')}`, 'success');
+                        }
+                    }
+                }
+                else if (msg.type === 'game_ended') {
+                    log(playerNum, '🏁 游戏已结束!', 'success');
+                    const rankings = msg.data.rankings;
+                    if (rankings) {
+                        log(playerNum, `总共 ${msg.data.total_games} 局游戏`, 'info');
+                        rankings.forEach(r => {
+                            const medal = ['🥇', '🥈', '🥉'][r.rank - 1] || r.rank;
+                            log(playerNum, `${medal} ${r.player_name}: ${r.total_win} (${r.win_rate.toFixed(1)}%)`, 'info');
+                        });
+                    }
+                }
+                else {
+                    log(playerNum, `📩 ${msg.type}`, 'info');
+                }
+            };
+            
+            ws.onerror = (error) => {
+                log(playerNum, `✗ 错误: ${error}`, 'error');
+            };
+            
+            ws.onclose = () => {
+                log(playerNum, '连接已关闭', 'error');
+                players[playerNum].ws = null;
+            };
+        }
+        
+        function startGame(playerNum) {
+            if (!players[playerNum].ws) {
+                log(playerNum, '请先连接!', 'error');
+                return;
+            }
+            players[playerNum].ws.send(JSON.stringify({ type: 'start_game' }));
+            log(playerNum, '发送: 开始游戏', 'info');
+        }
+        
+        function endGame(playerNum) {
+            if (!players[playerNum].ws) {
+                log(playerNum, '请先连接!', 'error');
+                return;
+            }
+            players[playerNum].ws.send(JSON.stringify({ type: 'end_game' }));
+            log(playerNum, '发送: 结束游戏', 'info');
+        }
+        
+        function getState(playerNum) {
+            if (!players[playerNum].ws) {
+                log(playerNum, '请先连接!', 'error');
+                return;
+            }
+            players[playerNum].ws.send(JSON.stringify({ type: 'get_state' }));
+            log(playerNum, '请求游戏状态...', 'info');
+            
+            // 等待并显示统计
+            setTimeout(() => {
+                log(playerNum, '--- 查看上方game_state消息了解详情 ---', 'info');
+            }, 1000);
+        }
+        
+        function gameAction(playerNum, action) {
+            if (!players[playerNum].ws) {
+                log(playerNum, '请先连接!', 'error');
+                return;
+            }
+            players[playerNum].ws.send(JSON.stringify({ 
+                type: 'action', 
+                action: action 
+            }));
+            log(playerNum, `发送: ${action}`, 'info');
+        }
+    </script>
+</body>
+</html>

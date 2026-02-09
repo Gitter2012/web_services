@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  poker-game:
+    build: .
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/api/game_state')"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - poker-network
+
+networks:
+  poker-network:
+    driver: bridge

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>游戏测试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        #log {
+            background: #222;
+            color: #0f0;
+            padding: 15px;
+            border-radius: 5px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            margin-top: 20px;
+        }
+        .log-entry {
+            margin: 5px 0;
+        }
+        .log-success { color: #0f0; }
+        .log-error { color: #f00; }
+        .log-info { color: #0ff; }
+    </style>
+</head>
+<body>
+    <h1>🎲 德州扑克游戏测试</h1>
+    
+    <div class="test-section">
+        <h2>测试控制</h2>
+        <button onclick="openGameInNewTab()">🚀 在新标签页打开游戏</button>
+        <button onclick="testAudioContext()">🔊 测试音效系统</button>
+        <button onclick="clearLog()">🗑️ 清空日志</button>
+    </div>
+
+    <div class="test-section">
+        <h2>测试说明</h2>
+        <ol>
+            <li>点击"在新标签页打开游戏"按钮</li>
+            <li>在游戏页面输入昵称并加入游戏</li>
+            <li>添加至少2个AI玩家（建议3-4个）</li>
+            <li>点击"开始游戏"按钮</li>
+            <li>观察以下功能：
+                <ul>
+                    <li>✅ 发牌动画：卡牌从顶部飞入，带有缓动效果</li>
+                    <li>✅ 发牌音效：每张牌发出时都有"嗖"的声音</li>
+                    <li>✅ 公共牌翻开：Flop（3张），Turn（1张），River（1张）依次翻开</li>
+                    <li>✅ 翻牌音效：每次翻牌有独特的音效</li>
+                    <li>✅ 玩家操作：弃牌、过牌、跟注、加注</li>
+                    <li>✅ 操作音效：不同操作有不同音效</li>
+                    <li>✅ 动作提示：屏幕上显示浮动文字提示</li>
+                    <li>✅ 当前玩家高亮：轮到谁操作，谁的卡片会发光闪烁</li>
+                    <li>✅ 底池更新动画：底池金额变化时有脉冲动画</li>
+                    <li>✅ 结果展示：获胜者高亮，播放胜利音效</li>
+                    <li>✅ 获胜动画：获胜玩家卡片有特殊的脉冲光晕效果</li>
+                </ul>
+            </li>
+        </ol>
+    </div>
+
+    <div class="test-section">
+        <h2>预期测试结果</h2>
+        <ul>
+            <li><strong>音效系统：</strong>所有游戏事件都应该有相应的音效反馈</li>
+            <li><strong>动画流畅：</strong>所有动画应该流畅自然，无卡顿</li>
+            <li><strong>视觉反馈：</strong>玩家能清楚地看到游戏进程和轮到谁操作</li>
+            <li><strong>AI行为：</strong>AI应该能自动做出决策（弃牌、跟注、加注等）</li>
+            <li><strong>游戏完整性：</strong>从发牌到结算的完整流程正常运行</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>测试日志</h2>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        function getBasePath() {
+            const path = window.location.pathname || '';
+            if (path === '/' || path === '') {
+                return '';
+            }
+
+            let base = path;
+            if (base.endsWith('/')) {
+                base = base.slice(0, -1);
+            }
+            if (base.endsWith('.html')) {
+                base = base.slice(0, base.lastIndexOf('/'));
+            }
+
+            return base;
+        }
+
+        const basePath = getBasePath();
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            log('日志已清空', 'info');
+        }
+
+        function openGameInNewTab() {
+            const gameUrl = window.location.origin + basePath + '/';
+            window.open(gameUrl, '_blank');
+            log('已在新标签页打开游戏', 'success');
+            log('请在游戏页面完成以下步骤：', 'info');
+            log('1. 输入昵称加入游戏', 'info');
+            log('2. 添加2-4个AI玩家', 'info');
+            log('3. 点击"开始游戏"', 'info');
+            log('4. 观察音效和动画效果', 'info');
+        }
+
+        function testAudioContext() {
+            log('开始测试音效系统...', 'info');
+            
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) {
+                log('❌ 浏览器不支持Web Audio API', 'error');
+                return;
+            }
+            
+            log('✅ Web Audio API 可用', 'success');
+            
+            const audioContext = new AudioContext();
+            log('✅ AudioContext 创建成功', 'success');
+            
+            // 测试播放一个简单的音效
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = 440; // A4音符
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.5);
+            
+            log('✅ 测试音效已播放（440Hz正弦波）', 'success');
+            log('如果听到了"哔"的一声，说明音效系统正常工作', 'info');
+        }
+
+        // 页面加载完成后的初始化
+        window.onload = function() {
+            log('🎮 游戏测试页面已加载', 'success');
+            log('服务器地址：' + window.location.origin, 'info');
+            log('准备开始测试...', 'info');
+        };
+    </script>
+</body>
+</html>
