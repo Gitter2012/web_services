@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import html
+import logging
+import random
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional
@@ -8,6 +12,8 @@ from typing import Dict, Iterable, List, Optional
 import feedparser
 
 from common.http import get_text
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -37,7 +43,16 @@ class Paper:
 
 
 def _clean_text(text: str) -> str:
-    return " ".join(text.replace("\n", " ").split()).strip()
+    if not text:
+        return ""
+    cleaned = re.sub(r"<[^>]+>", " ", text)
+    cleaned = html.unescape(cleaned)
+    return " ".join(cleaned.replace("\n", " ").split()).strip()
+
+
+def _is_meaningful_abstract(text: str, min_length: int = 20) -> bool:
+    cleaned = _clean_text(text)
+    return len(cleaned) >= min_length
 
 
 def _parse_datetime(value: str) -> str:
@@ -103,6 +118,69 @@ def _has_version(arxiv_id: str) -> bool:
     return bool(re.search(r"v\d+$", arxiv_id))
 
 
+def _parse_abs_page(html_text: str) -> Dict[str, str | List[str]]:
+    title_match = re.search(
+        r"<h1[^>]*class=\"[^\"]*title[^\"]*\"[^>]*>(.*?)</h1>",
+        html_text,
+        re.S,
+    )
+    title_raw = title_match.group(1) if title_match else ""
+    title = _clean_text(re.sub(r"^Title:\s*", "", title_raw, flags=re.I))
+
+    authors_match = re.search(
+        r"<div[^>]*class=\"[^\"]*authors[^\"]*\"[^>]*>(.*?)</div>",
+        html_text,
+        re.S,
+    )
+    authors_block = authors_match.group(1) if authors_match else ""
+    authors = [
+        _clean_text(a)
+        for a in re.findall(r">\s*([^<]+)\s*</a>", authors_block)
+        if _clean_text(a)
+    ]
+
+    abstract_match = re.search(
+        r"<blockquote[^>]*class=\"[^\"]*abstract[^\"]*\"[^>]*>(.*?)</blockquote>",
+        html_text,
+        re.S,
+    )
+    abstract_raw = abstract_match.group(1) if abstract_match else ""
+    abstract = _clean_text(re.sub(r"^Abstract:\s*", "", abstract_raw, flags=re.I))
+
+    subjects_match = re.search(
+        r"<td[^>]*class=\"tablecell subjects\"[^>]*>(.*?)</td>",
+        html_text,
+        re.S,
+    )
+    subjects_block = subjects_match.group(1) if subjects_match else ""
+    subjects = [
+        _clean_text(part)
+        for part in re.split(r";|,", subjects_block)
+        if _clean_text(part)
+    ]
+
+    return {
+        "title": title,
+        "authors": authors,
+        "abstract": abstract,
+        "subjects": subjects,
+    }
+
+
+def _fill_missing_from_abs(paper: Paper, abs_data: Dict[str, str | List[str]]) -> None:
+    if not paper.title and abs_data.get("title"):
+        paper.title = str(abs_data["title"])
+    if not paper.authors and abs_data.get("authors"):
+        paper.authors = list(abs_data["authors"])  # type: ignore[list-item]
+    abs_abstract = abs_data.get("abstract")
+    if abs_abstract and not _is_meaningful_abstract(paper.abstract):
+        paper.abstract = _clean_text(str(abs_abstract))
+    if not paper.categories and abs_data.get("subjects"):
+        paper.categories = list(abs_data["subjects"])  # type: ignore[list-item]
+        paper.primary_category = paper.categories[0] if paper.categories else paper.primary_category
+
+
+
 def _extract_list_header_date(html: str) -> str:
     match = re.search(r"SHOWING (?:NEW|RECENT) LISTINGS FOR\s+([^<]+)", html, re.I)
     if not match:
@@ -114,13 +192,13 @@ def _parse_entry(entry: feedparser.FeedParserDict) -> Paper:
     arxiv_id = entry.get("id", "").split("/abs/")[-1]
     title = _clean_text(entry.get("title", ""))
     abstract = _clean_text(entry.get("summary", ""))
-    authors = [author.get("name", "") for author in entry.get("authors", [])]
+    authors = [_clean_text(author.get("name", "")) for author in entry.get("authors", [])]
 
     primary_category = ""
     if "arxiv_primary_category" in entry:
         primary_category = entry.arxiv_primary_category.get("term", "")
 
-    categories = [tag.get("term", "") for tag in entry.get("tags", [])]
+    categories = [_clean_text(tag.get("term", "")) for tag in entry.get("tags", [])]
 
     pdf_url = ""
     for link in entry.get("links", []):
@@ -155,11 +233,11 @@ def _parse_rss_entry(entry: feedparser.FeedParserDict) -> Paper:
     if entry.get("authors"):
         for author in entry.get("authors", []):
             name = author.get("name", "")
-            authors.extend([part.strip() for part in name.split(",") if part.strip()])
+            authors.extend([_clean_text(part) for part in name.split(",") if _clean_text(part)])
     elif entry.get("author"):
-        authors = [name.strip() for name in entry.get("author", "").split(",") if name.strip()]
+        authors = [_clean_text(name) for name in entry.get("author", "").split(",") if _clean_text(name)]
 
-    categories = [tag.get("term", "") for tag in entry.get("tags", [])]
+    categories = [_clean_text(tag.get("term", "")) for tag in entry.get("tags", [])]
     primary_category = categories[0] if categories else ""
 
     pdf_url = ""
@@ -249,7 +327,11 @@ def _parse_html_search(html: str, run_date: str | None = None) -> List[Paper]:
             for a in re.findall(r"<a href=\"/search/\?searchtype=author.*?\">(.*?)</a>", block)
         ]
 
-        abstract_match = re.search(r"abstract-full\">(.*?)</span>", block, re.S)
+        abstract_match = re.search(
+            r"abstract-(?:full|short)\"[^>]*>(.*?)</span>",
+            block,
+            re.S,
+        )
         abstract = _clean_text(abstract_match.group(1)) if abstract_match else ""
 
         subject_match = re.search(r"<span class=\"tag is-small is-link\">(.*?)</span>", block)
@@ -287,7 +369,9 @@ def _parse_html_search(html: str, run_date: str | None = None) -> List[Paper]:
     return papers
 
 
-def fetch_papers_atom(category: str, max_results: int, base_url: str) -> List[Paper]:
+def fetch_papers_atom(
+    category: str, max_results: int, base_url: str, delay: float = 0.0, jitter: float = 0.0, cache_ttl: int = 0
+) -> List[Paper]:
     params = {
         "search_query": f"cat:{category}",
         "start": 0,
@@ -295,13 +379,64 @@ def fetch_papers_atom(category: str, max_results: int, base_url: str) -> List[Pa
         "sortBy": "lastUpdatedDate",
         "sortOrder": "descending",
     }
-    feed_text = get_text(base_url, params=params)
+    timeout = 20.0
+    retries = 3
+    backoff = 1.0
+    try:
+        feed_text = get_text(
+            base_url,
+            params=params,
+            timeout=timeout,
+            retries=retries,
+            backoff=backoff,
+            delay=delay,
+            jitter=jitter,
+            cache_ttl=cache_ttl,
+        )
+    except RuntimeError as exc:
+        logger.warning(
+            "arXiv Atom fetch failed",
+            extra={
+                "category": category,
+                "url": base_url,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+                "retries": retries,
+                "timeout": timeout,
+                "backoff": backoff,
+            },
+        )
+        return []
     feed = feedparser.parse(feed_text)
     return [_parse_entry(entry) for entry in feed.entries]
 
 
-def fetch_papers_rss(category: str, rss_url: str) -> List[Paper]:
-    feed_text = get_text(rss_url.format(category=category))
+def fetch_papers_rss(
+    category: str, rss_url: str, delay: float = 0.0, jitter: float = 0.0, cache_ttl: int = 0
+) -> List[Paper]:
+    url = rss_url.format(category=category)
+    timeout = 20.0
+    retries = 3
+    backoff = 1.0
+    try:
+        feed_text = get_text(
+            url, timeout=timeout, retries=retries, backoff=backoff,
+            delay=delay, jitter=jitter, cache_ttl=cache_ttl,
+        )
+    except RuntimeError as exc:
+        logger.warning(
+            "arXiv RSS fetch failed",
+            extra={
+                "category": category,
+                "url": url,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+                "retries": retries,
+                "timeout": timeout,
+                "backoff": backoff,
+            },
+        )
+        return []
     feed = feedparser.parse(feed_text)
     return [_parse_rss_entry(entry) for entry in feed.entries]
 
@@ -310,8 +445,30 @@ def fetch_papers_html_list(
     category: str,
     list_url: str,
     run_date: str | None = None,
+    delay: float = 0.0,
+    jitter: float = 0.0,
+    cache_ttl: int = 0,
 ) -> List[Paper]:
-    html = get_text(list_url.format(category=category))
+    url = list_url.format(category=category)
+    timeout = 15.0
+    retries = 3
+    backoff = 1.0
+    try:
+        html = get_text(url, timeout=timeout, retries=retries, backoff=backoff, delay=delay, jitter=jitter, cache_ttl=cache_ttl)
+    except RuntimeError as exc:
+        logger.warning(
+            "arXiv HTML list fetch failed",
+            extra={
+                "category": category,
+                "url": url,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+                "retries": retries,
+                "timeout": timeout,
+                "backoff": backoff,
+            },
+        )
+        return []
     return _parse_html_list(html, run_date=run_date)
 
 
@@ -320,8 +477,30 @@ def fetch_papers_html_search(
     search_url: str,
     size: int,
     run_date: str | None = None,
+    delay: float = 0.0,
+    jitter: float = 0.0,
+    cache_ttl: int = 0,
 ) -> List[Paper]:
-    html = get_text(search_url.format(category=category, size=size))
+    url = search_url.format(category=category, size=size)
+    timeout = 20.0
+    retries = 3
+    backoff = 1.0
+    try:
+        html = get_text(url, timeout=timeout, retries=retries, backoff=backoff, delay=delay, jitter=jitter, cache_ttl=cache_ttl)
+    except RuntimeError as exc:
+        logger.warning(
+            "arXiv HTML search fetch failed",
+            extra={
+                "category": category,
+                "url": url,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+                "retries": retries,
+                "timeout": timeout,
+                "backoff": backoff,
+            },
+        )
+        return []
     return _parse_html_search(html, run_date=run_date)
 
 
@@ -416,6 +595,16 @@ def select_backfill_by_date(
     return selected
 
 
+# ---------------------------------------------------------------------------
+# Inter-source delay helper
+# ---------------------------------------------------------------------------
+
+def _inter_source_delay(base: float = 2.0, jitter: float = 1.0) -> None:
+    """Sleep between different arxiv source fetches to spread load."""
+    wait = base + random.uniform(0, jitter)
+    time.sleep(max(0.5, wait))
+
+
 def fetch_papers_multi(
     category: str,
     max_results: int,
@@ -427,33 +616,97 @@ def fetch_papers_multi(
     list_recent_url: str,
     search_url: str,
     run_date: str,
+    http_delay: float = 0.0,
+    http_jitter: float = 0.0,
+    http_cache_ttl: int = 0,
 ) -> List[Paper]:
     combined: List[Paper] = []
 
-    atom = fetch_papers_atom(category, max_results, base_url)
+    # Source 1: Atom API
+    atom = fetch_papers_atom(category, max_results, base_url, delay=http_delay, jitter=http_jitter, cache_ttl=http_cache_ttl)
     combined.extend(atom)
     combined = merge_unique_by_id(combined)
 
+    # Source 2: RSS (only if Atom gave too few results)
     if len(combined) < min_results:
-        rss = fetch_papers_rss(category, rss_url)
+        _inter_source_delay(http_delay, http_jitter)
+        rss = fetch_papers_rss(category, rss_url, delay=http_delay, jitter=http_jitter, cache_ttl=http_cache_ttl)
         combined = merge_unique_by_id([*combined, *rss])
 
+    # Source 3: HTML list (new)
     if list_new_url:
-        html_list_new = fetch_papers_html_list(category, list_new_url, run_date=run_date)
+        _inter_source_delay(http_delay, http_jitter)
+        html_list_new = fetch_papers_html_list(category, list_new_url, run_date=run_date, delay=http_delay, jitter=http_jitter, cache_ttl=http_cache_ttl)
         combined = merge_unique_by_id([*combined, *html_list_new])
 
+    # Source 4: HTML list (recent)
     if list_recent_url and list_recent_url != list_new_url:
-        html_list_recent = fetch_papers_html_list(category, list_recent_url, run_date=run_date)
+        _inter_source_delay(http_delay, http_jitter)
+        html_list_recent = fetch_papers_html_list(category, list_recent_url, run_date=run_date, delay=http_delay, jitter=http_jitter, cache_ttl=http_cache_ttl)
         combined = merge_unique_by_id([*combined, *html_list_recent])
 
+    # Source 5: Search page
     if search_url:
+        _inter_source_delay(http_delay, http_jitter)
         html_search = fetch_papers_html_search(
             category,
             search_url,
             size=max_results,
             run_date=run_date,
+            delay=http_delay,
+            jitter=http_jitter,
+            cache_ttl=http_cache_ttl,
         )
         combined = merge_unique_by_id([*combined, *html_search])
+
+    # Backfill missing abstracts from individual abs pages
+    abs_cache: Dict[str, Dict[str, str | List[str]]] = {}
+    abs_fetch_count = 0
+    for paper in combined:
+        if paper.authors and _is_meaningful_abstract(paper.abstract):
+            continue
+        abs_id = _normalize_arxiv_id(paper.arxiv_id)
+        if not abs_id:
+            continue
+        cached = abs_cache.get(abs_id)
+        if cached is None:
+            # Progressively increase delay as we fetch more abs pages
+            abs_fetch_count += 1
+            extra_delay = min(abs_fetch_count * 0.3, 3.0)  # cap at 3s extra
+            abs_url = f"https://arxiv.org/abs/{abs_id}"
+            timeout = 30.0
+            retries = 3
+            backoff = 2.0
+            try:
+                abs_html = get_text(
+                    abs_url,
+                    timeout=timeout,
+                    retries=retries,
+                    backoff=backoff,
+                    delay=http_delay + extra_delay,
+                    jitter=http_jitter,
+                    cache_ttl=http_cache_ttl,
+                    referer=f"https://arxiv.org/list/{category}/new",
+                )
+            except RuntimeError as exc:
+                logger.warning(
+                    "arXiv abs fetch failed",
+                    extra={
+                        "category": category,
+                        "url": abs_url,
+                        "error": str(exc),
+                        "error_type": type(exc).__name__,
+                        "retries": retries,
+                        "timeout": timeout,
+                        "backoff": backoff,
+                    },
+                )
+                abs_cache[abs_id] = {}
+                continue
+            abs_cache[abs_id] = _parse_abs_page(abs_html)
+            cached = abs_cache[abs_id]
+        if cached:
+            _fill_missing_from_abs(paper, cached)
 
     combined.sort(key=lambda paper: paper.published, reverse=True)
     return combined

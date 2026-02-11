@@ -132,6 +132,24 @@ class ArxivSettings(BaseSettings):
         validation_alias="ARXIV_ABSTRACT_MAX_LEN",
     )
 
+    # HTTP rate limiting & anti-blocking settings
+    http_delay_base: float = Field(
+        default=_arxiv_defaults.get("http_delay_base", 3.0),
+        validation_alias="HTTP_DELAY_BASE",
+    )
+    http_delay_jitter: float = Field(
+        default=_arxiv_defaults.get("http_delay_jitter", 1.5),
+        validation_alias="HTTP_DELAY_JITTER",
+    )
+    arxiv_batch_delay: float = Field(
+        default=_arxiv_defaults.get("arxiv_batch_delay", 10.0),
+        validation_alias="ARXIV_BATCH_DELAY",
+    )
+    http_cache_ttl: int = Field(
+        default=_arxiv_defaults.get("http_cache_ttl", 3600),
+        validation_alias="HTTP_CACHE_TTL",
+    )
+
     # Email addresses (secrets in .env)
     email_from: str = Field(
         default=_email_defaults.get("from", ""),

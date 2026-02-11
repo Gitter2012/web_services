@@ -41,6 +41,9 @@ def index(request: Request) -> HTMLResponse:
 def api_entries(
     category: Optional[str] = None,
     show_all: Optional[bool] = None,
+    search: Optional[str] = None,
+    sort: Optional[str] = "date",
+    backfill_only: Optional[bool] = None,
     page: int = Query(1, ge=1),
     page_size: Optional[int] = Query(None, ge=1, le=200),
 ) -> dict:
@@ -58,6 +61,26 @@ def api_entries(
     entries = _sorted_entries(entries)
     for entry in entries:
         entry["backfill"] = bool(today_dates and entry.get("source_date") not in today_dates)
+
+    if backfill_only:
+        entries = [entry for entry in entries if entry.get("backfill")]
+
+    if search:
+        search_term = search.casefold()
+        entries = [
+            entry
+            for entry in entries
+            if search_term in (entry.get("title") or "").casefold()
+            or search_term in (entry.get("abstract") or "").casefold()
+        ]
+
+    if sort == "title":
+        entries = sorted(
+            entries,
+            key=lambda item: ((item.get("title") or "").casefold(), item.get("arxiv_id", "")),
+        )
+    else:
+        entries = _sorted_entries(entries)
 
     total = len(entries)
     size = page_size or ui_settings.default_page_size

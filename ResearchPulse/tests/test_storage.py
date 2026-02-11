@@ -30,11 +30,11 @@ def test_render_markdown_and_html() -> None:
     papers = [
         {
             "arxiv_id": "1234.5678v1",
-            "title": "Paper Title",
+            "title": "Paper <b>Title</b>",
             "authors": "Alice, Bob",
-            "primary_category": "cs.LG",
-            "categories": "cs.LG, cs.AI",
-            "abstract": "A" * 20,
+            "primary_category": "<span>cs.LG</span>",
+            "categories": "cs.LG, <span>cs.AI</span>",
+            "abstract": "A" * 20 + " <i>tag</i>",
             "pdf_url": "http://arxiv.org/pdf/1234.5678v1",
             "published": "2026-02-07T00:00:00Z",
         }
@@ -43,6 +43,7 @@ def test_render_markdown_and_html() -> None:
     markdown = render_markdown(metadata, papers, abstract_max_len=10)
     assert markdown.startswith("# cs.LG (2026-02-07)")
     assert "### [1234.5678v1] Paper Title" in markdown
+    assert "<b>" not in markdown
     assert "**Authors**: Alice, Bob" in markdown
     assert "**Categories**: cs.LG, cs.AI" in markdown
     assert "**Date**: 2026-02-07" in markdown
@@ -56,6 +57,7 @@ def test_render_markdown_and_html() -> None:
     assert "PDF" in html
     assert "翻译" in html
     assert "Abstract:</strong> AAAAAAA..." in html
+    assert "<i>" not in html
 
 
 def test_render_aggregated_outputs() -> None:

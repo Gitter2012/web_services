@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="{{ url_for('arxiv_ui_static', path='css/style.css') }}" />
 </head>
 <body>
-  <div class="container">
+  <div class="container density--high" id="appRoot">
     <header>
       <h1>ResearchPulse arXiv UI</h1>
       <div class="meta">最新日期：<span id="latestDate">{{ latest_date }}</span></div>
@@ -23,9 +23,31 @@
           {% endfor %}
         </select>
       </label>
+      <label>
+        风格：
+        <select id="styleSelect">
+          <option value="high">信息密度高</option>
+          <option value="comfortable">舒适</option>
+        </select>
+      </label>
       <label class="toggle">
         <input type="checkbox" id="showAllToggle" {% if default_show_all %}checked{% endif %} />
         显示全部历史
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="backfillOnlyToggle" />
+        仅回溯
+      </label>
+      <label>
+        搜索：
+        <input id="searchInput" type="search" placeholder="标题/摘要" />
+      </label>
+      <label>
+        排序：
+        <select id="sortSelect">
+          <option value="date">日期（新→旧）</option>
+          <option value="title">标题（A→Z）</option>
+        </select>
       </label>
       <label>
         每页条数：
@@ -46,6 +68,8 @@
     window.UI_CONFIG = {
       defaultShowAll: {{ 'true' if default_show_all else 'false' }},
       defaultPageSize: {{ default_page_size }},
+      defaultStyle: "high",
+      defaultSort: "date",
     };
   </script>
   <script src="{{ url_for('arxiv_ui_static', path='js/app.js') }}"></script>

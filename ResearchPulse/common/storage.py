@@ -58,6 +58,14 @@ def _truncate(text: str, max_len: int) -> str:
     return text[: max_len - 3].rstrip() + "..."
 
 
+def _clean_field(text: str) -> str:
+    if not text:
+        return ""
+    cleaned = re.sub(r"<[^>]+>", " ", text)
+    cleaned = escape(cleaned)
+    return " ".join(cleaned.replace("\n", " ").split()).strip()
+
+
 def _abs_url(arxiv_id: str) -> str:
     return f"https://arxiv.org/abs/{arxiv_id}" if arxiv_id else ""
 
@@ -136,24 +144,24 @@ def render_markdown(
     lines: List[str] = [f"# {title}", ""]
 
     for paper in _sort_papers(papers):
-        paper_title = paper.get("title", "")
-        arxiv_id = paper.get("arxiv_id", "")
+        paper_title = _clean_field(paper.get("title", ""))
+        arxiv_id = _clean_field(paper.get("arxiv_id", ""))
         pdf_url = paper.get("pdf_url", "")
         translate_url = _translate_url(arxiv_id)
-        abstract = _truncate(paper.get("abstract", ""), abstract_max_len)
-        source_date = paper.get("source_date") or paper.get("published", "").split("T")[0]
+        abstract = _truncate(_clean_field(paper.get("abstract", "")), abstract_max_len)
+        source_date = _clean_field(paper.get("source_date") or paper.get("published", "").split("T")[0])
         if not source_date:
             source_date = metadata.get("date", "")
         abs_url = _abs_url(arxiv_id)
-        primary_category = paper.get("primary_category", "")
-        categories = paper.get("categories", "")
-        published = paper.get("published", "")
+        primary_category = _clean_field(paper.get("primary_category", ""))
+        categories = _clean_field(paper.get("categories", ""))
+        published = _clean_field(paper.get("published", ""))
 
         pdf_link = pdf_url or (f"https://arxiv.org/pdf/{arxiv_id}.pdf" if arxiv_id else "")
         lines.append(f"### [{arxiv_id}] {paper_title}")
         lines.append("")
         lines.append(f"**arXiv ID**: {arxiv_id}")
-        lines.append(f"**Authors**: {paper.get('authors', '')}")
+        lines.append(f"**Authors**: {_clean_field(paper.get('authors', ''))}")
         lines.append(f"**Primary Category**: {primary_category}")
         lines.append(f"**Categories**: {categories}")
         lines.append(f"**Published**: {published}")
@@ -192,27 +200,27 @@ def render_html(
     ]
 
     for paper in _sort_papers(papers):
-        paper_title = paper.get("title", "")
-        arxiv_id = paper.get("arxiv_id", "")
+        paper_title = _clean_field(paper.get("title", ""))
+        arxiv_id = _clean_field(paper.get("arxiv_id", ""))
         pdf_url = paper.get("pdf_url", "")
         translate_url = _translate_url(arxiv_id)
-        abstract = _truncate(paper.get("abstract", ""), abstract_max_len)
-        source_date = _paper_source_date(paper) or metadata.get("date", "")
+        abstract = _truncate(_clean_field(paper.get("abstract", "")), abstract_max_len)
+        source_date = _clean_field(_paper_source_date(paper) or metadata.get("date", ""))
         abs_url = _abs_url(arxiv_id)
-        primary_category = paper.get("primary_category", "")
-        categories = paper.get("categories", "")
-        published = paper.get("published", "")
+        primary_category = _clean_field(paper.get("primary_category", ""))
+        categories = _clean_field(paper.get("categories", ""))
+        published = _clean_field(paper.get("published", ""))
 
         pdf_link = pdf_url or (f"https://arxiv.org/pdf/{arxiv_id}.pdf" if arxiv_id else "")
-        parts.append(f"<h2>[{escape(arxiv_id)}] {escape(paper_title)}</h2>")
+        parts.append(f"<h2>[{arxiv_id}] {paper_title}</h2>")
         parts.append("<ul>")
-        parts.append(f"<li><strong>arXiv ID:</strong> {escape(arxiv_id)}</li>")
-        parts.append(f"<li><strong>Authors:</strong> {escape(paper.get('authors', ''))}</li>")
-        parts.append(f"<li><strong>Primary Category:</strong> {escape(primary_category)}</li>")
-        parts.append(f"<li><strong>Categories:</strong> {escape(categories)}</li>")
-        parts.append(f"<li><strong>Published:</strong> {escape(published)}</li>")
-        parts.append(f"<li><strong>Date:</strong> {escape(source_date)}</li>")
-        parts.append(f"<li><strong>Abstract:</strong> {escape(abstract)}</li>")
+        parts.append(f"<li><strong>arXiv ID:</strong> {arxiv_id}</li>")
+        parts.append(f"<li><strong>Authors:</strong> {_clean_field(paper.get('authors', ''))}</li>")
+        parts.append(f"<li><strong>Primary Category:</strong> {primary_category}</li>")
+        parts.append(f"<li><strong>Categories:</strong> {categories}</li>")
+        parts.append(f"<li><strong>Published:</strong> {published}</li>")
+        parts.append(f"<li><strong>Date:</strong> {source_date}</li>")
+        parts.append(f"<li><strong>Abstract:</strong> {abstract}</li>")
         link_items = []
         if pdf_link:
             link_items.append(f"<a href='{escape(pdf_link)}'>PDF</a>")

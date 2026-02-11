@@ -170,8 +170,118 @@ def test_merge_unique_by_id_normalizes_versions() -> None:
     assert merged[0].published.startswith("2026-02-09")
 
 
+def test_fetch_html_search_timeout_returns_empty(monkeypatch) -> None:
+    def raise_timeout(*_args, **_kwargs):
+        raise RuntimeError("HTTP request failed: timeout")
+
+    monkeypatch.setattr(parser, "get_text", raise_timeout)
+    papers = parser.fetch_papers_html_search(
+        category="cs.IR",
+        search_url="http://example.com/search?query={category}&size={size}",
+        size=10,
+        run_date="2026-02-09",
+    )
+    assert papers == []
+
+
 def test_clean_text() -> None:
     assert parser._clean_text("  a \n b  ") == "a b"
+    assert parser._clean_text("<span>Hi</span>") == "Hi"
+    assert parser._clean_text("Tom &amp; Jerry") == "Tom & Jerry"
+
+
+def test_is_meaningful_abstract() -> None:
+    assert parser._is_meaningful_abstract("This is a long enough abstract.")
+    assert not parser._is_meaningful_abstract("short abstract")
+    assert not parser._is_meaningful_abstract("")
+
+
+def test_fill_from_abs(monkeypatch) -> None:
+    abs_html = """
+    <h1 class=\"title\">Title: Sample Paper</h1>
+    <div class=\"authors\"><a>Author One</a>, <a>Author Two</a></div>
+    <blockquote class=\"abstract\">Abstract: A short abstract.</blockquote>
+    <td class=\"tablecell subjects\">cs.IR; cs.AI</td>
+    """
+
+    def fake_get_text(url, **_kwargs):
+        return abs_html
+
+    monkeypatch.setattr(parser, "get_text", fake_get_text)
+    paper = Paper(
+        arxiv_id="2602.12345",
+        title="",
+        authors=[],
+        primary_category="",
+        categories=[],
+        abstract="",
+        pdf_url="",
+        published="2026-02-09T00:00:00Z",
+    )
+    combined = parser.fetch_papers_multi(
+        category="cs.IR",
+        max_results=0,
+        min_results=0,
+        fallback_days=0,
+        base_url="http://example.com",
+        rss_url="http://example.com/rss",
+        list_new_url="",
+        list_recent_url="",
+        search_url="",
+        run_date="2026-02-09",
+    )
+    combined.append(paper)
+    merged = parser.merge_unique_by_id(combined)
+    abs_data = parser._parse_abs_page(abs_html)
+    parser._fill_missing_from_abs(paper, abs_data)
+    assert paper.title == "Sample Paper"
+    assert "Author One" in paper.authors
+    assert paper.abstract == "A short abstract."
+    assert "cs.IR" in paper.categories
+
+
+def test_fetch_papers_multi_fills_short_abstract(monkeypatch) -> None:
+    abs_html = """
+    <h1 class=\"title\">Title: Sample Paper</h1>
+    <div class=\"authors\"><a>Author One</a></div>
+    <blockquote class=\"abstract\">Abstract: This abstract is long enough to be meaningful.</blockquote>
+    <td class=\"tablecell subjects\">cs.IR</td>
+    """
+
+    def fake_fetch_atom(*_args, **_kwargs):
+        return [
+            Paper(
+                arxiv_id="2602.12345v1",
+                title="Sample Paper",
+                authors=["Author One"],
+                primary_category="cs.IR",
+                categories=["cs.IR"],
+                abstract="Too short",
+                pdf_url="",
+                published="2026-02-09T00:00:00Z",
+            )
+        ]
+
+    monkeypatch.setattr(parser, "fetch_papers_atom", fake_fetch_atom)
+    monkeypatch.setattr(parser, "fetch_papers_rss", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(parser, "fetch_papers_html_list", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(parser, "fetch_papers_html_search", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(parser, "get_text", lambda *_args, **_kwargs: abs_html)
+
+    papers = parser.fetch_papers_multi(
+        category="cs.IR",
+        max_results=0,
+        min_results=0,
+        fallback_days=0,
+        base_url="http://example.com",
+        rss_url="http://example.com/rss",
+        list_new_url="",
+        list_recent_url="",
+        search_url="",
+        run_date="2026-02-09",
+    )
+
+    assert papers[0].abstract == "This abstract is long enough to be meaningful."
 
 
 def test_serialize_papers() -> None:

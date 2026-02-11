@@ -7,9 +7,13 @@ body {
 }
 
 .container {
-  max-width: 960px;
+  max-width: 1040px;
   margin: 0 auto;
   padding: 24px;
+}
+
+.container h1 {
+  font-size: 24px;
 }
 
 header {
@@ -26,14 +30,32 @@ header h1 {
 
 .controls {
   display: flex;
-  gap: 16px;
+  gap: 12px 16px;
   align-items: center;
-  margin: 16px 0;
+  margin: 16px 0 20px;
   flex-wrap: wrap;
 }
 
-.controls select {
+.controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.controls select,
+.controls input[type="search"] {
   padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.controls input[type="search"] {
+  width: 160px;
 }
 
 .toggle {
@@ -44,14 +66,38 @@ header h1 {
 
 .entry {
   background: #fff;
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 16px;
   margin-bottom: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  border: 1px solid #eef0f4;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .entry h3 {
   margin: 0 0 8px 0;
+  font-size: 17px;
+}
+
+.entry p {
+  margin: 8px 0 0 0;
+}
+
+.density--high .entry {
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.density--high .entry h3 {
+  font-size: 16px;
+}
+
+.density--comfortable .entry {
+  padding: 20px;
+  margin-bottom: 14px;
+}
+
+.density--comfortable .entry h3 {
+  font-size: 18px;
 }
 
 .entry .meta {
@@ -63,6 +109,12 @@ header h1 {
   color: #2563eb;
   text-decoration: underline;
   margin-right: 8px;
+}
+
+.highlight {
+  background: #fde68a;
+  border-radius: 3px;
+  padding: 0 2px;
 }
 
 .pagination {

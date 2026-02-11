@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import random
 import threading
+import time
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -52,7 +54,21 @@ def run_crawl() -> dict:
 
     try:
         migrate_legacy_arxiv_outputs(settings.data_dir)
-        for category in arxiv_settings.categories_list:
+        categories = arxiv_settings.categories_list
+        for idx, category in enumerate(categories):
+            # Batch delay between categories to avoid rate-limiting
+            if idx > 0:
+                batch_delay = arxiv_settings.arxiv_batch_delay
+                batch_jitter = batch_delay * 0.3  # ±30% jitter
+                actual_batch_delay = batch_delay + random.uniform(-batch_jitter, batch_jitter)
+                actual_batch_delay = max(1.0, actual_batch_delay)
+                logger.info(
+                    "Waiting %.1fs before crawling next category",
+                    actual_batch_delay,
+                    extra={"category": category, "delay": actual_batch_delay},
+                )
+                time.sleep(actual_batch_delay)
+
             papers = fetch_papers_multi(
                 category=category,
                 max_results=arxiv_settings.arxiv_max_results,
@@ -64,6 +80,9 @@ def run_crawl() -> dict:
                 list_recent_url=arxiv_settings.arxiv_html_list_recent_url,
                 search_url=arxiv_settings.arxiv_html_search_url,
                 run_date=run_date,
+                http_delay=arxiv_settings.http_delay_base,
+                http_jitter=arxiv_settings.http_delay_jitter,
+                http_cache_ttl=arxiv_settings.http_cache_ttl,
             )
             selected_by_date = select_backfill_by_date(
                 papers,

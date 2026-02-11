@@ -17,6 +17,11 @@ arxiv:
   min_results: 10
   fallback_days: 7
   abstract_max_len: 800
+  # HTTP anti-blocking settings
+  http_delay_base: 3.0        # Base delay (seconds) before each request
+  http_delay_jitter: 1.5      # Random jitter +/- (seconds) added to delay
+  arxiv_batch_delay: 10.0     # Delay (seconds) between category crawls
+  http_cache_ttl: 3600        # Response cache TTL (seconds)
   urls:
     base: "https://export.arxiv.org/api/query"
     rss: "https://export.arxiv.org/rss/{category}"

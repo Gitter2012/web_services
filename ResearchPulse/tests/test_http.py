@@ -21,12 +21,15 @@ class DummyClient:
         self.calls = 0
         self.is_closed = False
 
-    def get(self, url, params=None, timeout=None):
+    def get(self, url, params=None, timeout=None, headers=None):
         response = self.responses[self.calls]
         self.calls += 1
         if isinstance(response, Exception):
             raise response
         return response
+
+    def close(self) -> None:
+        self.is_closed = True
 
 
 def test_get_text_success(monkeypatch) -> None:
