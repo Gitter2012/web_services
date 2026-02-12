@@ -26,9 +26,21 @@ class Paper:
     abstract: str
     pdf_url: str
     published: str
+    updated: str = ""
+    announced_date: str = ""
 
     def to_dict(self) -> Dict[str, str]:
-        source_date = self.published.split("T")[0] if self.published else ""
+        # source_date drives date-window filtering and backfill detection.
+        # Use announced_date (the arXiv listing date) when available,
+        # otherwise fall back to the date part of updated/published.
+        # This prevents precise Atom timestamps (e.g. 2026-02-11T18:59:08Z)
+        # from being grouped under a different day than the listing page
+        # (which announces them on 2026-02-12).
+        if self.announced_date:
+            source_date = self.announced_date
+        else:
+            effective_ts = self.updated or self.published
+            source_date = effective_ts.split("T")[0] if effective_ts else ""
         return {
             "arxiv_id": self.arxiv_id,
             "title": self.title,
@@ -38,6 +50,7 @@ class Paper:
             "abstract": self.abstract,
             "pdf_url": self.pdf_url,
             "published": self.published,
+            "updated": self.updated,
             "source_date": source_date,
         }
 
@@ -56,13 +69,28 @@ def _is_meaningful_abstract(text: str, min_length: int = 20) -> bool:
 
 
 def _parse_datetime(value: str) -> str:
+    """Parse various datetime formats to ISO 8601.
+
+    Handles:
+    - ISO 8601: "2026-02-11T18:59:08Z"
+    - RFC 2822: "Thu, 12 Feb 2026 00:00:00 -0500" (from RSS feeds)
+    """
     if not value:
         return ""
+    # Try ISO 8601 first
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         return parsed.isoformat()
     except ValueError:
-        return value
+        pass
+    # Try RFC 2822 (RSS pubDate format)
+    try:
+        from email.utils import parsedate_to_datetime
+        parsed = parsedate_to_datetime(value)
+        return parsed.isoformat()
+    except (ValueError, TypeError):
+        pass
+    return value
 
 
 def _normalize_date_text(value: str) -> str:
@@ -207,6 +235,7 @@ def _parse_entry(entry: feedparser.FeedParserDict) -> Paper:
             break
 
     published = _parse_datetime(entry.get("published", ""))
+    updated = _parse_datetime(entry.get("updated", ""))
 
     return Paper(
         arxiv_id=arxiv_id,
@@ -217,6 +246,7 @@ def _parse_entry(entry: feedparser.FeedParserDict) -> Paper:
         abstract=abstract,
         pdf_url=pdf_url,
         published=published,
+        updated=updated,
     )
 
 
@@ -247,6 +277,9 @@ def _parse_rss_entry(entry: feedparser.FeedParserDict) -> Paper:
             break
 
     published = _parse_datetime(entry.get("published", ""))
+    updated = _parse_datetime(entry.get("updated", ""))
+    # RSS published date represents the announcement date
+    announced_date = published.split("T")[0] if published else ""
 
     return Paper(
         arxiv_id=arxiv_id,
@@ -257,6 +290,8 @@ def _parse_rss_entry(entry: feedparser.FeedParserDict) -> Paper:
         abstract=abstract,
         pdf_url=pdf_url,
         published=published,
+        updated=updated,
+        announced_date=announced_date,
     )
 
 
@@ -306,6 +341,7 @@ def _parse_html_list(html: str, run_date: str | None = None) -> List[Paper]:
                 abstract=abstract,
                 pdf_url=pdf_url,
                 published=published,
+                announced_date=header_date or "",
             )
         )
 
@@ -363,6 +399,7 @@ def _parse_html_search(html: str, run_date: str | None = None) -> List[Paper]:
                 abstract=abstract,
                 pdf_url=pdf_url,
                 published=published,
+                announced_date=date_iso or "",
             )
         )
 
@@ -504,6 +541,18 @@ def fetch_papers_html_search(
     return _parse_html_search(html, run_date=run_date)
 
 
+def _is_precise_timestamp(ts: str) -> bool:
+    """Return True if the timestamp has real time info (not just midnight).
+
+    Imprecise timestamps are date-only values (from HTML/RSS sources) formatted
+    as ``YYYY-MM-DDT00:00:00`` with any timezone suffix (Z, +00:00, -05:00, etc.).
+    """
+    if not ts or "T" not in ts:
+        return False
+    # Check for T00:00:00 followed by optional timezone (Z, +HH:MM, -HH:MM)
+    return not re.search(r"T00:00:00([Z+\-]|$)", ts)
+
+
 def merge_unique_by_id(papers: Iterable[Paper]) -> List[Paper]:
     merged: Dict[str, Paper] = {}
     for paper in papers:
@@ -514,8 +563,24 @@ def merge_unique_by_id(papers: Iterable[Paper]) -> List[Paper]:
         if not existing:
             merged[key] = paper
             continue
-        if _paper_date(paper) > _paper_date(existing):
+        # Prefer precise published timestamps (from Atom API) over
+        # date-only timestamps (from HTML/RSS sources like 2026-02-12T00:00:00Z).
+        if _is_precise_timestamp(paper.published) and not _is_precise_timestamp(existing.published):
             existing.published = paper.published
+        elif not _is_precise_timestamp(paper.published) and _is_precise_timestamp(existing.published):
+            pass  # keep existing precise timestamp
+        elif _paper_date(paper) > _paper_date(existing):
+            existing.published = paper.published
+        # Merge updated: prefer non-empty and precise
+        if paper.updated and not existing.updated:
+            existing.updated = paper.updated
+        elif paper.updated and existing.updated:
+            if _is_precise_timestamp(paper.updated) and not _is_precise_timestamp(existing.updated):
+                existing.updated = paper.updated
+            elif not _is_precise_timestamp(paper.updated) and _is_precise_timestamp(existing.updated):
+                pass  # keep existing precise timestamp
+            elif paper.updated > existing.updated:
+                existing.updated = paper.updated
         if existing.arxiv_id and not _has_version(existing.arxiv_id) and _has_version(paper.arxiv_id):
             existing.arxiv_id = paper.arxiv_id
         if not existing.title and paper.title:
@@ -530,6 +595,12 @@ def merge_unique_by_id(papers: Iterable[Paper]) -> List[Paper]:
             existing.abstract = paper.abstract
         if not existing.pdf_url and paper.pdf_url:
             existing.pdf_url = paper.pdf_url
+        # Merge announced_date: prefer non-empty, then latest
+        if paper.announced_date and not existing.announced_date:
+            existing.announced_date = paper.announced_date
+        elif paper.announced_date and existing.announced_date:
+            if paper.announced_date > existing.announced_date:
+                existing.announced_date = paper.announced_date
     return list(merged.values())
 
 
@@ -549,7 +620,18 @@ def select_by_date_window(
 
 
 def _paper_date(paper: Paper) -> str:
-    return paper.published.split("T")[0] if paper.published else ""
+    """Return the effective date for grouping/filtering.
+
+    Prefer ``announced_date`` (the arXiv listing date) when available,
+    otherwise fall back to the date part of updated/published.
+    This prevents papers with precise Atom timestamps (e.g. 2026-02-11T18:59Z)
+    from being grouped under a different day than the HTML listing page
+    (which announces them on 2026-02-12).
+    """
+    if paper.announced_date:
+        return paper.announced_date
+    ts = paper.updated or paper.published
+    return ts.split("T")[0] if ts else ""
 
 
 def group_by_published_date(papers: Iterable[Paper]) -> Dict[str, List[Paper]]:
@@ -662,7 +744,22 @@ def fetch_papers_multi(
     # Backfill missing abstracts from individual abs pages
     abs_cache: Dict[str, Dict[str, str | List[str]]] = {}
     abs_fetch_count = 0
+    abs_fail_count = 0
+    _MAX_ABS_FETCHES = 20       # Don't fetch more than 20 abs pages per category
+    _MAX_ABS_CONSECUTIVE_FAILS = 3  # Stop after 3 consecutive failures (rate-limited)
     for paper in combined:
+        if abs_fetch_count >= _MAX_ABS_FETCHES:
+            logger.info(
+                "Reached abs fetch limit (%d), skipping remaining",
+                _MAX_ABS_FETCHES,
+            )
+            break
+        if abs_fail_count >= _MAX_ABS_CONSECUTIVE_FAILS:
+            logger.info(
+                "Too many consecutive abs fetch failures (%d), skipping remaining",
+                abs_fail_count,
+            )
+            break
         if paper.authors and _is_meaningful_abstract(paper.abstract):
             continue
         abs_id = _normalize_arxiv_id(paper.arxiv_id)
@@ -674,8 +771,8 @@ def fetch_papers_multi(
             abs_fetch_count += 1
             extra_delay = min(abs_fetch_count * 0.3, 3.0)  # cap at 3s extra
             abs_url = f"https://arxiv.org/abs/{abs_id}"
-            timeout = 30.0
-            retries = 3
+            timeout = 15.0
+            retries = 1
             backoff = 2.0
             try:
                 abs_html = get_text(
@@ -688,9 +785,13 @@ def fetch_papers_multi(
                     cache_ttl=http_cache_ttl,
                     referer=f"https://arxiv.org/list/{category}/new",
                 )
+                abs_fail_count = 0  # Reset on success
             except RuntimeError as exc:
+                abs_fail_count += 1
                 logger.warning(
-                    "arXiv abs fetch failed",
+                    "arXiv abs fetch failed (%d/%d consecutive)",
+                    abs_fail_count,
+                    _MAX_ABS_CONSECUTIVE_FAILS,
                     extra={
                         "category": category,
                         "url": abs_url,

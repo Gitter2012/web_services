@@ -55,7 +55,7 @@ function renderEntries(entries) {
       <div class="meta">arXiv ID：${escapeHtml(entry.arxiv_id || "")} | Primary：${escapeHtml(entry.primary_category || "")}</div>
       <div class="meta">Categories：${escapeHtml(entry.categories || "")}</div>
       <div class="meta">Published：${escapeHtml(entry.published || "")}</div>
-      <div class="meta">Date：${escapeHtml(entry.source_date || "")}${backfillMark}</div>
+      <div class="meta">Updated：${escapeHtml(entry.updated || "")}${backfillMark}</div>
       <div class="meta">Authors：${escapeHtml(entry.authors || "")}</div>
       <p>${safeAbstract}</p>
       <div class="links">

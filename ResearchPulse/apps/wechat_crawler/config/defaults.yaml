@@ -1,0 +1,19 @@
+# WeChat Crawler App Defaults
+# ============================
+# Precedence: env vars > .env > project /config/defaults.yaml > this file
+
+database:
+  url: ""                        # Empty = use SQLite at data_dir/wechat/articles.db
+  path: "articles.db"            # Relative to data_dir/wechat/
+
+schedule:
+  cron: "0 */2 * * *"           # Every 2 hours
+  timezone: "Asia/Shanghai"
+  run_on_startup: true
+
+crawl:
+  retention_days: 90             # Keep articles for N days
+  fetch_content: false           # Whether to fetch full article HTML
+  http_delay_base: 2.0
+  http_delay_jitter: 1.0
+  http_timeout: 15.0

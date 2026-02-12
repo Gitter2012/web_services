@@ -1,0 +1,55 @@
+{% extends "base.html.j2" %}
+{% block title %}Manage Subscriptions{% endblock %}
+{% block content %}
+<h2>Manage RSS Subscriptions</h2>
+<p class="hint">Add RSS feed URLs to track your favourite sources.</p>
+
+<div class="add-form">
+  <input id="addTitle" type="text" placeholder="Feed Title (optional)" />
+  <input id="addFeedUrl" type="url" placeholder="RSS Feed URL" required />
+  <select id="addCategory">
+    <option value="">Select Category</option>
+    <option value="科技">科技</option>
+    <option value="商业财经">商业财经</option>
+    <option value="IT/软件开发">IT/软件开发</option>
+    <option value="设计/UI/UX">设计/UI/UX</option>
+    <option value="游戏">游戏</option>
+    <option value="科学">科学</option>
+    <option value="读书/文化">读书/文化</option>
+    <option value="生活">生活</option>
+    <option value="产品运营">产品运营</option>
+    <option value="精进">精进</option>
+    <option value="其他">其他</option>
+  </select>
+  <button id="addBtn" class="btn btn-primary">Add Feed</button>
+</div>
+
+<div class="action-bar">
+  <button id="triggerCrawlBtn" class="btn btn-outline">Trigger Crawl</button>
+</div>
+
+<div id="message" class="message" style="display:none;"></div>
+
+<table class="sub-table" id="feedTable">
+  <thead>
+    <tr>
+      <th>Title</th>
+      <th>Feed URL</th>
+      <th>Category</th>
+      <th>Articles</th>
+      <th>Last Fetched</th>
+      <th>Errors</th>
+      <th>Active</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<div id="emptyState" class="empty-state" style="display:none;">
+  <p>No subscriptions yet. Add an RSS feed URL above to get started.</p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/rss/ui/static/js/manage.js"></script>
+{% endblock %}

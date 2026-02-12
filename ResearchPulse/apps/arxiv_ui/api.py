@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 from common.utils import window_dates
 
 from .config import settings as ui_settings
-from .tasks import get_categories, get_entries, get_latest_date
+from .tasks import get_categories, get_entries, get_latest_date, scan_entries
 
 router = APIRouter()
 _templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -103,3 +103,15 @@ def api_categories() -> dict:
 @router.get("/api/latest-date")
 def api_latest_date() -> dict:
     return {"latest_date": get_latest_date()}
+
+
+@router.post("/api/scan")
+def api_trigger_scan() -> dict:
+    """Manually trigger a re-scan of arXiv markdown files."""
+    scan_entries()
+    return {
+        "status": "ok",
+        "total": len(get_entries()),
+        "categories": get_categories(),
+        "latest_date": get_latest_date(),
+    }

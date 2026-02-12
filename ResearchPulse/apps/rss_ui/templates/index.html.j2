@@ -1,0 +1,42 @@
+{% extends "base.html.j2" %}
+{% block title %}Articles{% endblock %}
+{% block content %}
+<section class="controls">
+  <div class="control-row">
+    <label>
+      <span class="label-text">Category</span>
+      <select id="categorySelect"><option value="">All Categories</option></select>
+    </label>
+    <label>
+      <span class="label-text">Feed</span>
+      <select id="feedSelect"><option value="">All Feeds</option></select>
+    </label>
+    <label>
+      <span class="label-text">Search</span>
+      <input id="searchInput" type="search" placeholder="Search title / summary..." />
+    </label>
+    <label>
+      <span class="label-text">Sort by</span>
+      <select id="sortSelect">
+        <option value="publish_time">Publish Time</option>
+        <option value="crawl_time">Crawl Time</option>
+        <option value="title">Title</option>
+      </select>
+    </label>
+  </div>
+  <div class="control-row filter-row">
+    <div class="filter-buttons">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="unread">Unread</button>
+      <button class="filter-btn" data-filter="starred">Starred</button>
+    </div>
+  </div>
+</section>
+
+<section id="articleList" class="article-list"></section>
+<div id="pagination" class="pagination"></div>
+{% endblock %}
+{% block scripts %}
+<script>window.UI_CONFIG = { defaultPageSize: {{ page_size }} };</script>
+<script src="/rss/ui/static/js/app.js"></script>
+{% endblock %}

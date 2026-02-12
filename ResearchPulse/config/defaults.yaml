@@ -14,7 +14,7 @@
 # Global Application Settings
 # ======================
 app:
-  enabled_apps: "arxiv_crawler,arxiv_ui"
+  enabled_apps: "arxiv_crawler,arxiv_ui,wechat_crawler,wechat_ui,rss_crawler,rss_ui"
   data_dir: "./data"
 
 # ======================
@@ -124,3 +124,54 @@ apps:
     date_window:
       days: 2
       timezone: "Asia/Shanghai"
+
+  # -----------------------
+  # WeChat Crawler Settings
+  # -----------------------
+  wechat_crawler:
+    database:
+      url: ""
+      path: "articles.db"
+    schedule:
+      cron: "0 */2 * * *"
+      timezone: "Asia/Shanghai"
+      run_on_startup: true
+    crawl:
+      retention_days: 90
+      fetch_content: false
+      http_delay_base: 2.0
+      http_delay_jitter: 1.0
+      http_timeout: 15.0
+
+  # -----------------------
+  # WeChat UI Settings
+  # -----------------------
+  wechat_ui:
+    enabled: true
+    default_page_size: 20
+    articles_per_page: 20
+
+  # -----------------------
+  # RSS Crawler Settings
+  # -----------------------
+  rss_crawler:
+    database:
+      url: ""
+      path: "rss.db"
+    schedule:
+      cron: "0 */2 * * *"
+      timezone: "Asia/Shanghai"
+      run_on_startup: true
+    crawl:
+      retention_days: 90
+      http_delay_base: 2.0
+      http_delay_jitter: 1.0
+      http_timeout: 15.0
+      max_articles_per_feed: 50
+
+  # -----------------------
+  # RSS UI Settings
+  # -----------------------
+  rss_ui:
+    enabled: true
+    default_page_size: 20

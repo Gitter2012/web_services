@@ -43,6 +43,7 @@ def _parse_entry_block(block: List[str], category: str) -> Optional[Dict[str, st
         "primary_category": "",
         "categories": "",
         "published": "",
+        "updated": "",
         "source_date": "",
         "abstract": "",
         "pdf_url": "",
@@ -62,6 +63,8 @@ def _parse_entry_block(block: List[str], category: str) -> Optional[Dict[str, st
             entry["categories"] = stripped.replace("**Categories**:", "").strip()
         elif stripped.startswith("**Published**:"):
             entry["published"] = stripped.replace("**Published**:", "").strip()
+        elif stripped.startswith("**Updated**:"):
+            entry["updated"] = stripped.replace("**Updated**:", "").strip()
         elif stripped.startswith("**Date**:"):
             entry["source_date"] = stripped.replace("**Date**:", "").strip()
         elif stripped.startswith("**Abstract**:"):

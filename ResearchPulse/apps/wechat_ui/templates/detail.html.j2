@@ -1,0 +1,68 @@
+{% extends "base.html.j2" %}
+{% block title %}{{ article.title }}{% endblock %}
+{% block content %}
+<article class="article-detail">
+  <a href="/wechat/ui/" class="back-link">&larr; Back to list</a>
+  <h1>{{ article.title }}</h1>
+  <div class="article-meta">
+    <span class="meta-account">{{ article.account_name }}</span>
+    {% if article.author and article.author != article.account_name %}
+    <span class="meta-author">{{ article.author }}</span>
+    {% endif %}
+    <span class="meta-time">{{ article.publish_time.strftime('%Y-%m-%d %H:%M') if article.publish_time else 'Unknown date' }}</span>
+    <span class="badge badge-{{ article.source_type }}">{{ article.source_type }}</span>
+  </div>
+
+  {% if article.cover_image_url %}
+  <div class="cover-wrapper">
+    {% if article.cover_image_url.startswith('/wechat/ui/api/imgcache/') %}
+    <img class="cover-image" src="{{ article.cover_image_url }}" alt="cover" loading="lazy" />
+    {% else %}
+    <img class="cover-image" src="/wechat/ui/api/imgproxy?url={{ article.cover_image_url | urlencode }}" alt="cover" loading="lazy" />
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if article.digest %}
+  <div class="digest">{{ article.digest }}</div>
+  {% endif %}
+
+  <div class="article-actions">
+    <a href="{{ article.content_url }}" target="_blank" rel="noopener" class="btn btn-primary">Read Original Article</a>
+  </div>
+
+  {% if article.raw_content_html %}
+  <hr />
+  <div class="article-content" id="articleContent">{{ article.raw_content_html | safe }}</div>
+  {% endif %}
+</article>
+{% endblock %}
+{% block scripts %}
+<script>
+// Mark article as read
+fetch('/wechat/ui/api/articles/{{ article.id }}/read', { method: 'POST' });
+
+// Rewrite external img src in article content to use image proxy/cache
+(function() {
+  var content = document.getElementById('articleContent');
+  if (!content) return;
+  var imgs = content.querySelectorAll('img');
+  for (var i = 0; i < imgs.length; i++) {
+    var src = imgs[i].getAttribute('src') || '';
+    var dataSrc = imgs[i].getAttribute('data-src') || '';
+
+    // If src is already a local cache/proxy URL, skip
+    if (src.indexOf('/api/imgcache/') !== -1 || src.indexOf('/api/imgproxy') !== -1) continue;
+
+    // Rewrite external URLs to proxy
+    if (src && (src.startsWith('http://') || src.startsWith('https://'))) {
+      imgs[i].setAttribute('src', '/wechat/ui/api/imgproxy?url=' + encodeURIComponent(src));
+    }
+    // Handle lazy-loaded data-src
+    if (dataSrc && !src) {
+      imgs[i].setAttribute('src', '/wechat/ui/api/imgproxy?url=' + encodeURIComponent(dataSrc));
+    }
+  }
+})();
+</script>
+{% endblock %}

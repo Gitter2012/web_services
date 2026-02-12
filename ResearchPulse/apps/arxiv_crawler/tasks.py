@@ -26,6 +26,20 @@ from settings import settings
 from .config import settings as arxiv_settings
 from .parser import fetch_papers_multi, select_backfill_by_date, serialize_papers
 
+# Lazy import to avoid circular dependency – populated after the app is mounted.
+_arxiv_ui_scan_fn = None
+
+
+def _get_ui_scan_fn():
+    global _arxiv_ui_scan_fn
+    if _arxiv_ui_scan_fn is None:
+        try:
+            from apps.arxiv_ui.tasks import scan_entries
+            _arxiv_ui_scan_fn = scan_entries
+        except ImportError:
+            _arxiv_ui_scan_fn = lambda: None  # noqa: E731
+    return _arxiv_ui_scan_fn
+
 logger = logging.getLogger(__name__)
 
 _last_run_at: Optional[str] = None
@@ -292,6 +306,13 @@ def run_crawl() -> dict:
         _last_error = None
         _last_files = results
         logger.info("arXiv crawl finished", extra={"files": results})
+
+        # Trigger arXiv UI re-scan so new entries show immediately
+        try:
+            _get_ui_scan_fn()()
+            logger.info("arXiv UI re-scan triggered after crawl")
+        except Exception:
+            logger.debug("arXiv UI re-scan after crawl failed (non-fatal)")
     except Exception as exc:  # pragma: no cover - runtime safety
         _last_error = str(exc)
         logger.exception("arXiv crawl failed")

@@ -19,6 +19,10 @@ app.add_event_handler("shutdown", close_client)
 APP_MOUNT_PATHS = {
     "arxiv_crawler": "/arxiv/crawler",
     "arxiv_ui": "/arxiv/ui",
+    "wechat_crawler": "/wechat/crawler",
+    "wechat_ui": "/wechat/ui",
+    "rss_crawler": "/rss/crawler",
+    "rss_ui": "/rss/ui",
 }
 
 

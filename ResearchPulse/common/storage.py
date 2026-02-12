@@ -156,6 +156,7 @@ def render_markdown(
         primary_category = _clean_field(paper.get("primary_category", ""))
         categories = _clean_field(paper.get("categories", ""))
         published = _clean_field(paper.get("published", ""))
+        updated = _clean_field(paper.get("updated", ""))
 
         pdf_link = pdf_url or (f"https://arxiv.org/pdf/{arxiv_id}.pdf" if arxiv_id else "")
         lines.append(f"### [{arxiv_id}] {paper_title}")
@@ -165,6 +166,7 @@ def render_markdown(
         lines.append(f"**Primary Category**: {primary_category}")
         lines.append(f"**Categories**: {categories}")
         lines.append(f"**Published**: {published}")
+        lines.append(f"**Updated**: {updated}")
         lines.append(f"**Date**: {source_date}")
         lines.append(f"**Abstract**: {abstract}")
         lines.append("")
@@ -210,6 +212,7 @@ def render_html(
         primary_category = _clean_field(paper.get("primary_category", ""))
         categories = _clean_field(paper.get("categories", ""))
         published = _clean_field(paper.get("published", ""))
+        updated = _clean_field(paper.get("updated", ""))
 
         pdf_link = pdf_url or (f"https://arxiv.org/pdf/{arxiv_id}.pdf" if arxiv_id else "")
         parts.append(f"<h2>[{arxiv_id}] {paper_title}</h2>")
@@ -219,6 +222,7 @@ def render_html(
         parts.append(f"<li><strong>Primary Category:</strong> {primary_category}</li>")
         parts.append(f"<li><strong>Categories:</strong> {categories}</li>")
         parts.append(f"<li><strong>Published:</strong> {published}</li>")
+        parts.append(f"<li><strong>Updated:</strong> {updated}</li>")
         parts.append(f"<li><strong>Date:</strong> {source_date}</li>")
         parts.append(f"<li><strong>Abstract:</strong> {abstract}</li>")
         link_items = []

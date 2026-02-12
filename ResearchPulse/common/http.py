@@ -15,6 +15,12 @@ _client: Optional[httpx.Client] = None
 _request_count: int = 0
 _SESSION_ROTATE_EVERY: int = 25  # Recreate client after N requests
 
+# Maximum number of consecutive network errors before rotating the client.
+# Stale/dead pooled connections can cause repeated hangs; rotating forces
+# fresh TCP connections.
+_CONSECUTIVE_ERRORS_BEFORE_ROTATE: int = 2
+_consecutive_errors: int = 0
+
 # ---------------------------------------------------------------------------
 # User-Agent rotation – realistic, complete strings
 # ---------------------------------------------------------------------------
@@ -81,13 +87,26 @@ def get_client(timeout: float = 10.0) -> httpx.Client:
 
     The client is intentionally created with *minimal* default headers;
     per-request headers are added via ``_build_headers`` inside ``get_text``.
+
+    Uses an ``httpx.Timeout`` with explicit connect/read/write/pool limits
+    to prevent indefinite hangs on stale pooled connections.
     """
     global _client
     if _client is None or _client.is_closed:
         _client = httpx.Client(
-            timeout=timeout,
+            timeout=httpx.Timeout(
+                connect=min(timeout, 10.0),   # TCP connect: cap at 10s
+                read=timeout,                 # Read body
+                write=timeout,                # Write request
+                pool=min(timeout, 5.0),       # Wait for pool slot: cap at 5s
+            ),
             follow_redirects=True,
             http2=False,  # HTTP/1.1 is more "normal browser" for scraping
+            limits=httpx.Limits(
+                max_connections=10,
+                max_keepalive_connections=5,
+                keepalive_expiry=30.0,        # Drop idle connections after 30s
+            ),
         )
     return _client
 
@@ -154,8 +173,18 @@ def get_text(
         if cached is not None:
             return cached
 
+    global _consecutive_errors
     last_error: Optional[Exception] = None
     client = get_client(timeout=timeout)
+
+    # Build a per-request Timeout so connect/pool are always bounded,
+    # even if the caller asks for a large read timeout.
+    req_timeout = httpx.Timeout(
+        connect=min(timeout, 10.0),
+        read=timeout,
+        write=timeout,
+        pool=min(timeout, 5.0),
+    )
 
     for attempt in range(retries + 1):
         try:
@@ -177,7 +206,7 @@ def get_text(
                 req_headers["Accept"] = _ACCEPT_XML
 
             response = client.get(
-                url, params=params, timeout=timeout, headers=req_headers
+                url, params=params, timeout=req_timeout, headers=req_headers
             )
 
             # ------- Rate-limit / anti-bot specific handling -------
@@ -204,6 +233,9 @@ def get_text(
             # Cache successful response
             if cache_ttl > 0:
                 cache_response(url, response.text, params)
+
+            # Reset error counter on success
+            _consecutive_errors = 0
 
             # Session rotation bookkeeping
             _request_count += 1
@@ -233,6 +265,17 @@ def get_text(
 
         except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError) as exc:
             last_error = exc
+            _consecutive_errors += 1
+            # Rotate client after repeated network errors to shed stale
+            # pooled connections that may be hanging.
+            if _consecutive_errors >= _CONSECUTIVE_ERRORS_BEFORE_ROTATE:
+                logger.debug(
+                    "Rotating HTTP client after %d consecutive errors",
+                    _consecutive_errors,
+                )
+                rotate_client()
+                client = get_client(timeout=timeout)
+                _consecutive_errors = 0
             if attempt < retries:
                 wait = backoff * (2 ** attempt)
                 logger.debug(

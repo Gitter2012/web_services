@@ -1,0 +1,34 @@
+{% extends "base.html.j2" %}
+{% block title %}Manage Subscriptions{% endblock %}
+{% block content %}
+<h2>Manage RSS Subscriptions</h2>
+<p class="hint">Add RSS feed URLs from services like WeRSS or feeddd to track WeChat accounts.</p>
+
+<div class="add-form">
+  <input id="addAccountName" type="text" placeholder="Account Name (optional)" />
+  <input id="addRssUrl" type="url" placeholder="RSS Feed URL" required />
+  <button id="addBtn" class="btn btn-primary">Add Subscription</button>
+</div>
+
+<div id="message" class="message" style="display:none;"></div>
+
+<table class="sub-table" id="subTable">
+  <thead>
+    <tr>
+      <th>Account</th>
+      <th>RSS URL</th>
+      <th>Active</th>
+      <th>Created</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<div id="emptyState" class="empty-state" style="display:none;">
+  <p>No subscriptions yet. Add an RSS feed URL above to get started.</p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/wechat/ui/static/js/manage.js"></script>
+{% endblock %}

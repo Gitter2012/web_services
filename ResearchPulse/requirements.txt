@@ -10,3 +10,6 @@ pytest
 pytest-mock
 pytest-asyncio
 jinja2
+pyyaml
+sqlalchemy
+aiosqlite
