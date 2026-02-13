@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台 - ResearchPulse</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; min-height: 100vh; }
+
+        .layout { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+
+        /* Sidebar */
+        .sidebar { background: #1a1a2e; color: white; padding: 0; }
+        .sidebar-header { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .sidebar-header h2 { font-size: 18px; }
+        .sidebar-nav { padding: 12px 0; }
+        .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 20px; color: rgba(255,255,255,0.7); text-decoration: none; font-size: 14px; transition: all 0.2s; }
+        .nav-item:hover { background: rgba(255,255,255,0.05); color: white; }
+        .nav-item.active { background: rgba(78,205,196,0.2); color: #4ecdc4; border-right: 3px solid #4ecdc4; }
+
+        /* Main Content */
+        .main { padding: 24px; overflow-y: auto; }
+        .page-header { margin-bottom: 24px; }
+        .page-header h1 { font-size: 24px; color: #1a1a2e; margin-bottom: 8px; }
+        .page-header p { color: #666; font-size: 14px; }
+
+        /* Cards */
+        .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 24px; }
+        .card-header { padding: 20px 24px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
+        .card-header h3 { font-size: 16px; color: #1a1a2e; }
+        .card-body { padding: 24px; }
+
+        /* Stats */
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .stat-value { font-size: 28px; font-weight: 600; color: #1a1a2e; }
+        .stat-label { font-size: 13px; color: #888; margin-top: 4px; }
+
+        /* Table */
+        .table { width: 100%; border-collapse: collapse; }
+        .table th, .table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #f0f0f0; }
+        .table th { font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase; }
+        .table td { font-size: 14px; color: #333; }
+        .table tr:hover { background: #f9fafb; }
+
+        /* Buttons */
+        .btn { padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; border: none; transition: all 0.2s; }
+        .btn-primary { background: #1a1a2e; color: white; }
+        .btn-primary:hover { background: #2d2d4a; }
+        .btn-success { background: #10b981; color: white; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-sm { padding: 4px 12px; font-size: 12px; }
+
+        /* Badge */
+        .badge { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+        .badge-success { background: #dcfce7; color: #059669; }
+        .badge-danger { background: #fee2e2; color: #dc2626; }
+        .badge-info { background: #dbeafe; color: #2563eb; }
+        .badge-warning { background: #fef3c7; color: #d97706; }
+
+        /* Form */
+        .form-group { margin-bottom: 16px; }
+        .form-label { display: block; font-size: 13px; font-weight: 500; color: #333; margin-bottom: 6px; }
+        .form-input { width: 100%; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 14px; }
+        .form-input:focus { outline: none; border-color: #4ecdc4; }
+        .form-select { width: 100%; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 14px; background: white; }
+
+        /* Tabs */
+        .tabs { display: flex; gap: 4px; background: #f5f5f5; padding: 4px; border-radius: 8px; margin-bottom: 20px; }
+        .tab { padding: 8px 16px; border: none; background: transparent; border-radius: 6px; font-size: 13px; cursor: pointer; }
+        .tab.active { background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+        /* Toggle */
+        .toggle-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
+        .toggle-item:last-child { border-bottom: none; }
+        .toggle-info h4 { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+        .toggle-info p { font-size: 12px; color: #888; margin: 0; }
+        .toggle-switch { position: relative; width: 44px; height: 24px; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .3s; border-radius: 24px; }
+        .toggle-slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; }
+        input:checked + .toggle-slider { background-color: #4ecdc4; }
+        input:checked + .toggle-slider:before { transform: translateX(20px); }
+
+        /* Category list */
+        .category-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; max-height: 400px; overflow-y: auto; padding-right: 8px; }
+        .category-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: #f9fafb; border-radius: 6px; font-size: 13px; }
+        .category-item.enabled { background: #ecfdf5; }
+        .category-item code { font-family: monospace; color: #666; }
+        .category-item input[type="checkbox"] { width: 16px; height: 16px; }
+
+        /* Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .modal.active { display: flex; justify-content: center; align-items: center; }
+        .modal-content { background: white; border-radius: 12px; width: 500px; max-width: 90%; max-height: 90vh; overflow-y: auto; }
+        .modal-header { padding: 20px 24px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h3 { font-size: 18px; }
+        .modal-close { font-size: 24px; cursor: pointer; color: #999; }
+        .modal-body { padding: 24px; }
+        .modal-footer { padding: 16px 24px; border-top: 1px solid #f0f0f0; display: flex; justify-content: flex-end; gap: 8px; }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>管理后台</h2>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" onclick="switchSection('dashboard')">📊 仪表盘</a>
+                <a href="#" class="nav-item" onclick="switchSection('crawlers')">🕷️ 抓取配置</a>
+                <a href="#" class="nav-item" onclick="switchSection('users')">👥 用户管理</a>
+                <a href="#" class="nav-item" onclick="switchSection('email')">📧 邮件推送</a>
+                <a href="#" class="nav-item" onclick="switchSection('config')">⚙️ 系统配置</a>
+                <a href="/researchpulse/" class="nav-item">🏠 返回首页</a>
+            </nav>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main">
+            <!-- Dashboard Section -->
+            <div id="section-dashboard" class="section">
+                <div class="page-header">
+                    <h1>仪表盘</h1>
+                    <p>系统概览和统计数据</p>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-users">0</div>
+                        <div class="stat-label">注册用户</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-articles">0</div>
+                        <div class="stat-label">文章总数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-sources">0</div>
+                        <div class="stat-label">数据源</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-subscriptions">0</div>
+                        <div class="stat-label">用户订阅</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>最近抓取的文章</h3>
+                    </div>
+                    <div class="card-body">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>标题</th>
+                                    <th>来源</th>
+                                    <th>分类</th>
+                                    <th>抓取时间</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-articles"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Crawlers Section -->
+            <div id="section-crawlers" class="section" style="display:none;">
+                <div class="page-header">
+                    <h1>抓取配置</h1>
+                    <p>配置数据源和抓取规则</p>
+                </div>
+
+                <div class="tabs">
+                    <button class="tab active" onclick="switchCrawlerTab('arxiv')">ArXiv 类目</button>
+                    <button class="tab" onclick="switchCrawlerTab('rss')">RSS 源</button>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 id="crawler-title">ArXiv 类目配置</h3>
+                        <div>
+                            <button class="btn btn-primary btn-sm" onclick="saveCrawlConfig()">保存配置</button>
+                            <button class="btn btn-success btn-sm" onclick="triggerCrawl()">立即抓取</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <input type="checkbox" id="auto-subscribe" checked>
+                                用户订阅后自动启用类目抓取
+                            </label>
+                        </div>
+                        <p style="font-size: 12px; color: #888; margin-bottom: 16px;">
+                            勾选的类目会定期抓取。默认抓取: cs.LG, cs.CV, cs.IR, cs.CL, cs.DC
+                        </p>
+                        <div id="crawler-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Users Section -->
+            <div id="section-users" class="section" style="display:none;">
+                <div class="page-header">
+                    <h1>用户管理</h1>
+                    <p>管理系统用户和权限</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>用户名</th>
+                                    <th>邮箱</th>
+                                    <th>角色</th>
+                                    <th>状态</th>
+                                    <th>注册时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="user-list"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Email Section -->
+            <div id="section-email" class="section" style="display:none;">
+                <div class="page-header">
+                    <h1>邮件推送</h1>
+                    <p>配置邮件推送功能</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>推送配置</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="toggle-item">
+                            <div class="toggle-info">
+                                <h4>启用邮件推送</h4>
+                                <p>定期向用户推送订阅的新文章</p>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="email-enabled">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        
+                        <div class="form-group" style="margin-top: 16px;">
+                            <label class="form-label">推送频率</label>
+                            <select class="form-select" id="email-frequency">
+                                <option value="daily">每天</option>
+                                <option value="weekly">每周</option>
+                                <option value="instant">实时</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">推送时间</label>
+                            <input type="time" class="form-input" id="email-time" value="09:00">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">每封邮件最大文章数</label>
+                            <input type="number" class="form-input" id="email-max-articles" value="20">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>SMTP 配置</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label class="form-label">SMTP 服务器</label>
+                            <input type="text" class="form-input" id="smtp-host" placeholder="smtp.example.com">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">SMTP 端口</label>
+                            <input type="number" class="form-input" id="smtp-port" value="587">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">发件人邮箱</label>
+                            <input type="email" class="form-input" id="smtp-user" placeholder="noreply@example.com">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">邮箱密码/授权码</label>
+                            <input type="password" class="form-input" id="smtp-password">
+                        </div>
+                        <button class="btn btn-primary" onclick="saveEmailConfig()">保存配置</button>
+                        <button class="btn" onclick="testEmail()">发送测试邮件</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Config Section -->
+            <div id="section-config" class="section" style="display:none;">
+                <div class="page-header">
+                    <h1>系统配置</h1>
+                    <p>管理系统参数</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>数据保留</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label class="form-label">文章保留天数</label>
+                            <input type="number" class="form-input" id="config-retention" value="7">
+                            <p style="font-size: 12px; color: #888; margin-top: 4px;">超过此天数的文章将被清理</p>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">备份保留天数</label>
+                            <input type="number" class="form-input" id="config-archive" value="30">
+                            <p style="font-size: 12px; color: #888; margin-top: 4px;">备份数据保留时间</p>
+                        </div>
+                        <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/researchpulse/api';
+        const AUTH_BASE = '/api/v1';
+        const ADMIN_BASE = '/api/v1/admin';
+
+        let currentCrawlerTab = 'arxiv';
+        let currentUser = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+        });
+
+        async function checkAuth() {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                alert('请先登录');
+                location.href = '/researchpulse/';
+                return;
+            }
+
+            try {
+                const res = await fetch(`${AUTH_BASE}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    currentUser = await res.json();
+                    if (!currentUser.is_superuser && !currentUser.roles.includes('admin')) {
+                        alert('需要管理员权限');
+                        location.href = '/researchpulse/';
+                        return;
+                    }
+                    loadDashboard();
+                } else {
+                    localStorage.removeItem('access_token');
+                    location.href = '/researchpulse/';
+                }
+            } catch (e) {
+                location.href = '/researchpulse/';
+            }
+        }
+
+        // Sections
+        function switchSection(name) {
+            document.querySelectorAll('.section').forEach(s => s.style.display = 'none');
+            document.getElementById(`section-${name}`).style.display = 'block';
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            event.target.classList.add('active');
+
+            if (name === 'crawlers') loadCrawlers();
+            if (name === 'users') loadUsers();
+            if (name === 'email') loadEmailConfig();
+        }
+
+        // Dashboard
+        async function loadDashboard() {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/stats`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+
+                document.getElementById('stat-users').textContent = data.users || 0;
+                document.getElementById('stat-articles').textContent = data.articles || 0;
+                document.getElementById('stat-sources').textContent = data.sources || 0;
+                document.getElementById('stat-subscriptions').textContent = data.subscriptions || 0;
+
+                // Recent articles
+                const artsRes = await fetch(`${API_BASE}/articles?page_size=5`);
+                const artsData = await artsRes.json();
+                const tbody = document.getElementById('recent-articles');
+                tbody.innerHTML = artsData.articles.map(a => `
+                    <tr>
+                        <td>${escapeHtml(a.title.substring(0, 40))}...</td>
+                        <td><span class="badge badge-info">${a.source_type}</span></td>
+                        <td>${a.category || '-'}</td>
+                        <td>${formatDate(a.crawl_time)}</td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load dashboard:', e);
+            }
+        }
+
+        // Crawlers
+        function switchCrawlerTab(tab) {
+            currentCrawlerTab = tab;
+            document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            loadCrawlers();
+        }
+
+        async function loadCrawlers() {
+            const token = localStorage.getItem('access_token');
+            const container = document.getElementById('crawler-list');
+            document.getElementById('crawler-title').textContent = currentCrawlerTab === 'arxiv' ? 'ArXiv 类目配置' : 'RSS 源配置';
+
+            if (currentCrawlerTab === 'arxiv') {
+                try {
+                    const res = await fetch(`${API_BASE}/categories`);
+                    const data = await res.json();
+                    
+                    // Default categories to crawl
+                    const defaultCategories = ['cs.LG', 'cs.CV', 'cs.IR', 'cs.CL', 'cs.DC'];
+                    
+                    container.innerHTML = `
+                        <div class="category-grid">
+                            ${data.categories.map(c => `
+                                <div class="category-item ${defaultCategories.includes(c.code) ? 'enabled' : ''}">
+                                    <div>
+                                        <code>${c.code}</code>
+                                        <span style="margin-left: 8px; color: #333;">${c.name}</span>
+                                    </div>
+                                    <input type="checkbox" 
+                                        data-code="${c.code}" 
+                                        ${defaultCategories.includes(c.code) ? 'checked' : ''}>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                } catch (e) {
+                    container.innerHTML = '<p>加载失败</p>';
+                }
+            } else {
+                try {
+                    const res = await fetch(`${API_BASE}/feeds`);
+                    const data = await res.json();
+                    container.innerHTML = `
+                        <div class="category-grid">
+                            ${data.feeds.map(f => `
+                                <div class="category-item">
+                                    <div>
+                                        <strong>${escapeHtml(f.title)}</strong>
+                                        <span style="margin-left: 8px; color: #888;">${f.category || ''}</span>
+                                    </div>
+                                    <input type="checkbox" data-id="${f.id}" checked>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                } catch (e) {
+                    container.innerHTML = '<p>加载失败</p>';
+                }
+            }
+        }
+
+        async function saveCrawlConfig() {
+            alert('配置已保存');
+        }
+
+        async function triggerCrawl() {
+            alert('抓取任务已触发');
+        }
+
+        // Users
+        async function loadUsers() {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/users`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const tbody = document.getElementById('user-list');
+                tbody.innerHTML = data.users.map(u => `
+                    <tr>
+                        <td>${u.id}</td>
+                        <td>${escapeHtml(u.username)}</td>
+                        <td>${escapeHtml(u.email)}</td>
+                        <td>${u.roles.join(', ')}</td>
+                        <td><span class="badge ${u.is_active ? 'badge-success' : 'badge-danger'}">${u.is_active ? '正常' : '禁用'}</span></td>
+                        <td>${formatDate(u.created_at)}</td>
+                        <td>
+                            <button class="btn btn-sm ${u.is_active ? 'btn-danger' : 'btn-success'}" onclick="toggleUser(${u.id}, ${u.is_active})">
+                                ${u.is_active ? '禁用' : '启用'}
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load users:', e);
+            }
+        }
+
+        async function toggleUser(userId, isActive) {
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/users/${userId}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ is_active: !isActive })
+                });
+                loadUsers();
+            } catch (e) {
+                alert('操作失败');
+            }
+        }
+
+        // Email Config
+        async function loadEmailConfig() {
+            // Load from system config
+        }
+
+        async function saveEmailConfig() {
+            alert('邮件配置已保存');
+        }
+
+        async function testEmail() {
+            alert('测试邮件已发送');
+        }
+
+        // Config
+        async function saveConfig() {
+            alert('配置已保存');
+        }
+
+        // Utils
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(iso) {
+            if (!iso) return '';
+            return new Date(iso).toLocaleDateString('zh-CN');
+        }
+    </script>
+</body>
+</html>

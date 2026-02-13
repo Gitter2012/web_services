@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>订阅管理 - ResearchPulse</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; min-height: 100vh; }
+
+        .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; padding: 0; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header-inner { max-width: 1400px; margin: 0 auto; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+        .logo { display: flex; align-items: center; gap: 12px; }
+        .logo h1 { font-size: 22px; font-weight: 600; }
+        .nav { display: flex; gap: 24px; }
+        .nav a { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 14px; }
+        .nav a:hover, .nav a.active { color: white; }
+        .auth-area { display: flex; align-items: center; gap: 16px; }
+        .auth-area .user-info { display: flex; align-items: center; gap: 8px; color: #4ecdc4; font-size: 14px; }
+        .auth-area a { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 14px; }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+        .page-header { margin-bottom: 24px; }
+        .page-header h2 { font-size: 24px; color: #1a1a2e; margin-bottom: 8px; }
+        .page-header p { color: #666; font-size: 14px; }
+
+        .tabs { display: flex; gap: 4px; background: white; padding: 4px; border-radius: 12px; margin-bottom: 24px; }
+        .tab { padding: 12px 24px; border: none; background: transparent; border-radius: 8px; font-size: 14px; cursor: pointer; transition: all 0.2s; }
+        .tab:hover { background: #f5f5f5; }
+        .tab.active { background: #1a1a2e; color: white; }
+
+        .content-card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+        .section-title { font-size: 16px; font-weight: 600; color: #1a1a2e; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+        .section-title .count { font-size: 13px; color: #888; font-weight: 400; }
+
+        .search-box { display: flex; gap: 12px; margin-bottom: 20px; }
+        .search-box input { flex: 1; padding: 12px 16px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; }
+        .search-box input:focus { outline: none; border-color: #4ecdc4; }
+
+        .item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+        .item-card { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid #e0e0e0; border-radius: 10px; transition: all 0.2s; }
+        .item-card:hover { border-color: #4ecdc4; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .item-card.subscribed { border-color: #4ecdc4; background: #f0fdfb; }
+
+        .item-icon { width: 44px; height: 44px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: white; flex-shrink: 0; }
+        .item-icon.arxiv { background: #b31b1b; }
+        .item-icon.rss { background: #f39c12; }
+        .item-icon.wechat { background: #07c160; }
+        .item-icon.cs { background: #3b82f6; }
+        .item-icon.math { background: #8b5cf6; }
+        .item-icon.phys { background: #ef4444; }
+        .item-icon.stat { background: #10b981; }
+        .item-icon.other { background: #6b7280; }
+
+        .item-info { flex: 1; min-width: 0; }
+        .item-name { font-size: 14px; font-weight: 500; color: #1a1a2e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .item-desc { font-size: 12px; color: #888; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .item-action { flex-shrink: 0; }
+        .btn { padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: all 0.2s; border: none; }
+        .btn-subscribe { background: #4ecdc4; color: white; }
+        .btn-subscribe:hover { background: #3dbdb5; }
+        .btn-unsubscribe { background: #fee2e2; color: #dc2626; }
+        .btn-unsubscribe:hover { background: #fecaca; }
+
+        .empty-state { text-align: center; padding: 40px; color: #888; }
+        .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .modal.active { display: flex; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 32px; border-radius: 16px; width: 400px; max-width: 90%; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .modal-header h2 { font-size: 20px; }
+        .modal-close { font-size: 24px; cursor: pointer; color: #999; }
+        .modal-body input { width: 100%; padding: 12px; margin-bottom: 16px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; }
+        .modal-body button { width: 100%; padding: 12px; background: #1a1a2e; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; }
+
+        .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: white; border-radius: 12px; padding: 20px; text-align: center; }
+        .stat-value { font-size: 32px; font-weight: 600; color: #1a1a2e; }
+        .stat-label { font-size: 13px; color: #888; margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-inner">
+            <div class="logo">
+                <h1>ResearchPulse</h1>
+            </div>
+            <div class="nav">
+                <a href="/researchpulse/">首页</a>
+                <a href="/researchpulse/subscriptions" class="active">订阅管理</a>
+                <a href="/researchpulse/admin">管理后台</a>
+            </div>
+            <div class="auth-area" id="auth-area">
+                <span class="user-info">👤 Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="page-header">
+            <h2>订阅管理</h2>
+            <p>管理你关注的内容源，个性化你的资讯流</p>
+        </div>
+
+        <div class="stats-row" id="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" id="stat-arxiv">0</div>
+                <div class="stat-label">ArXiv 类目订阅</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-rss">0</div>
+                <div class="stat-label">RSS 源订阅</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-total">0</div>
+                <div class="stat-label">总订阅数</div>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('arxiv')">ArXiv 类目</button>
+            <button class="tab" onclick="switchTab('rss')">RSS 源</button>
+            <button class="tab" onclick="switchTab('wechat')">微信公众号</button>
+        </div>
+
+        <div class="content-card">
+            <div class="search-box">
+                <input type="text" id="search-input" placeholder="搜索..." oninput="filterItems()">
+            </div>
+
+            <div class="section-title">
+                <span id="section-label">ArXiv 类目</span>
+                <span class="count" id="item-count">0 项</span>
+            </div>
+
+            <div class="item-grid" id="item-grid">
+                <div class="empty-state">
+                    <div class="icon">⏳</div>
+                    <div class="text">加载中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div class="modal" id="login-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>请先登录</h2>
+                <span class="modal-close" onclick="hideModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p style="color: #666; margin-bottom: 16px;">订阅功能需要登录后使用</p>
+                <input type="text" id="login-username" placeholder="用户名">
+                <input type="password" id="login-password" placeholder="密码">
+                <button onclick="doLogin()">登录</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/researchpulse/api';
+        const AUTH_BASE = '/api/v1';
+
+        let currentTab = 'arxiv';
+        let currentUser = null;
+        let userSubscriptions = new Set();
+        let allItems = [];
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+        });
+
+        // Auth
+        async function checkAuth() {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                showLoginModal();
+                return;
+            }
+
+            try {
+                const res = await fetch(`${AUTH_BASE}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    currentUser = await res.json();
+                    updateAuthUI();
+                    loadSubscriptions();
+                    loadItems();
+                } else {
+                    localStorage.removeItem('access_token');
+                    showLoginModal();
+                }
+            } catch (e) {
+                showLoginModal();
+            }
+        }
+
+        function updateAuthUI() {
+            document.getElementById('auth-area').innerHTML = `
+                <span class="user-info">👤 ${currentUser.username}</span>
+                <a href="#" onclick="logout()">退出</a>
+            `;
+        }
+
+        function showLoginModal() {
+            document.getElementById('login-modal').classList.add('active');
+        }
+
+        function hideModal() {
+            document.getElementById('login-modal').classList.remove('active');
+        }
+
+        async function doLogin() {
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+
+            try {
+                const res = await fetch(`${AUTH_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    localStorage.setItem('access_token', data.access_token);
+                    hideModal();
+                    checkAuth();
+                } else {
+                    alert(data.detail || '登录失败');
+                }
+            } catch (e) {
+                alert('网络错误');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('access_token');
+            location.href = '/researchpulse/';
+        }
+
+        // Subscriptions
+        async function loadSubscriptions() {
+            try {
+                const token = localStorage.getItem('access_token');
+                const res = await fetch(`${API_BASE}/subscriptions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                userSubscriptions = new Set(data.subscriptions.map(s => `${s.source_type}:${s.source_id}`));
+                updateStats();
+            } catch (e) {
+                console.error('Failed to load subscriptions:', e);
+            }
+        }
+
+        function updateStats() {
+            let arxiv = 0, rss = 0;
+            userSubscriptions.forEach(s => {
+                if (s.startsWith('arxiv:')) arxiv++;
+                else if (s.startsWith('rss:')) rss++;
+            });
+            document.getElementById('stat-arxiv').textContent = arxiv;
+            document.getElementById('stat-rss').textContent = rss;
+            document.getElementById('stat-total').textContent = arxiv + rss;
+        }
+
+        // Tabs
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent.toLowerCase().includes(tab)));
+            document.getElementById('search-input').value = '';
+            loadItems();
+        }
+
+        // Items
+        async function loadItems() {
+            const grid = document.getElementById('item-grid');
+            grid.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div class="text">加载中...</div></div>';
+
+            try {
+                let items = [];
+                if (currentTab === 'arxiv') {
+                    const res = await fetch(`${API_BASE}/categories`);
+                    const data = await res.json();
+                    items = data.categories.map(c => ({
+                        id: c.id,
+                        code: c.code,
+                        name: c.name,
+                        description: c.description || '',
+                        type: 'arxiv'
+                    }));
+                    document.getElementById('section-label').textContent = 'ArXiv 类目';
+                } else if (currentTab === 'rss') {
+                    const res = await fetch(`${API_BASE}/feeds`);
+                    const data = await res.json();
+                    items = data.feeds.map(f => ({
+                        id: f.id,
+                        code: f.id.toString(),
+                        name: f.title,
+                        description: f.category || '',
+                        type: 'rss'
+                    }));
+                    document.getElementById('section-label').textContent = 'RSS 源';
+                } else {
+                    items = [];
+                    document.getElementById('section-label').textContent = '微信公众号';
+                }
+
+                allItems = items;
+                renderItems(items);
+            } catch (e) {
+                console.error('Failed to load items:', e);
+                grid.innerHTML = '<div class="empty-state"><div class="icon">❌</div><div class="text">加载失败</div></div>';
+            }
+        }
+
+        function renderItems(items) {
+            const grid = document.getElementById('item-grid');
+            document.getElementById('item-count').textContent = `${items.length} 项`;
+
+            if (items.length === 0) {
+                grid.innerHTML = '<div class="empty-state"><div class="icon">📭</div><div class="text">暂无内容</div></div>';
+                return;
+            }
+
+            grid.innerHTML = items.map(item => {
+                const key = `${item.type}:${item.id}`;
+                const isSubscribed = userSubscriptions.has(key);
+                const iconClass = getIconClass(item);
+
+                return `
+                    <div class="item-card ${isSubscribed ? 'subscribed' : ''}" data-id="${item.id}" data-type="${item.type}">
+                        <div class="item-icon ${iconClass}">${item.type === 'arxiv' ? item.code.split('.')[0].toUpperCase().slice(0,2) : item.type.toUpperCase().slice(0,2)}</div>
+                        <div class="item-info">
+                            <div class="item-name">${escapeHtml(item.code ? `${item.code} - ${item.name}` : item.name)}</div>
+                            <div class="item-desc">${escapeHtml(item.description || '')}</div>
+                        </div>
+                        <div class="item-action">
+                            <button class="btn ${isSubscribed ? 'btn-unsubscribe' : 'btn-subscribe'}" onclick="toggleSubscription('${item.type}', ${item.id})">
+                                ${isSubscribed ? '已订阅' : '订阅'}
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getIconClass(item) {
+            if (item.type === 'rss') return 'rss';
+            const code = item.code || '';
+            if (code.startsWith('cs.')) return 'cs';
+            if (code.startsWith('math.')) return 'math';
+            if (code.startsWith('physics') || code.includes('-ph')) return 'phys';
+            if (code.startsWith('stat.')) return 'stat';
+            return 'arxiv';
+        }
+
+        function filterItems() {
+            const keyword = document.getElementById('search-input').value.toLowerCase();
+            const filtered = allItems.filter(item =>
+                (item.code || '').toLowerCase().includes(keyword) ||
+                item.name.toLowerCase().includes(keyword) ||
+                (item.description || '').toLowerCase().includes(keyword)
+            );
+            renderItems(filtered);
+        }
+
+        async function toggleSubscription(type, id) {
+            const key = `${type}:${id}`;
+            const token = localStorage.getItem('access_token');
+
+            try {
+                if (userSubscriptions.has(key)) {
+                    // Unsubscribe
+                    const res = await fetch(`${API_BASE}/subscriptions/${type}/${id}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        userSubscriptions.delete(key);
+                    }
+                } else {
+                    // Subscribe
+                    const res = await fetch(`${API_BASE}/subscriptions`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ source_type: type, source_id: id })
+                    });
+                    if (res.ok) {
+                        userSubscriptions.add(key);
+                    }
+                }
+
+                updateStats();
+                renderItems(allItems);
+            } catch (e) {
+                alert('操作失败，请重试');
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

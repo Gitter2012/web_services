@@ -3,7 +3,10 @@ from __future__ import annotations
 import logging
 import random
 import time
-from typing import Any, Dict, Optional
+import hashlib
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
+from urllib.parse import urlparse
 
 import httpx
 
@@ -49,11 +52,28 @@ _USER_AGENTS = [
     # Edge on Windows
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0",
+    # Chrome on Android
+    "Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+    # Safari on iPhone
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1",
 ]
 
 # Accept header variants matching the UA family
 _ACCEPT_HTML = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
 _ACCEPT_XML = "application/atom+xml,application/xml,text/xml;q=0.9,*/*;q=0.8"
+_ACCEPT_JSON = "application/json, text/javascript, */*; q=0.01"
+_ACCEPT_IMAGE = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
+
+# Referer patterns for common sites
+_REFERER_PATTERNS = {
+    "arxiv.org": "https://arxiv.org/",
+    "github.com": "https://github.com/",
+    "twitter.com": "https://twitter.com/",
+    "x.com": "https://x.com/",
+    "mp.weixin.qq.com": "https://weixin.qq.com/",
+}
 
 
 def _get_user_agent() -> str:

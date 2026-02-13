@@ -1,16 +1,32 @@
+"""Email sending module for ResearchPulse v2.
+
+Supports multiple backends:
+- SMTP (with multi-port retry)
+- SendGrid API
+- Mailgun API
+- Brevo API
+
+Features:
+- Multi-backend fallback
+- Retry with backoff
+- HTML email support
+"""
+
 from __future__ import annotations
 
-import os
-import time
-import smtplib
-import httpx
 import logging
+import os
+import smtplib
+import time
 import traceback
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Iterable, Optional, List, Dict, Any, Literal, Tuple
+from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
+
+import httpx
 
 logger = logging.getLogger(__name__)
+
 
 # ======================
 # 1. SMTP 发送（支持多端口重试）
@@ -33,6 +49,7 @@ def _send_via_smtp(
     use_tls: bool = True,
     use_ssl: bool = False,
 ) -> Tuple[bool, str]:
+    """Send email via SMTP with multi-port retry support."""
     if not smtp_host or not from_addr:
         msg = "SMTP configuration error: host or from_addr missing"
         logger.error(msg)
@@ -42,7 +59,7 @@ def _send_via_smtp(
         logger.error(msg)
         return False, msg
 
-    # 构建消息
+    # Build message
     if html_body:
         msg = MIMEMultipart("alternative")
         msg.attach(MIMEText(body, "plain", "utf-8"))
@@ -53,7 +70,7 @@ def _send_via_smtp(
     msg["From"] = from_addr
     msg["To"] = ", ".join(to_addrs)
 
-    # 端口去重
+    # Deduplicate ports
     ports = list(dict.fromkeys((smtp_ports or [smtp_port]) + (smtp_ssl_ports or [])))
     ssl_ports_set = set(smtp_ssl_ports or [])
     retries = max(retries, 1)
@@ -113,6 +130,7 @@ def _send_via_sendgrid(
     retries: int = 1,
     retry_backoff: float = 10.0,
 ) -> Tuple[bool, str]:
+    """Send email via SendGrid API."""
     api_key = api_key or os.getenv("SENDGRID_API_KEY")
     if not api_key or not from_addr:
         msg = "SendGrid config missing: API key or from_addr"
@@ -170,6 +188,7 @@ def _send_via_mailgun(
     retries: int = 1,
     retry_backoff: float = 10.0,
 ) -> Tuple[bool, str]:
+    """Send email via Mailgun API."""
     api_key = api_key or os.getenv("MAILGUN_API_KEY")
     domain = domain or os.getenv("MAILGUN_DOMAIN")
     if not api_key or not domain or not from_addr:
@@ -222,6 +241,7 @@ def _send_via_brevo(
     retries: int = 1,
     retry_backoff: float = 10.0,
 ) -> Tuple[bool, str]:
+    """Send email via Brevo (formerly Sendinblue) API."""
     api_key = api_key or os.getenv("BREVO_API_KEY")
     if not api_key:
         msg = "Brevo config missing: API key"
@@ -279,31 +299,33 @@ def send_email(
     **kwargs: Any,
 ) -> Tuple[bool, str]:
     """
-    统一邮件发送接口，支持多后端灵活配置。
+    Unified email sending interface with multiple backend support.
 
     Args:
-        subject: 邮件主题
-        body: 纯文本正文
-        to_addrs: 收件人列表
-        html_body: 可选HTML正文
-        backend: 后端类型 ('smtp', 'sendgrid', 'mailgun', 'brevo')
-        from_addr: 发件人地址（若未提供，从环境变量读取）
-        **kwargs: 后端特定参数（自动透传）
+        subject: Email subject
+        body: Plain text body
+        to_addrs: Recipient email addresses
+        html_body: Optional HTML body
+        backend: Email backend ('smtp', 'sendgrid', 'mailgun', 'brevo')
+        from_addr: Sender email address
+        **kwargs: Backend-specific parameters
 
     Returns:
-        Tuple[bool, str]: (success, traceback_msg)
+        Tuple[bool, str]: (success, error_message)
 
-    示例:
-        # SendGrid（推荐）
-        send_email("Test", "Hi", ["a@b.com"], backend="sendgrid")
+    Example:
+        # SMTP with custom port
+        send_email("Test", "Hi", ["user@example.com"], backend="smtp",
+                   smtp_host="smtp.gmail.com", smtp_port=587,
+                   smtp_user="user@gmail.com", smtp_password="password")
 
-        # SMTP（指定端口）
-        send_email("Test", "Hi", ["a@b.com"], backend="smtp",
-                   smtp_host="smtp.example.com", smtp_port=587,
-                   smtp_user="user", smtp_password="pass")
+        # SendGrid
+        send_email("Test", "Hi", ["user@example.com"], backend="sendgrid",
+                   api_key="SG.xxx")
 
-        # Brevo（指定发件人名称）
-        send_email("Test", "Hi", ["a@b.com"], backend="brevo", from_name="MyApp")
+        # Brevo with custom sender name
+        send_email("Test", "Hi", ["user@example.com"], backend="brevo",
+                   from_name="MyApp")
     """
     to_list = [e.strip() for e in to_addrs if e.strip()]
     if not to_list:
@@ -311,10 +333,11 @@ def send_email(
         logger.error(msg)
         return False, msg
 
-    # 自动补全 from_addr（按优先级）
+    # Auto-fill from_addr (priority order)
     if not from_addr:
         from_addr = (
-            kwargs.get("smtp_user")  # SMTP场景
+            kwargs.get("smtp_user")
+            or os.getenv("EMAIL_FROM")
             or os.getenv("SENDGRID_FROM_EMAIL")
             or os.getenv("MAILGUN_FROM_EMAIL")
             or os.getenv("BREVO_FROM_EMAIL")
@@ -337,8 +360,8 @@ def send_email(
                 smtp_port=int(kwargs.get("smtp_port", os.getenv("SMTP_PORT", 587))),
                 smtp_user=kwargs.get("smtp_user", os.getenv("SMTP_USER", "")),
                 smtp_password=kwargs.get("smtp_password", os.getenv("SMTP_PASSWORD", "")),
-                smtp_ports=kwargs.get("smtp_ports", [587, 465, 2525, 2587]),
-                smtp_ssl_ports=kwargs.get("smtp_ssl_ports", [465]),
+                smtp_ports=kwargs.get("smtp_ports"),
+                smtp_ssl_ports=kwargs.get("smtp_ssl_ports"),
                 timeout=float(kwargs.get("timeout", 10.0)),
                 retries=int(kwargs.get("retries", 3)),
                 retry_backoff=float(kwargs.get("retry_backoff", 10.0)),
@@ -353,7 +376,7 @@ def send_email(
                 from_addr=from_addr,
                 html_body=html_body,
                 api_key=kwargs.get("api_key", os.getenv("SENDGRID_API_KEY")),
-                retries=int(kwargs.get("retries", 1)),
+                retries=int(kwargs.get("retries", 3)),
                 retry_backoff=float(kwargs.get("retry_backoff", 10.0)),
             )
         if backend == "mailgun":
@@ -365,7 +388,7 @@ def send_email(
                 html_body=html_body,
                 api_key=kwargs.get("api_key", os.getenv("MAILGUN_API_KEY")),
                 domain=kwargs.get("domain", os.getenv("MAILGUN_DOMAIN")),
-                retries=int(kwargs.get("retries", 1)),
+                retries=int(kwargs.get("retries", 3)),
                 retry_backoff=float(kwargs.get("retry_backoff", 10.0)),
             )
         if backend == "brevo":
@@ -377,7 +400,7 @@ def send_email(
                 html_body=html_body,
                 api_key=kwargs.get("api_key", os.getenv("BREVO_API_KEY")),
                 from_name=kwargs.get("from_name", os.getenv("BREVO_FROM_NAME", "ResearchPulse")),
-                retries=int(kwargs.get("retries", 1)),
+                retries=int(kwargs.get("retries", 3)),
                 retry_backoff=float(kwargs.get("retry_backoff", 10.0)),
             )
         msg = f"Unsupported email backend: {backend}"
@@ -390,7 +413,7 @@ def send_email(
 
 
 # ======================
-# 6. 多后端 Fallback（可选）
+# 6. 多后端 Fallback
 # ======================
 def send_email_with_fallback(
     subject: str,
@@ -402,8 +425,20 @@ def send_email_with_fallback(
     **kwargs: Any,
 ) -> Tuple[bool, str]:
     """
-    按优先级尝试多个后端，任一成功即返回。
-    默认顺序: SendGrid > Brevo > Mailgun > SMTP（适配受限网络）
+    Try multiple backends in priority order until one succeeds.
+
+    Default order: SendGrid > Brevo > Mailgun > SMTP
+
+    Args:
+        subject: Email subject
+        body: Plain text body
+        to_addrs: Recipient email addresses
+        html_body: Optional HTML body
+        backends: List of backends to try in order
+        **kwargs: Backend-specific parameters
+
+    Returns:
+        Tuple[bool, str]: (success, error_message)
     """
     backends = backends or ["sendgrid", "brevo", "mailgun", "smtp"]
     for bk in backends:
@@ -414,3 +449,54 @@ def send_email_with_fallback(
     msg = "✗ All email backends failed"
     logger.error(msg)
     return False, msg
+
+
+# ======================
+# 7. Convenience function for notifications
+# ======================
+async def send_notification_email(
+    to_addr: str,
+    subject: str,
+    body: str,
+    html_body: Optional[str] = None,
+) -> bool:
+    """
+    Send a notification email using configured backend.
+
+    This is an async wrapper for the sync send_email function.
+
+    Args:
+        to_addr: Recipient email address
+        subject: Email subject
+        body: Plain text body
+        html_body: Optional HTML body
+
+    Returns:
+        bool: True if sent successfully
+    """
+    import asyncio
+
+    def _send():
+        # Get backend from settings
+        from settings import settings
+        backend = settings.email_backend
+        backends = backend.split(",") if "," in backend else [backend]
+        backends = [b.strip() for b in backends if b.strip()]
+
+        # Try backends in order
+        for bk in backends:
+            ok, _ = send_email(
+                subject=subject,
+                body=body,
+                to_addrs=[to_addr],
+                html_body=html_body,
+                backend=bk,
+                from_addr=settings.email_from,
+            )
+            if ok:
+                return True
+        return False
+
+    # Run in thread pool to avoid blocking
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _send)

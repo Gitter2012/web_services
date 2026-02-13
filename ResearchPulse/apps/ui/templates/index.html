@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResearchPulse - 学术资讯聚合</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; min-height: 100vh; }
+
+        /* Header */
+        .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; padding: 0; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header-inner { max-width: 1400px; margin: 0 auto; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+        .logo { display: flex; align-items: center; gap: 12px; }
+        .logo h1 { font-size: 22px; font-weight: 600; }
+        .logo .badge { background: #e94560; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+        .nav { display: flex; gap: 24px; }
+        .nav a { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        .nav a:hover { color: white; }
+        .nav a.active { color: #4ecdc4; }
+        .auth-area { display: flex; align-items: center; gap: 16px; }
+        .auth-area .user-info { display: flex; align-items: center; gap: 8px; color: #4ecdc4; font-size: 14px; }
+        .auth-area a { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 14px; }
+        .auth-area a:hover { color: white; }
+
+        /* Main Layout */
+        .main-container { max-width: 1400px; margin: 0 auto; padding: 24px; display: grid; grid-template-columns: 280px 1fr; gap: 24px; }
+
+        /* Sidebar */
+        .sidebar { background: white; border-radius: 12px; padding: 20px; height: fit-content; position: sticky; top: 80px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .sidebar-section { margin-bottom: 24px; }
+        .sidebar-section:last-child { margin-bottom: 0; }
+        .sidebar-title { font-size: 13px; font-weight: 600; color: #666; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* Filter Controls */
+        .filter-group { margin-bottom: 16px; }
+        .filter-group:last-child { margin-bottom: 0; }
+        .filter-label { font-size: 12px; color: #888; margin-bottom: 6px; display: block; }
+        .filter-select { width: 100%; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; background: white; cursor: pointer; transition: border-color 0.2s; }
+        .filter-select:focus { outline: none; border-color: #4ecdc4; }
+        .filter-input { width: 100%; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; transition: border-color 0.2s; }
+        .filter-input:focus { outline: none; border-color: #4ecdc4; }
+
+        /* Source Filter Cards */
+        .source-cards { display: flex; flex-direction: column; gap: 8px; }
+        .source-card { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+        .source-card:hover { border-color: #4ecdc4; background: #f8fffe; }
+        .source-card.active { border-color: #4ecdc4; background: #e8fbf9; }
+        .source-card .icon { width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: white; }
+        .source-card .icon.arxiv { background: #b31b1b; }
+        .source-card .icon.rss { background: #f39c12; }
+        .source-card .icon.wechat { background: #07c160; }
+        .source-card .info { flex: 1; }
+        .source-card .name { font-size: 14px; font-weight: 500; color: #333; }
+        .source-card .count { font-size: 12px; color: #888; }
+        .source-card .check { color: #4ecdc4; font-size: 18px; }
+
+        /* Category Tags */
+        .category-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+        .category-tag { padding: 6px 12px; background: #f5f5f5; border-radius: 16px; font-size: 12px; color: #666; cursor: pointer; transition: all 0.2s; }
+        .category-tag:hover { background: #e8e8e8; }
+        .category-tag.active { background: #4ecdc4; color: white; }
+
+        /* Content Area */
+        .content { min-width: 0; }
+
+        /* Stats Bar */
+        .stats-bar { background: white; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .stats-left { display: flex; gap: 24px; }
+        .stat-item { display: flex; align-items: center; gap: 8px; }
+        .stat-value { font-size: 24px; font-weight: 600; color: #1a1a2e; }
+        .stat-label { font-size: 12px; color: #888; }
+        .sort-select { padding: 8px 12px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; }
+
+        /* Article List */
+        .article-list { display: flex; flex-direction: column; gap: 16px; }
+        .article-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); transition: box-shadow 0.2s; }
+        .article-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+
+        .article-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+        .article-title { font-size: 17px; font-weight: 600; color: #1a1a2e; line-height: 1.4; }
+        .article-title a { color: inherit; text-decoration: none; }
+        .article-title a:hover { color: #4ecdc4; }
+        .article-source { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: 16px; }
+        .source-badge { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+        .source-badge.arxiv { background: #fef2f2; color: #b91c1c; }
+        .source-badge.rss { background: #fffbeb; color: #d97706; }
+        .source-badge.wechat { background: #ecfdf5; color: #059669; }
+
+        .source-card .icon.wechat { background: #059669; color: white; }
+
+        .article-meta { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 12px; font-size: 13px; color: #666; }
+        .article-meta span { display: flex; align-items: center; gap: 4px; }
+        .article-meta .icon { font-size: 14px; }
+
+        .article-content { color: #444; line-height: 1.8; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+        .article-content.collapsed { max-height: 80px; overflow: hidden; position: relative; }
+        .article-content.collapsed::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 40px; background: linear-gradient(transparent, white); }
+        
+        .expand-btn { color: #4ecdc4; font-size: 12px; cursor: pointer; margin-top: 4px; }
+        .expand-btn:hover { text-decoration: underline; }
+
+        .article-footer { margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
+        .article-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+        .tag { padding: 4px 10px; background: #f5f5f5; border-radius: 4px; font-size: 11px; color: #666; }
+        .article-actions { display: flex; gap: 8px; }
+        .action-btn { padding: 6px 12px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 12px; background: white; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+        .action-btn:hover { background: #f5f5f5; }
+        .action-btn.starred { border-color: #fbbf24; background: #fffbeb; color: #d97706; }
+
+        /* Export Button */
+        .export-btn { width: 100%; padding: 10px 16px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; background: white; cursor: pointer; transition: all 0.2s; }
+        .export-btn:hover { background: #f5f5f5; border-color: #4ecdc4; color: #4ecdc4; }
+
+        /* ArXiv Specific Fields */
+        .arxiv-details { background: #fafafa; border-radius: 8px; padding: 12px 16px; margin-top: 12px; }
+        .arxiv-details .row { display: flex; gap: 24px; font-size: 12px; color: #666; }
+        .arxiv-details .label { color: #888; }
+        .arxiv-details .value { color: #333; }
+
+        /* Pagination */
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 24px; padding: 16px; background: white; border-radius: 12px; }
+        .page-btn { padding: 8px 14px; border: 1px solid #e0e0e0; background: white; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+        .page-btn:hover { background: #f5f5f5; }
+        .page-btn.active { background: #1a1a2e; color: white; border-color: #1a1a2e; }
+        .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .page-info { font-size: 14px; color: #666; }
+
+        /* Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .modal.active { display: flex; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 32px; border-radius: 16px; width: 400px; max-width: 90%; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .modal-header h2 { font-size: 20px; }
+        .modal-close { font-size: 24px; cursor: pointer; color: #999; }
+        .modal-body input { width: 100%; padding: 12px; margin-bottom: 16px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; }
+        .modal-body input:focus { outline: none; border-color: #4ecdc4; }
+        .modal-body button { width: 100%; padding: 12px; background: #1a1a2e; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; }
+        .modal-body button:hover { background: #2d2d4a; }
+        .error-msg { color: #dc2626; font-size: 13px; margin-bottom: 12px; }
+        .switch-link { text-align: center; margin-top: 16px; font-size: 13px; color: #666; }
+        .switch-link a { color: #4ecdc4; cursor: pointer; }
+
+        /* Empty State */
+        .empty-state { text-align: center; padding: 60px 20px; color: #888; }
+        .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+        .empty-state .text { font-size: 16px; }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .main-container { grid-template-columns: 1fr; }
+            .sidebar { position: static; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-inner">
+            <div class="logo">
+                <h1>ResearchPulse</h1>
+                <span class="badge">BETA</span>
+            </div>
+            <div class="nav">
+                <a href="/researchpulse/" class="active">首页</a>
+                <a href="#" onclick="goTo('subscriptions')">订阅管理</a>
+                <a href="#" onclick="goTo('admin')">管理后台</a>
+            </div>
+            <div class="auth-area" id="auth-area">
+                <a href="#" onclick="showModal('login')">登录</a>
+                <a href="#" onclick="showModal('register')">注册</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-title">来源筛选</div>
+                <div class="source-cards" id="source-cards">
+                    <div class="source-card active" data-source="" onclick="selectSource('')">
+                        <div class="icon" style="background: #1a1a2e;">ALL</div>
+                        <div class="info">
+                            <div class="name">全部来源</div>
+                            <div class="count" id="count-all">0 篇</div>
+                        </div>
+                    </div>
+                    <div class="source-card" data-source="arxiv" onclick="selectSource('arxiv')">
+                        <div class="icon arxiv">AX</div>
+                        <div class="info">
+                            <div class="name">arXiv</div>
+                            <div class="count" id="count-arxiv">0 篇</div>
+                        </div>
+                    </div>
+                    <div class="source-card" data-source="rss" onclick="selectSource('rss')">
+                        <div class="icon rss">RSS</div>
+                        <div class="info">
+                            <div class="name">RSS 订阅</div>
+                            <div class="count" id="count-rss">0 篇</div>
+                        </div>
+                    </div>
+                    <div class="source-card" data-source="wechat" onclick="selectSource('wechat')">
+                        <div class="icon wechat">微</div>
+                        <div class="info">
+                            <div class="name">微信</div>
+                            <div class="count" id="count-wechat">0 篇</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">分类筛选</div>
+                <div class="filter-group">
+                    <select class="filter-select" id="category-select" onchange="applyFilters()">
+                        <option value="">全部分类</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">关键词搜索</div>
+                <div class="filter-group">
+                    <input type="text" class="filter-input" id="keyword-input" placeholder="搜索标题、摘要..." onkeypress="if(event.key==='Enter')applyFilters()">
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">时间范围</div>
+                <div class="filter-group">
+                    <select class="filter-select" id="time-range" onchange="applyFilters()">
+                        <option value="">全部时间</option>
+                        <option value="1">最近1天</option>
+                        <option value="3">最近3天</option>
+                        <option value="7">最近7天</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Export Section -->
+            <div class="sidebar-section">
+                <div class="sidebar-title">导出</div>
+                <div class="filter-group">
+                    <button class="export-btn" onclick="exportMarkdown()">
+                        📥 导出 Markdown
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <div class="stats-bar">
+                <div class="stats-left">
+                    <div class="stat-item">
+                        <span class="stat-value" id="total-count">0</span>
+                        <span class="stat-label">篇文章</span>
+                    </div>
+                </div>
+                <select class="sort-select" id="sort-select" onchange="applyFilters()">
+                    <option value="publish_time">按发布时间</option>
+                    <option value="crawl_time">按抓取时间</option>
+                </select>
+            </div>
+
+            <div class="article-list" id="article-list">
+                <div class="empty-state">
+                    <div class="icon">📚</div>
+                    <div class="text">加载中...</div>
+                </div>
+            </div>
+
+            <div class="pagination" id="pagination"></div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div class="modal" id="login-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>登录</h2>
+                <span class="modal-close" onclick="hideModal('login')">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="login-error" class="error-msg"></div>
+                <input type="text" id="login-username" placeholder="用户名或邮箱">
+                <input type="password" id="login-password" placeholder="密码">
+                <button onclick="doLogin()">登录</button>
+                <div class="switch-link">没有账号？<a onclick="hideModal('login');showModal('register')">立即注册</a></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Register Modal -->
+    <div class="modal" id="register-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>注册</h2>
+                <span class="modal-close" onclick="hideModal('register')">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="register-error" class="error-msg"></div>
+                <input type="text" id="reg-username" placeholder="用户名 (3-50位字母数字)">
+                <input type="email" id="reg-email" placeholder="邮箱地址">
+                <input type="password" id="reg-password" placeholder="密码 (至少6位)">
+                <button onclick="doRegister()">注册</button>
+                <div class="switch-link">已有账号？<a onclick="hideModal('register');showModal('login')">立即登录</a></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/researchpulse/api';
+        const AUTH_BASE = '/api/v1';
+
+        let currentPage = 1;
+        let pageSize = 20;
+        let totalArticles = 0;
+        let currentUser = null;
+        let currentSource = '';
+        let userStars = new Set();
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuthState();
+            loadCategories();
+            loadArticles();
+            loadStats();
+        });
+
+        // Auth Functions
+        async function checkAuthState() {
+            const token = localStorage.getItem('access_token');
+            if (token) {
+                try {
+                    const res = await fetch(`${AUTH_BASE}/auth/me`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        currentUser = await res.json();
+                        updateAuthUI();
+                        loadUserStars();
+                    } else {
+                        localStorage.removeItem('access_token');
+                    }
+                } catch (e) {
+                    localStorage.removeItem('access_token');
+                }
+            }
+            updateAuthUI();
+        }
+
+        function updateAuthUI() {
+            const area = document.getElementById('auth-area');
+            if (currentUser) {
+                area.innerHTML = `
+                    <span class="user-info">👤 ${currentUser.username}</span>
+                    <a href="#" onclick="doLogout()">退出</a>
+                `;
+            } else {
+                area.innerHTML = `
+                    <a href="#" onclick="showModal('login')">登录</a>
+                    <a href="#" onclick="showModal('register')">注册</a>
+                `;
+            }
+        }
+
+        async function loadUserStars() {
+            // TODO: Load user's starred articles
+        }
+
+        function showModal(type) {
+            document.getElementById(`${type}-modal`).classList.add('active');
+            document.getElementById(`${type}-error`).textContent = '';
+        }
+
+        function hideModal(type) {
+            document.getElementById(`${type}-modal`).classList.remove('active');
+        }
+
+        async function doLogin() {
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+            const errorEl = document.getElementById('login-error');
+
+            if (!username || !password) {
+                errorEl.textContent = '请填写用户名和密码';
+                return;
+            }
+
+            try {
+                const res = await fetch(`${AUTH_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    localStorage.setItem('access_token', data.access_token);
+                    currentUser = { username };
+                    updateAuthUI();
+                    hideModal('login');
+                    loadUserStars();
+                } else {
+                    errorEl.textContent = data.detail || '登录失败';
+                }
+            } catch (e) {
+                errorEl.textContent = '网络错误';
+            }
+        }
+
+        async function doRegister() {
+            const username = document.getElementById('reg-username').value;
+            const email = document.getElementById('reg-email').value;
+            const password = document.getElementById('reg-password').value;
+            const errorEl = document.getElementById('register-error');
+
+            if (!username || !email || !password) {
+                errorEl.textContent = '请填写所有字段';
+                return;
+            }
+
+            try {
+                const res = await fetch(`${AUTH_BASE}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, email, password })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    hideModal('register');
+                    showModal('login');
+                    document.getElementById('login-username').value = username;
+                } else {
+                    errorEl.textContent = data.detail || '注册失败';
+                }
+            } catch (e) {
+                errorEl.textContent = '网络错误';
+            }
+        }
+
+        function doLogout() {
+            localStorage.removeItem('access_token');
+            currentUser = null;
+            userStars.clear();
+            updateAuthUI();
+        }
+
+        function goTo(page) {
+            if (!currentUser) {
+                showModal('login');
+                return;
+            }
+            // Navigate to page
+            if (page === 'subscriptions') {
+                location.href = '/researchpulse/subscriptions';
+            } else if (page === 'admin') {
+                location.href = '/researchpulse/admin';
+            }
+        }
+
+        // Filter Functions
+        function selectSource(source) {
+            currentSource = source;
+            document.querySelectorAll('.source-card').forEach(card => {
+                card.classList.toggle('active', card.dataset.source === source);
+            });
+            currentPage = 1;
+            // Reset category when source changes
+            document.getElementById('category-select').innerHTML = '<option value="">全部分类</option>';
+            loadCategories(source);
+            loadArticles();
+        }
+
+        function applyFilters() {
+            currentPage = 1;
+            loadArticles();
+        }
+
+        // Data Loading
+        async function loadCategories(sourceType = '') {
+            try {
+                const params = new URLSearchParams();
+                if (sourceType) {
+                    params.append('source_type', sourceType);
+                }
+                const res = await fetch(`${API_BASE}/categories?${params}`);
+                const data = await res.json();
+                const select = document.getElementById('category-select');
+                
+                // Clear existing options except the first one
+                select.innerHTML = '<option value="">全部分类</option>';
+                
+                data.categories.forEach(cat => {
+                    const opt = document.createElement('option');
+                    opt.value = cat.code;
+                    opt.textContent = cat.name ? `${cat.code} - ${cat.name}` : cat.code;
+                    select.appendChild(opt);
+                });
+            } catch (e) {
+                console.error('Failed to load categories:', e);
+            }
+        }
+
+        async function loadStats() {
+            try {
+                // Load counts for each source
+                const sources = ['', 'arxiv', 'rss', 'wechat'];
+                for (const src of sources) {
+                    const params = new URLSearchParams({ page_size: 1 });
+                    if (src) params.append('source_type', src);
+                    const res = await fetch(`${API_BASE}/articles?${params}`);
+                    const data = await res.json();
+                    const el = document.getElementById(src ? `count-${src}` : 'count-all');
+                    if (el) el.textContent = `${data.total} 篇`;
+                }
+            } catch (e) {
+                console.error('Failed to load stats:', e);
+            }
+        }
+
+        function exportMarkdown() {
+            const category = document.getElementById('category-select').value;
+            const timeRange = document.getElementById('time-range').value;
+            const sort = document.getElementById('sort-select').value;
+
+            const params = new URLSearchParams({ page_size: 100 });
+            if (currentSource) params.append('source_type', currentSource);
+            if (category) params.append('category', category);
+
+            // Time range filter
+            if (timeRange) {
+                const date = new Date();
+                date.setDate(date.getDate() - parseInt(timeRange));
+                params.append('from_date', date.toISOString().split('T')[0]);
+            }
+
+            // Open download link
+            const url = `${API_BASE}/export/markdown?${params}`;
+            window.open(url, '_blank');
+        }
+
+        async function loadArticles() {
+            const category = document.getElementById('category-select').value;
+            const keyword = document.getElementById('keyword-input').value;
+            const timeRange = document.getElementById('time-range').value;
+            const sort = document.getElementById('sort-select').value;
+
+            const params = new URLSearchParams({ page: currentPage, page_size: pageSize });
+            if (currentSource) params.append('source_type', currentSource);
+            if (category) params.append('category', category);
+            if (keyword) params.append('keyword', keyword);
+            if (sort) params.append('sort', sort);
+
+            // Time range filter
+            if (timeRange) {
+                const date = new Date();
+                date.setDate(date.getDate() - parseInt(timeRange));
+                params.append('from_date', date.toISOString().split('T')[0]);
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/articles?${params}`);
+                const data = await response.json();
+
+                totalArticles = data.total;
+                document.getElementById('total-count').textContent = data.total;
+                renderArticles(data.articles);
+                renderPagination();
+            } catch (error) {
+                console.error('Failed to load articles:', error);
+                document.getElementById('article-list').innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">❌</div>
+                        <div class="text">加载失败，请刷新重试</div>
+                    </div>
+                `;
+            }
+        }
+
+        function renderArticles(articles) {
+            const container = document.getElementById('article-list');
+
+            if (articles.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">📭</div>
+                        <div class="text">暂无符合条件的文章</div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = articles.map(article => renderArticle(article)).join('');
+        }
+
+        function renderArticle(article) {
+            const sourceBadge = `<span class="source-badge ${article.source_type}">${article.source_type}</span>`;
+
+            // Clean HTML tags from summary for display
+            const cleanSummary = stripHtml(article.summary || '');
+            const hasLongSummary = cleanSummary.length > 300;
+
+            // Format times
+            const publishTime = article.publish_time ? formatDate(article.publish_time) : '';
+            const updatedTime = article.arxiv_updated_time ? formatDate(article.arxiv_updated_time) : '';
+            const crawlTime = article.crawl_time ? formatDate(article.crawl_time) : '';
+
+            // Time display
+            let timeDisplay = '';
+            if (article.source_type === 'arxiv') {
+                timeDisplay = `<span>📅 发布: ${publishTime || '未知'}</span>`;
+                if (updatedTime && updatedTime !== publishTime) {
+                    timeDisplay += `<span>🔄 更新: ${updatedTime}</span>`;
+                }
+            } else {
+                timeDisplay = `<span>📅 ${publishTime || crawlTime || '未知'}</span>`;
+            }
+
+            const tags = (article.tags || []).slice(0, 5).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('');
+
+            // ArXiv specific details and actions
+            let arxivDetails = '';
+            let arxivActions = '';
+            if (article.source_type === 'arxiv') {
+                const pdfUrl = `https://arxiv.org/pdf/${article.arxiv_id}`;
+                const absUrl = `https://arxiv.org/abs/${article.arxiv_id}`;
+                // ResearchPulse translation (中英对照)
+                const translateUrl = `https://hjfy.top/arxiv/${article.arxiv_id}`;
+                // Google Translate
+                const googleTranslateUrl = `https://arxiv-org.translate.goog/abs/${article.arxiv_id}?_x_tr_sl=en&_x_tr_tl=zh-CN&_x_tr_hl=zh-CN`;
+
+                arxivDetails = `
+                    <div class="arxiv-details">
+                        <div class="row">
+                            <span><span class="label">arXiv ID:</span> <span class="value">${escapeHtml(article.arxiv_id || '')}</span></span>
+                            ${article.arxiv_primary_category ? `<span><span class="label">主类目:</span> <span class="value">${escapeHtml(article.arxiv_primary_category)}</span></span>` : ''}
+                        </div>
+                    </div>
+                `;
+
+                arxivActions = `
+                    <a href="${pdfUrl}" target="_blank" class="action-btn">📄 PDF</a>
+                    <a href="${translateUrl}" target="_blank" class="action-btn">🌐 中英对照</a>
+                    <a href="${googleTranslateUrl}" target="_blank" class="action-btn">🔍 谷歌翻译</a>
+                `;
+            }
+
+            // Expand/collapse for long summaries
+            const expandBtn = hasLongSummary ? `<div class="expand-btn" onclick="toggleExpand(this)">展开全文</div>` : '';
+            const contentClass = hasLongSummary ? 'article-content collapsed' : 'article-content';
+
+            const isStarred = userStars.has(article.id);
+
+            return `
+                <div class="article-card">
+                    <div class="article-header">
+                        <div class="article-title">
+                            <a href="${escapeHtml(article.url)}" target="_blank">${escapeHtml(article.title)}</a>
+                        </div>
+                        <div class="article-source">${sourceBadge}</div>
+                    </div>
+                    <div class="article-meta">
+                        <span>👤 ${escapeHtml(article.author || '未知作者')}</span>
+                        ${timeDisplay}
+                        ${article.category ? `<span>📁 ${escapeHtml(article.category)}</span>` : ''}
+                    </div>
+                    <div class="${contentClass}" data-full="${escapeHtml(cleanSummary)}">${escapeHtml(cleanSummary)}</div>
+                    ${expandBtn}
+                    ${arxivDetails}
+                    <div class="article-footer">
+                        <div class="article-tags">${tags}</div>
+                        <div class="article-actions">
+                            <button class="action-btn ${isStarred ? 'starred' : ''}" onclick="toggleStar(${article.id})">
+                                ${isStarred ? '⭐ 已收藏' : '☆ 收藏'}
+                            </button>
+                            ${arxivActions}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleExpand(btn) {
+            const content = btn.previousElementSibling;
+            if (content.classList.contains('collapsed')) {
+                content.classList.remove('collapsed');
+                btn.textContent = '收起';
+            } else {
+                content.classList.add('collapsed');
+                btn.textContent = '展开全文';
+            }
+        }
+
+        async function toggleStar(articleId) {
+            if (!currentUser) {
+                showModal('login');
+                return;
+            }
+            // TODO: Implement star toggle
+            if (userStars.has(articleId)) {
+                userStars.delete(articleId);
+            } else {
+                userStars.add(articleId);
+            }
+            loadArticles();
+        }
+
+        function renderPagination() {
+            const totalPages = Math.ceil(totalArticles / pageSize);
+            const container = document.getElementById('pagination');
+
+            if (totalPages <= 1) {
+                container.innerHTML = `<span class="page-info">共 ${totalArticles} 篇</span>`;
+                return;
+            }
+
+            let html = '';
+
+            // Previous button
+            html += `<button class="page-btn" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>上一页</button>`;
+
+            // Page numbers
+            const start = Math.max(1, currentPage - 2);
+            const end = Math.min(totalPages, currentPage + 2);
+
+            if (start > 1) {
+                html += `<button class="page-btn" onclick="goToPage(1)">1</button>`;
+                if (start > 2) html += `<span class="page-info">...</span>`;
+            }
+
+            for (let i = start; i <= end; i++) {
+                html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+            }
+
+            if (end < totalPages) {
+                if (end < totalPages - 1) html += `<span class="page-info">...</span>`;
+                html += `<button class="page-btn" onclick="goToPage(${totalPages})">${totalPages}</button>`;
+            }
+
+            // Next button
+            html += `<button class="page-btn" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>下一页</button>`;
+
+            container.innerHTML = html;
+        }
+
+        function goToPage(page) {
+            currentPage = page;
+            loadArticles();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // Utilities
+        function stripHtml(html) {
+            if (!html) return '';
+            // Remove HTML tags
+            let text = html.replace(/<[^>]*>/g, ' ');
+            // Decode HTML entities
+            const textarea = document.createElement('textarea');
+            textarea.innerHTML = text;
+            text = textarea.value;
+            // Normalize whitespace
+            return text.replace(/\s+/g, ' ').trim();
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(isoString) {
+            if (!isoString) return '';
+            const date = new Date(isoString);
+            return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+        }
+    </script>
+</body>
+</html>

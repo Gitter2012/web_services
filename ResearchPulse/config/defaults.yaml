@@ -1,177 +1,97 @@
-# ResearchPulse Configuration Defaults
-# =====================================
-# Non-sensitive configuration defaults.
-# Secrets (API keys, passwords) remain in .env
-#
-# Precedence (highest to lowest):
-# 1. Environment variables
-# 2. .env file
-# 3. /config/defaults.yaml apps.<app> (project overrides)
-# 4. /apps/<app>/config/defaults.yaml (app defaults)
-# 5. Hardcoded Python defaults
+# ResearchPulse Default Configuration
+# This file contains non-sensitive defaults.
+# Sensitive values should be set in .env file.
 
-# ======================
-# Global Application Settings
-# ======================
 app:
-  enabled_apps: "arxiv_crawler,arxiv_ui,wechat_crawler,wechat_ui,rss_crawler,rss_ui"
-  data_dir: "./data"
+  name: ResearchPulse
+  debug: false
+  data_dir: ./data
+  url_prefix: /researchpulse
 
-# ======================
-# Logging Configuration
-# ======================
-# Note: Detailed logging config is in /config/logging.yaml
-# These are convenience overrides via LOG_LEVEL and LOG_FILE env vars
+database:
+  pool_size: 10
+  max_overflow: 20
+  pool_recycle: 3600
+  echo: false
+
+cache:
+  enabled: false
+  default_ttl: 300
+
+jwt:
+  algorithm: HS256
+  access_token_expire_minutes: 30
+  refresh_token_expire_days: 7
+
+crawler:
+  arxiv:
+    categories: cs.LG,cs.CV,cs.IR,cs.CL,cs.DC
+    max_results: 50
+    delay_base: 3.0
+    delay_jitter: 1.5
+    batch_delay: 10.0
+  rss:
+    timeout: 30
+    max_concurrent: 5
+    user_agent: "ResearchPulse/2.0"
+  wechat:
+    timeout: 30
+    max_concurrent: 3
+
+scheduler:
+  crawl_interval_hours: 6
+  cleanup_hour: 3
+  backup_hour: 4
+  timezone: UTC
+
+data_retention:
+  active_days: 7
+  archive_days: 30
+  backup_enabled: true
+
 logging:
-  level: "INFO"
-  file: null
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-# ======================
-# Email Backend Configuration
-# ======================
-# API keys and credentials remain in .env
 email:
-  from: "tt221204@gmail.com"
-  backends: "smtp"
-  sendgrid:
+  enabled: false
+  backends: smtp
+  from: ""
+  # Email backends (comma-separated for fallback): smtp, sendgrid, mailgun, brevo
+  # Default: smtp
+  backends: smtp
+  # SMTP settings
+  smtp:
+    host: ""
+    port: 587
+    ports: "587,465,2525"  # Multi-port retry
+    ssl_ports: "465"
+    user: ""
+    password: ""
+    timeout: 10.0
     retries: 3
     retry_backoff: 10.0
+    tls: true
+    ssl: false
+  # SendGrid settings
+  sendgrid:
+    api_key: ""
+    retries: 3
+    retry_backoff: 10.0
+  # Mailgun settings
   mailgun:
+    api_key: ""
     domain: ""
     retries: 3
     retry_backoff: 10.0
+  # Brevo settings
   brevo:
+    api_key: ""
     from_name: "ResearchPulse"
     retries: 3
     retry_backoff: 10.0
-
-# ======================
-# App-Specific Configurations
-# ======================
-apps:
-  # -----------------------
-  # arXiv Crawler Settings
-  # -----------------------
-  arxiv_crawler:
-    arxiv:
-      categories: "cs.LG,cs.CV,cs.IR,cs.CL,cs.DC"
-      main_category: ""
-      max_results: 50
-      min_results: 10
-      fallback_days: 7
-      abstract_max_len: 0
-      # HTTP anti-blocking settings
-      http_delay_base: 3.0        # Base delay (seconds) before each request
-      http_delay_jitter: 1.5      # Random jitter +/- (seconds) added to delay
-      arxiv_batch_delay: 10.0     # Delay (seconds) between category crawls
-      http_cache_ttl: 3600        # Response cache TTL (seconds)
-      urls:
-        base: "https://export.arxiv.org/api/query"
-        rss: "https://export.arxiv.org/rss/{category}"
-        html_list_new: "https://arxiv.org/list/{category}/new"
-        html_list_recent: "https://arxiv.org/list/{category}/recent"
-        html_list: "https://arxiv.org/list/{category}/new"
-        html_search: "https://arxiv.org/search/?query={category}&searchtype=all&abstracts=show&order=-announced_date_first&size={size}"
-
-    schedule:
-      hour: 0
-      minute: 0
-      timezone: "UTC"
-
-    date_window:
-      days: 2
-      timezone: "Asia/Shanghai"
-
-    email:
-      enabled: true
-      html_enabled: true
-      from: "tt221204@gmail.com"
-      to: "tt221204@gmail.com"
-
-    smtp:
-      profiles: "1,2"
-      profile_defaults:
-        "1":
-          host: "smtp.gmail.com"
-          user: "tt221204@gmail.com"
-          port: 587
-          tls: true
-          ssl: false
-        "2":
-          host: "smtp.gmail.com"
-          user: "tt221204@gmail.com"
-          port: 465
-          tls: false
-          ssl: true
-      port: 587
-      ports: ""
-      ssl_ports: "465"
-      timeout: 10.0
-      retries: 5
-      retry_backoff: 30.0
-      tls: true
-      ssl: false
-
-  # -----------------------
-  # arXiv UI Settings
-  # -----------------------
-  arxiv_ui:
-    enabled: true
-    scan_interval: 3600
-    show_all_content: false
-    default_page_size: 20
-    max_content_age_days: 30
-    date_window:
-      days: 2
-      timezone: "Asia/Shanghai"
-
-  # -----------------------
-  # WeChat Crawler Settings
-  # -----------------------
-  wechat_crawler:
-    database:
-      url: ""
-      path: "articles.db"
-    schedule:
-      cron: "0 */2 * * *"
-      timezone: "Asia/Shanghai"
-      run_on_startup: true
-    crawl:
-      retention_days: 90
-      fetch_content: false
-      http_delay_base: 2.0
-      http_delay_jitter: 1.0
-      http_timeout: 15.0
-
-  # -----------------------
-  # WeChat UI Settings
-  # -----------------------
-  wechat_ui:
-    enabled: true
-    default_page_size: 20
-    articles_per_page: 20
-
-  # -----------------------
-  # RSS Crawler Settings
-  # -----------------------
-  rss_crawler:
-    database:
-      url: ""
-      path: "rss.db"
-    schedule:
-      cron: "0 */2 * * *"
-      timezone: "Asia/Shanghai"
-      run_on_startup: true
-    crawl:
-      retention_days: 90
-      http_delay_base: 2.0
-      http_delay_jitter: 1.0
-      http_timeout: 15.0
-      max_articles_per_feed: 50
-
-  # -----------------------
-  # RSS UI Settings
-  # -----------------------
-  rss_ui:
-    enabled: true
-    default_page_size: 20
+  # Notification settings
+  notification:
+    frequency: daily  # daily, weekly, instant
+    time: "09:00"
+    max_articles: 20

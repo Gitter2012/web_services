@@ -1,121 +1,228 @@
 # ResearchPulse
 
-## 项目概述
-模块化学术资源自动化平台，支持多数据源抓取与可视化推送。
+> 学术资讯聚合平台 - 订阅、跟踪、推送最新研究动态
 
-## 系统架构
-- **标准化路由**：所有子项目采用 `/领域/功能` 两端式挂载
-  - arXiv 抓取：`/arxiv/crawler/*`
-  - arXiv 可视化：`/arxiv/ui/*`
-- **动态启用**：通过 `ENABLED_APPS` 环境变量控制子模块
-- **数据流**：`arxiv_crawler` 生成数据 → `arxiv_ui` 可视化展示
+## 项目简介
 
-## 启动方式
-```bash
-# 启用抓取 + 可视化
-ENABLED_APPS=arxiv_crawler,arxiv_ui uvicorn main:app --host 0.0.0.0 --port 8000
+ResearchPulse 是一个学术资讯聚合平台，支持从多个来源（arXiv、RSS、微信公众号）抓取最新研究文章，提供用户订阅管理、邮件推送、Markdown 导出等功能。
 
-# 仅启用可视化（需已有 data/arxiv/ 数据）
-ENABLED_APPS=arxiv_ui uvicorn main:app --reload
-```
+### 主要特性
 
-## 配置系统
+- 🔍 **多源聚合** - 支持 arXiv、RSS、微信公众号等多种来源
+- 📬 **邮件推送** - 自动推送用户订阅的最新文章
+- 📥 **Markdown 导出** - 一键导出订阅文章为 Markdown 格式
+- 👤 **用户系统** - 完整的用户注册、登录、权限管理
+- ⭐ **收藏管理** - 收藏喜欢的文章，随时查看
+- 🎯 **智能分类** - 按来源、分类、时间等多维度筛选
+- 🌐 **中英对照** - arXiv 论文支持一键翻译
 
-ResearchPulse 采用分层配置系统，支持灵活的配置覆盖和应用级默认值。
+## 技术栈
 
-### 配置文件
-| 文件 | 用途 |
+| 类别 | 技术 |
 |------|------|
-| `/config/defaults.yaml` | 项目级非敏感默认值（覆盖应用默认值） |
-| `/apps/<app>/config/defaults.yaml` | 应用级默认值（各应用独立维护） |
-| `/config/logging.yaml` | 日志配置，支持按应用自定义级别 |
-| `.env` | 仅存放敏感信息（API密钥、密码、凭证） |
+| 后端框架 | FastAPI |
+| 数据库 | MySQL 8.0+ |
+| ORM | SQLAlchemy 2.0 |
+| 异步任务 | APScheduler |
+| 模板引擎 | Jinja2 |
+| HTTP 客户端 | httpx |
+| 邮件服务 | SMTP / SendGrid / Mailgun / Brevo |
 
-### 配置优先级（由高到低）
-1. **环境变量**：运行时覆盖
-2. **`.env` 文件**：敏感信息（密码、API密钥）
-3. **`/config/defaults.yaml` apps.\<app\>**：项目级覆盖
-4. **`/apps/<app>/config/defaults.yaml`**：应用级默认值
-5. **Python 代码默认值**：兜底
+## 目录结构
 
-### 深度合并机制
-项目级配置与应用级配置采用**深度合并（deep merge）**：
-- 项目级配置覆盖应用级同名键
-- 应用级独有键被保留
-- 嵌套字典递归合并
-
-示例：
-```yaml
-# /apps/arxiv_crawler/config/defaults.yaml（应用默认）
-arxiv:
-  max_results: 50
-  urls:
-    base: "https://export.arxiv.org/api/query"
-    rss: "https://export.arxiv.org/rss/{category}"
-
-# /config/defaults.yaml apps.arxiv_crawler（项目覆盖）
-arxiv:
-  max_results: 100  # 覆盖
-  urls:
-    rss: "https://custom.arxiv.org/rss/{category}"  # 覆盖
-
-# 最终合并结果
-arxiv:
-  max_results: 100       # 来自项目
-  urls:
-    base: "..."          # 来自应用（保留）
-    rss: "https://custom..."  # 来自项目（覆盖）
+```
+ResearchPulse/
+├── apps/                    # 应用模块
+│   ├── auth/               # 用户认证
+│   ├── admin/              # 管理后台
+│   ├── crawler/            # 爬虫模块
+│   │   ├── arxiv/          # arXiv 爬虫
+│   │   ├── rss/            # RSS 爬虫
+│   │   ├── wechat/         # 微信爬虫
+│   │   └── models/         # 数据模型
+│   ├── scheduler/          # 定时任务
+│   └── ui/                 # 前端界面
+├── common/                  # 公共模块
+│   ├── email.py            # 邮件发送
+│   ├── http.py             # HTTP 请求
+│   ├── cache.py            # 内存缓存
+│   ├── markdown.py         # Markdown 导出
+│   └── logger.py           # 日志工具
+├── config/                  # 配置文件
+│   └── defaults.yaml       # 默认配置
+├── core/                    # 核心模块
+│   ├── database.py         # 数据库连接
+│   ├── models/             # 基础模型
+│   ├── security.py         # 安全工具
+│   └── dependencies.py     # 依赖注入
+├── docs/                    # 项目文档
+├── logs/                    # 日志目录
+├── run/                     # 运行时文件
+├── sql/                     # SQL 脚本
+│   └── init.sql            # 数据库初始化
+├── .env                     # 环境配置
+├── .env.example            # 环境配置示例
+├── main.py                 # 应用入口
+├── settings.py             # 配置管理
+└── README.md               # 项目说明
 ```
 
-### 应用级默认值
-各应用在 `apps/<app>/config/defaults.yaml` 维护独立默认值：
-- `apps/arxiv_crawler/config/defaults.yaml`：抓取器设置
-- `apps/arxiv_ui/config/defaults.yaml`：UI 设置
+## 快速开始
 
-### 当日窗口（统计/回溯标识）
-默认将“当日”定义为**抓取当天 + 前一天**（可配置为最近 N 天）：
-- `apps.arxiv_crawler.date_window.days` / `apps.arxiv_crawler.date_window.timezone`
-- `apps.arxiv_ui.date_window.days` / `apps.arxiv_ui.date_window.timezone`
+### 1. 环境要求
 
-环境变量覆盖：
-- `ARXIV_DATE_WINDOW_DAYS` / `ARXIV_DATE_WINDOW_TIMEZONE`
-- `ARXIV_UI_DATE_WINDOW_DAYS` / `ARXIV_UI_DATE_WINDOW_TIMEZONE`
+- Python 3.10+
+- MySQL 8.0+
+- Redis (可选，用于缓存)
 
-项目级覆盖位于 `/config/defaults.yaml` 的 `apps.<app_name>` 下。
+### 2. 安装依赖
 
-### 日志配置
-`/config/logging.yaml` 支持按应用自定义日志级别：
-```yaml
-loggers:
-  apps.arxiv_crawler:
-    level: INFO
-    handlers: [console, file]
-  apps.arxiv_ui:
-    level: INFO
-    handlers: [console]
-```
-
-### 自定义配置
-- **修改敏感信息**：编辑 `.env`
-- **修改项目级默认值**：编辑 `/config/defaults.yaml`
-- **修改应用级默认值**：编辑 `/apps/<app>/config/defaults.yaml`
-- **运行时覆盖**：设置环境变量
-
-### 示例：覆盖配置
 ```bash
-# 通过环境变量覆盖日志级别
-LOG_LEVEL=DEBUG uvicorn main:app
-
-# 通过环境变量覆盖 arXiv 分类
-ARXIV_CATEGORIES=cs.AI,cs.NE uvicorn main:app
+pip install -r requirements.txt
 ```
 
-## 子项目专属配置
-- `arxiv_crawler`：`ARXIV_*` 前缀（详见 `apps/arxiv_crawler/README.md`）
-- `arxiv_ui`：`ARXIV_UI_*` 前缀（详见 `apps/arxiv_ui/README.md`）
+### 3. 配置环境
 
-## 依赖
-确保安装 PyYAML：
 ```bash
-pip install PyYAML>=6.0
+# 复制配置文件
+cp .env.example .env
+
+# 编辑配置
+vim .env
 ```
+
+### 4. 初始化数据库
+
+```bash
+mysql -u root -p < sql/init.sql
+```
+
+### 5. 启动服务
+
+```bash
+python main.py
+```
+
+服务将在 `http://localhost:8000` 启动。
+
+### 6. 访问页面
+
+| 页面 | URL |
+|------|-----|
+| 导航首页 | http://localhost:8000/ |
+| ResearchPulse | http://localhost:8000/researchpulse/ |
+| 管理后台 | http://localhost:8000/researchpulse/admin |
+| API 文档 | http://localhost:8000/docs |
+
+## 配置说明
+
+### 数据库配置
+
+```bash
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=research_pulse
+DB_USER=research_user
+DB_PASSWORD=your_password
+```
+
+### 邮件配置
+
+```bash
+# 启用邮件
+EMAIL_ENABLED=true
+EMAIL_FROM=your-email@gmail.com
+
+# SMTP 配置
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+
+# 其他可选后端
+SENDGRID_API_KEY=          # SendGrid
+MAILGUN_API_KEY=           # Mailgun
+MAILGUN_DOMAIN=            # Mailgun 域名
+BREVO_API_KEY=             # Brevo
+```
+
+### 爬虫配置
+
+```yaml
+# config/defaults.yaml
+crawler:
+  arxiv:
+    categories: cs.LG,cs.CV,cs.IR,cs.CL,cs.DC
+    max_results: 50
+```
+
+## API 文档
+
+### 文章 API
+
+```
+GET /researchpulse/api/articles
+    ?source_type=arxiv      # 来源类型
+    &category=cs.LG         # 分类
+    &keyword=machine        # 关键词
+    &page=1                 # 页码
+    &page_size=20           # 每页数量
+
+GET /researchpulse/api/categories?source_type=arxiv
+
+GET /researchpulse/api/export/markdown
+    ?source_type=arxiv
+    &from_date=2026-01-01
+```
+
+### 用户 API
+
+```
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+GET  /api/v1/auth/me
+```
+
+### 订阅 API
+
+```
+GET    /researchpulse/api/subscriptions
+POST   /researchpulse/api/subscriptions
+DELETE /researchpulse/api/subscriptions/{type}/{id}
+```
+
+## 防爬策略
+
+系统内置多种防反爬策略：
+
+- **UA 轮换** - 10 种 User-Agent 随机切换
+- **连接池轮换** - 每 25 次请求重建连接
+- **自动重试** - 支持 429/503 自动重试
+- **请求延迟** - 支持随机延迟和抖动
+- **缓存机制** - 避免重复请求
+
+## 定时任务
+
+| 任务 | 默认时间 | 说明 |
+|------|---------|------|
+| 文章抓取 | 每 6 小时 | 抓取所有活跃源 |
+| 数据清理 | 每天凌晨 3 点 | 清理过期文章 |
+| 数据备份 | 每天凌晨 4 点 | 备份文章数据 |
+| 邮件推送 | 抓取完成后 | 推送用户订阅 |
+
+## 贡献指南
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 提交 Pull Request
+
+## 许可证
+
+MIT License
+
+## 联系方式
+
+- 项目地址: https://github.com/web_services/ResearchPulse
+- 问题反馈: https://github.com/web_services/ResearchPulse/issues
