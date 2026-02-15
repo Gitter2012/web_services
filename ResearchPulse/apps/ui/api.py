@@ -60,6 +60,7 @@ from apps.crawler.models import (
     RssFeed,
     UserArticleState,
     UserSubscription,
+    WechatAccount,
 )
 
 logger = logging.getLogger(__name__)
@@ -668,6 +669,132 @@ async def list_feeds(
     }
 
 
+@router.get("/api/sources/search")
+async def search_sources(
+    q: str = Query(..., min_length=1, description="Search keyword"),
+    limit: int = Query(20, ge=1, le=100, description="Max results per source type"),
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Search across all subscribable sources.
+
+    模糊搜索所有可订阅的数据源（ArXiv 类目、RSS 源、微信公众号）。
+
+    Args:
+        q: Search keyword (fuzzy match).
+        limit: Max results per source type.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Search results grouped by source type.
+    """
+    # 构建模糊搜索模式
+    search_pattern = f"%{q}%"
+
+    results = {
+        "keyword": q,
+        "arxiv": [],
+        "rss": [],
+        "wechat": [],
+    }
+
+    try:
+        # 搜索 ArXiv 类目：匹配 code、name
+        # 注意：description 可能为 null，使用 func.coalesce 处理
+        from sqlalchemy import func
+
+        arxiv_result = await session.execute(
+            select(ArxivCategory)
+            .where(
+                or_(
+                    ArxivCategory.code.ilike(search_pattern),
+                    ArxivCategory.name.ilike(search_pattern),
+                    func.coalesce(ArxivCategory.description, "").ilike(search_pattern),
+                ),
+            )
+            .order_by(ArxivCategory.is_active.desc(), ArxivCategory.code)
+            .limit(limit)
+        )
+        arxiv_cats = arxiv_result.scalars().all()
+        results["arxiv"] = [
+            {
+                "id": cat.id,
+                "type": "arxiv",
+                "code": cat.code,
+                "name": cat.name,
+                "description": cat.description or "",
+                "is_active": cat.is_active,
+            }
+            for cat in arxiv_cats
+        ]
+    except Exception as e:
+        logger.error(f"ArXiv search error: {e}")
+
+    try:
+        # 搜索 RSS 源：匹配 title、category
+        from sqlalchemy import func
+
+        rss_result = await session.execute(
+            select(RssFeed)
+            .where(
+                or_(
+                    RssFeed.title.ilike(search_pattern),
+                    func.coalesce(RssFeed.category, "").ilike(search_pattern),
+                ),
+            )
+            .order_by(RssFeed.is_active.desc(), RssFeed.title)
+            .limit(limit)
+        )
+        rss_feeds = rss_result.scalars().all()
+        results["rss"] = [
+            {
+                "id": feed.id,
+                "type": "rss",
+                "code": str(feed.id),
+                "name": feed.title,
+                "description": feed.category or "",
+                "site_url": feed.site_url or "",
+                "is_active": feed.is_active,
+            }
+            for feed in rss_feeds
+        ]
+    except Exception as e:
+        logger.error(f"RSS search error: {e}")
+
+    try:
+        # 搜索微信公众号：匹配 display_name、description
+        # 注意：wechat_accounts 表结构可能与模型不同，使用 try-except 兜底
+        from sqlalchemy import func
+
+        wechat_result = await session.execute(
+            select(WechatAccount)
+            .where(
+                or_(
+                    WechatAccount.display_name.ilike(search_pattern),
+                    func.coalesce(WechatAccount.description, "").ilike(search_pattern),
+                ),
+            )
+            .order_by(WechatAccount.is_active.desc(), WechatAccount.display_name)
+            .limit(limit)
+        )
+        wechat_accounts = wechat_result.scalars().all()
+        results["wechat"] = [
+            {
+                "id": acc.id,
+                "type": "wechat",
+                "code": getattr(acc, 'account_name', str(acc.id)),
+                "name": acc.display_name,
+                "description": acc.description or "",
+                "is_active": acc.is_active,
+            }
+            for acc in wechat_accounts
+        ]
+    except Exception as e:
+        logger.warning(f"WeChat search skipped: {e}")
+        # 微信搜索失败不影响其他搜索结果
+
+    return results
+
+
 # ============================================================================
 # Subscription API Endpoints
 # ============================================================================
@@ -690,10 +817,13 @@ async def list_subscriptions(
     Returns:
         Dict[str, Any]: Subscription list payload.
     """
-    # 查询当前用户的所有订阅记录，按数据源类型和 ID 排序
+    # 查询当前用户的所有活跃订阅记录，按数据源类型和 ID 排序
     result = await session.execute(
         select(UserSubscription)
-        .where(UserSubscription.user_id == user.id)
+        .where(
+            UserSubscription.user_id == user.id,
+            UserSubscription.is_active == True,
+        )
         .order_by(UserSubscription.source_type, UserSubscription.source_id)
     )
     subscriptions = result.scalars().all()

@@ -124,6 +124,7 @@
                 <a href="#" class="nav-item" onclick="switchSection('topics')">🏷️ 主题管理</a>
                 <a href="#" class="nav-item" onclick="switchSection('reports')">📄 报告管理</a>
                 <a href="#" class="nav-item" onclick="switchSection('backups')">💾 备份管理</a>
+                <a href="#" class="nav-item" onclick="switchSection('roles')">🔐 角色管理</a>
                 <a href="#" class="nav-item" onclick="switchSection('audit')">📋 审计日志</a>
                 <a href="#" class="nav-item" onclick="switchSection('config')">⚙️ 系统配置</a>
                 <a href="/researchpulse/" class="nav-item">🏠 返回首页</a>
@@ -1157,6 +1158,38 @@
                     </div>
                 </div>
             </div>
+            <!-- Roles Management Section -->
+            <div id="section-roles" class="section" style="display:none;">
+                <div class="page-header">
+                    <h1>角色管理</h1>
+                    <p>管理系统角色与权限分配，支持创建自定义角色并配置细粒度权限</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>角色列表</h3>
+                        <button class="btn btn-primary" onclick="showAddRoleModal()">新建角色</button>
+                    </div>
+                    <div class="card-body">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>角色名称</th>
+                                    <th>描述</th>
+                                    <th>权限数量</th>
+                                    <th>用户数量</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="role-list">
+                                <tr><td colspan="7">加载中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1222,6 +1255,7 @@
             if (name === 'events') loadEvents();
             if (name === 'topics') loadTopics();
             if (name === 'reports') loadReports();
+            if (name === 'roles') loadRoles();
         }
 
         // Dashboard
@@ -1385,6 +1419,7 @@
                         <td><span class="badge ${f.is_active ? 'badge-success' : 'badge-warning'}">${f.is_active ? '活跃' : '禁用'}</span></td>
                         <td>${f.last_fetched_at ? formatDate(f.last_fetched_at) : '从未'}</td>
                         <td>
+                            <button class="btn btn-sm btn-primary" onclick="showEditRssModal(${f.id}, '${escapeHtml(f.title).replace(/'/g, "\\'")}', '${escapeHtml(f.feed_url || '').replace(/'/g, "\\'")}', '${escapeHtml(f.category || '').replace(/'/g, "\\'")}', '${escapeHtml(f.site_url || '').replace(/'/g, "\\'")}')">编辑</button>
                             <button class="btn btn-sm ${f.is_active ? 'btn-danger' : 'btn-success'}" onclick="toggleRssFeed(${f.id}, ${!f.is_active})">
                                 ${f.is_active ? '禁用' : '启用'}
                             </button>
@@ -1678,6 +1713,66 @@
             }
         }
 
+        function showEditRssModal(feedId, title, feedUrl, category, siteUrl) {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content" style="width: 500px;">
+                    <div class="modal-header">
+                        <h3>编辑 RSS 源</h3>
+                        <span class="modal-close" onclick="this.closest('.modal').remove()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label class="form-label">标题</label>
+                            <input type="text" class="form-input" id="edit-rss-title" value="${escapeHtml(title)}">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label class="form-label">Feed URL</label>
+                            <input type="text" class="form-input" id="edit-rss-url" value="${escapeHtml(feedUrl)}">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label class="form-label">分类</label>
+                            <input type="text" class="form-input" id="edit-rss-category" value="${escapeHtml(category)}">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label class="form-label">网站 URL</label>
+                            <input type="text" class="form-input" id="edit-rss-site-url" value="${escapeHtml(siteUrl)}">
+                        </div>
+                        <button class="btn btn-primary" onclick="saveEditRss(${feedId})">保存</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function saveEditRss(feedId) {
+            const token = localStorage.getItem('access_token');
+            const data = {
+                title: document.getElementById('edit-rss-title').value,
+                feed_url: document.getElementById('edit-rss-url').value,
+                category: document.getElementById('edit-rss-category').value,
+                site_url: document.getElementById('edit-rss-site-url').value,
+            };
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/rss/${feedId}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (res.ok) {
+                    document.querySelector('.modal').remove();
+                    loadRssFeeds();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '保存失败');
+                }
+            } catch (e) {
+                alert('保存失败');
+            }
+        }
+
         function toggleSelectAll(type) {
             const checkboxes = document.querySelectorAll(`#${type}-list input[type="checkbox"]`);
             const selectAll = document.getElementById(`${type}-select-all`);
@@ -1699,23 +1794,27 @@
 
             if (currentCrawlerTab === 'arxiv') {
                 try {
-                    const res = await fetch(`${API_BASE}/categories`);
+                    const res = await fetch(`${ADMIN_BASE}/sources/arxiv?page_size=500`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
                     const data = await res.json();
-                    
-                    // Default categories to crawl
-                    const defaultCategories = ['cs.LG', 'cs.CV', 'cs.IR', 'cs.CL', 'cs.DC'];
-                    
+                    const cats = data.categories || [];
+
                     container.innerHTML = `
-                        <div class="category-grid">
-                            ${data.categories.map(c => `
-                                <div class="category-item ${defaultCategories.includes(c.code) ? 'enabled' : ''}">
+                        <div style="margin-bottom: 12px; display: flex; gap: 8px;">
+                            <input type="text" class="form-input" id="crawler-arxiv-search" placeholder="搜索类目..." style="flex:1;" oninput="filterCrawlerList()">
+                        </div>
+                        <div class="category-grid" id="crawler-arxiv-grid">
+                            ${cats.map(c => `
+                                <div class="category-item ${c.is_active ? 'enabled' : ''}" data-code="${(c.code||'').toLowerCase()}" data-name="${(c.name||'').toLowerCase()}">
                                     <div>
                                         <code>${c.code}</code>
                                         <span style="margin-left: 8px; color: #333;">${c.name}</span>
                                     </div>
-                                    <input type="checkbox" 
-                                        data-code="${c.code}" 
-                                        ${defaultCategories.includes(c.code) ? 'checked' : ''}>
+                                    <input type="checkbox"
+                                        data-id="${c.id}"
+                                        data-code="${c.code}"
+                                        ${c.is_active ? 'checked' : ''}>
                                 </div>
                             `).join('')}
                         </div>
@@ -1725,17 +1824,27 @@
                 }
             } else {
                 try {
-                    const res = await fetch(`${API_BASE}/feeds`);
+                    const res = await fetch(`${ADMIN_BASE}/sources/rss?page_size=500`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
                     const data = await res.json();
+                    const feeds = data.feeds || [];
+
                     container.innerHTML = `
-                        <div class="category-grid">
-                            ${data.feeds.map(f => `
-                                <div class="category-item">
+                        <div style="margin-bottom: 12px; display: flex; gap: 8px;">
+                            <input type="text" class="form-input" id="crawler-rss-search" placeholder="搜索RSS源..." style="flex:1;" oninput="filterCrawlerList()">
+                            <button class="btn btn-primary btn-sm" onclick="showAddRssModal()">+ 添加 RSS 源</button>
+                        </div>
+                        <div class="category-grid" id="crawler-rss-grid">
+                            ${feeds.map(f => `
+                                <div class="category-item ${f.is_active ? 'enabled' : ''}" data-name="${(f.title||'').toLowerCase()}" data-cat="${(f.category||'').toLowerCase()}">
                                     <div>
                                         <strong>${escapeHtml(f.title)}</strong>
                                         <span style="margin-left: 8px; color: #888;">${f.category || ''}</span>
                                     </div>
-                                    <input type="checkbox" data-id="${f.id}" checked>
+                                    <input type="checkbox"
+                                        data-id="${f.id}"
+                                        ${f.is_active ? 'checked' : ''}>
                                 </div>
                             `).join('')}
                         </div>
@@ -1746,12 +1855,87 @@
             }
         }
 
+        function filterCrawlerList() {
+            const searchId = currentCrawlerTab === 'arxiv' ? 'crawler-arxiv-search' : 'crawler-rss-search';
+            const gridId = currentCrawlerTab === 'arxiv' ? 'crawler-arxiv-grid' : 'crawler-rss-grid';
+            const keyword = (document.getElementById(searchId)?.value || '').toLowerCase();
+            const grid = document.getElementById(gridId);
+            if (!grid) return;
+            grid.querySelectorAll('.category-item').forEach(item => {
+                const code = item.dataset.code || '';
+                const name = item.dataset.name || '';
+                const cat = item.dataset.cat || '';
+                const match = !keyword || code.includes(keyword) || name.includes(keyword) || cat.includes(keyword);
+                item.style.display = match ? '' : 'none';
+            });
+        }
+
         async function saveCrawlConfig() {
-            alert('配置已保存');
+            const token = localStorage.getItem('access_token');
+
+            if (currentCrawlerTab === 'arxiv') {
+                const checkboxes = document.querySelectorAll('#crawler-arxiv-grid input[type="checkbox"]');
+                const enableIds = [];
+                const disableIds = [];
+                checkboxes.forEach(cb => {
+                    const id = parseInt(cb.dataset.id);
+                    if (cb.checked) enableIds.push(id);
+                    else disableIds.push(id);
+                });
+
+                try {
+                    if (enableIds.length > 0) {
+                        await fetch(`${ADMIN_BASE}/sources/arxiv/batch?is_active=true&${enableIds.map(id => 'category_ids=' + id).join('&')}`, {
+                            method: 'PUT',
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                    }
+                    if (disableIds.length > 0) {
+                        await fetch(`${ADMIN_BASE}/sources/arxiv/batch?is_active=false&${disableIds.map(id => 'category_ids=' + id).join('&')}`, {
+                            method: 'PUT',
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                    }
+                    alert('ArXiv 抓取配置已保存');
+                } catch (e) {
+                    alert('保存失败: ' + e.message);
+                }
+            } else {
+                const checkboxes = document.querySelectorAll('#crawler-rss-grid input[type="checkbox"]');
+                try {
+                    for (const cb of checkboxes) {
+                        await fetch(`${ADMIN_BASE}/sources/rss/${cb.dataset.id}`, {
+                            method: 'PUT',
+                            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ is_active: cb.checked })
+                        });
+                    }
+                    alert('RSS 抓取配置已保存');
+                } catch (e) {
+                    alert('保存失败: ' + e.message);
+                }
+            }
         }
 
         async function triggerCrawl() {
-            alert('抓取任务已触发');
+            const token = localStorage.getItem('access_token');
+            const sourceType = currentCrawlerTab === 'arxiv' ? 'arxiv' : 'rss';
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/crawler/trigger`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source_type: sourceType })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(`抓取完成！新增 ${data.new_articles || 0} 篇文章，耗时 ${data.duration || '?'}s`);
+                } else {
+                    alert(data.detail || '抓取失败');
+                }
+            } catch (e) {
+                alert('触发抓取失败: ' + e.message);
+            }
         }
 
         // Users
@@ -1768,10 +1952,11 @@
                         <td>${u.id}</td>
                         <td>${escapeHtml(u.username)}</td>
                         <td>${escapeHtml(u.email)}</td>
-                        <td>${u.roles.join(', ')}</td>
+                        <td><span class="badge badge-info">${u.roles.join(', ') || '无角色'}</span></td>
                         <td><span class="badge ${u.is_active ? 'badge-success' : 'badge-danger'}">${u.is_active ? '正常' : '禁用'}</span></td>
                         <td>${formatDate(u.created_at)}</td>
                         <td>
+                            <button class="btn btn-sm btn-primary" onclick="showChangeRoleModal(${u.id}, '${u.username}', '${u.roles[0] || ''}')">修改角色</button>
                             <button class="btn btn-sm ${u.is_active ? 'btn-danger' : 'btn-success'}" onclick="toggleUser(${u.id}, ${u.is_active})">
                                 ${u.is_active ? '禁用' : '启用'}
                             </button>
@@ -1797,6 +1982,65 @@
                 loadUsers();
             } catch (e) {
                 alert('操作失败');
+            }
+        }
+
+        async function showChangeRoleModal(userId, username, currentRole) {
+            const token = localStorage.getItem('access_token');
+            // 获取所有角色
+            let roles = [];
+            try {
+                const res = await fetch(`${ADMIN_BASE}/roles`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                roles = data.roles || [];
+            } catch (e) {
+                alert('获取角色列表失败');
+                return;
+            }
+
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content" style="width: 400px;">
+                    <div class="modal-header">
+                        <h3>修改用户角色</h3>
+                        <span class="modal-close" onclick="this.closest('.modal').remove()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <p style="margin-bottom: 12px;">用户: <strong>${escapeHtml(username)}</strong></p>
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label class="form-label">选择角色</label>
+                            <select class="form-select" id="change-role-select" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+                                ${roles.map(r => `<option value="${escapeHtml(r.name)}" ${r.name === currentRole ? 'selected' : ''}>${escapeHtml(r.name)} - ${escapeHtml(r.description)}</option>`).join('')}
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="saveUserRole(${userId})">保存</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function saveUserRole(userId) {
+            const token = localStorage.getItem('access_token');
+            const roleName = document.getElementById('change-role-select').value;
+            try {
+                const res = await fetch(`${ADMIN_BASE}/users/${userId}/role`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role_name: roleName })
+                });
+                if (res.ok) {
+                    document.querySelector('.modal').remove();
+                    loadUsers();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '修改失败');
+                }
+            } catch (e) {
+                alert('修改角色失败');
             }
         }
 
@@ -3091,6 +3335,289 @@
                 loadReports();
             } catch (e) {
                 alert('删除失败');
+            }
+        }
+
+        // Roles Management
+        async function loadRoles() {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/roles`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const tbody = document.getElementById('role-list');
+                const builtinRoles = ['superuser', 'admin', 'user', 'guest'];
+                tbody.innerHTML = data.roles.map(r => `
+                    <tr>
+                        <td>${r.id}</td>
+                        <td><span class="badge badge-info">${escapeHtml(r.name)}</span></td>
+                        <td>${escapeHtml(r.description || '')}</td>
+                        <td>${r.permissions ? r.permissions.length : 0}</td>
+                        <td>${r.user_count || 0}</td>
+                        <td>${formatDate(r.created_at)}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="showEditRoleModal(${r.id})">编辑</button>
+                            ${builtinRoles.includes(r.name) ? '' : `<button class="btn btn-sm btn-danger" onclick="deleteRole(${r.id}, '${escapeHtml(r.name)}')">删除</button>`}
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load roles:', e);
+            }
+        }
+
+        async function showAddRoleModal() {
+            const token = localStorage.getItem('access_token');
+            let permissionsData = { grouped: {} };
+            try {
+                const res = await fetch(`${ADMIN_BASE}/permissions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                permissionsData = await res.json();
+            } catch (e) {
+                console.error('Failed to load permissions:', e);
+            }
+
+            const grouped = permissionsData.grouped || {};
+            let permHtml = '';
+            for (const [resource, perms] of Object.entries(grouped)) {
+                permHtml += `<div style="margin-bottom: 12px;">
+                    <div style="font-weight: 600; font-size: 13px; color: #333; margin-bottom: 6px; border-bottom: 1px solid #eee; padding-bottom: 4px;">
+                        ${escapeHtml(resource)}
+                        <label style="font-weight: normal; font-size: 12px; margin-left: 8px; cursor: pointer;">
+                            <input type="checkbox" onchange="toggleResourcePerms(this, 'add', '${resource}')"> 全选
+                        </label>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                        ${perms.map(p => `
+                            <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; min-width: 140px; cursor: pointer;" class="perm-item-add" data-resource="${resource}">
+                                <input type="checkbox" name="add-perm" value="${p.id}">
+                                ${escapeHtml(p.action)}
+                                <span style="color: #999; font-size: 11px;">${escapeHtml(p.description || '')}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>`;
+            }
+
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.id = 'role-add-modal';
+            modal.innerHTML = `
+                <div class="modal-content" style="width: 700px;">
+                    <div class="modal-header">
+                        <h3>新建角色</h3>
+                        <span class="modal-close" onclick="document.getElementById('role-add-modal').remove()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="form-label">角色名称</label>
+                            <input type="text" class="form-input" id="add-role-name" placeholder="例如: editor, reviewer">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">角色描述</label>
+                            <input type="text" class="form-input" id="add-role-desc" placeholder="简要描述该角色的用途">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">权限分配</label>
+                            <div style="max-height: 400px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px;">
+                                ${permHtml}
+                            </div>
+                        </div>
+                        <div style="text-align: right; margin-top: 16px;">
+                            <button class="btn" onclick="document.getElementById('role-add-modal').remove()">取消</button>
+                            <button class="btn btn-primary" style="margin-left: 8px;" onclick="saveNewRole()">创建</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function toggleResourcePerms(checkbox, prefix, resource) {
+            const checked = checkbox.checked;
+            document.querySelectorAll(`.perm-item-${prefix}[data-resource="${resource}"] input[type="checkbox"]`).forEach(cb => {
+                cb.checked = checked;
+            });
+        }
+
+        async function saveNewRole() {
+            const name = document.getElementById('add-role-name').value.trim();
+            const description = document.getElementById('add-role-desc').value.trim();
+            if (!name) {
+                alert('请输入角色名称');
+                return;
+            }
+            const permissionIds = [];
+            document.querySelectorAll('input[name="add-perm"]:checked').forEach(cb => {
+                permissionIds.push(parseInt(cb.value));
+            });
+
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/roles`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, description, permission_ids: permissionIds })
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert('创建失败: ' + (err.detail || JSON.stringify(err)));
+                    return;
+                }
+                document.getElementById('role-add-modal').remove();
+                loadRoles();
+                alert('角色创建成功');
+            } catch (e) {
+                alert('创建失败: ' + e.message);
+            }
+        }
+
+        async function showEditRoleModal(roleId) {
+            const token = localStorage.getItem('access_token');
+            let roleData = null;
+            let permissionsData = { grouped: {} };
+
+            try {
+                const [rolesRes, permsRes] = await Promise.all([
+                    fetch(`${ADMIN_BASE}/roles`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${ADMIN_BASE}/permissions`, { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+                const rolesData = await rolesRes.json();
+                permissionsData = await permsRes.json();
+                roleData = rolesData.roles.find(r => r.id === roleId);
+            } catch (e) {
+                console.error('Failed to load role data:', e);
+                alert('加载角色数据失败');
+                return;
+            }
+
+            if (!roleData) {
+                alert('未找到该角色');
+                return;
+            }
+
+            const currentPermIds = new Set((roleData.permissions || []).map(p => p.id));
+            const builtinRoles = ['superuser', 'admin', 'user', 'guest'];
+            const isBuiltin = builtinRoles.includes(roleData.name);
+            const grouped = permissionsData.grouped || {};
+
+            let permHtml = '';
+            for (const [resource, perms] of Object.entries(grouped)) {
+                const allChecked = perms.every(p => currentPermIds.has(p.id));
+                permHtml += `<div style="margin-bottom: 12px;">
+                    <div style="font-weight: 600; font-size: 13px; color: #333; margin-bottom: 6px; border-bottom: 1px solid #eee; padding-bottom: 4px;">
+                        ${escapeHtml(resource)}
+                        <label style="font-weight: normal; font-size: 12px; margin-left: 8px; cursor: pointer;">
+                            <input type="checkbox" ${allChecked ? 'checked' : ''} onchange="toggleResourcePerms(this, 'edit', '${resource}')"> 全选
+                        </label>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                        ${perms.map(p => `
+                            <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; min-width: 140px; cursor: pointer;" class="perm-item-edit" data-resource="${resource}">
+                                <input type="checkbox" name="edit-perm" value="${p.id}" ${currentPermIds.has(p.id) ? 'checked' : ''}>
+                                ${escapeHtml(p.action)}
+                                <span style="color: #999; font-size: 11px;">${escapeHtml(p.description || '')}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>`;
+            }
+
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.id = 'role-edit-modal';
+            modal.innerHTML = `
+                <div class="modal-content" style="width: 700px;">
+                    <div class="modal-header">
+                        <h3>编辑角色: ${escapeHtml(roleData.name)}</h3>
+                        <span class="modal-close" onclick="document.getElementById('role-edit-modal').remove()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="form-label">角色名称</label>
+                            <input type="text" class="form-input" id="edit-role-name" value="${escapeHtml(roleData.name)}" ${isBuiltin ? 'disabled' : ''}>
+                            ${isBuiltin ? '<span style="font-size: 11px; color: #999;">内置角色名称不可修改</span>' : ''}
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">角色描述</label>
+                            <input type="text" class="form-input" id="edit-role-desc" value="${escapeHtml(roleData.description || '')}">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">权限分配 (已选 <span id="edit-perm-count">${currentPermIds.size}</span> 项)</label>
+                            <div style="max-height: 400px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px;">
+                                ${permHtml}
+                            </div>
+                        </div>
+                        <div style="text-align: right; margin-top: 16px;">
+                            <button class="btn" onclick="document.getElementById('role-edit-modal').remove()">取消</button>
+                            <button class="btn btn-primary" style="margin-left: 8px;" onclick="saveEditRole(${roleId})">保存</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            // Live count update
+            modal.querySelectorAll('input[name="edit-perm"]').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    const count = modal.querySelectorAll('input[name="edit-perm"]:checked').length;
+                    document.getElementById('edit-perm-count').textContent = count;
+                });
+            });
+        }
+
+        async function saveEditRole(roleId) {
+            const name = document.getElementById('edit-role-name').value.trim();
+            const description = document.getElementById('edit-role-desc').value.trim();
+            if (!name) {
+                alert('角色名称不能为空');
+                return;
+            }
+            const permissionIds = [];
+            document.querySelectorAll('input[name="edit-perm"]:checked').forEach(cb => {
+                permissionIds.push(parseInt(cb.value));
+            });
+
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/roles/${roleId}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, description, permission_ids: permissionIds })
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert('保存失败: ' + (err.detail || JSON.stringify(err)));
+                    return;
+                }
+                document.getElementById('role-edit-modal').remove();
+                loadRoles();
+                alert('角色更新成功');
+            } catch (e) {
+                alert('保存失败: ' + e.message);
+            }
+        }
+
+        async function deleteRole(roleId, roleName) {
+            if (!confirm(`确定要删除角色 "${roleName}" 吗？删除后无法恢复。`)) return;
+
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/roles/${roleId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert('删除失败: ' + (err.detail || JSON.stringify(err)));
+                    return;
+                }
+                loadRoles();
+                alert('角色已删除');
+            } catch (e) {
+                alert('删除失败: ' + e.message);
             }
         }
 

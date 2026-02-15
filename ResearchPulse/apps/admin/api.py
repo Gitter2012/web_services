@@ -37,7 +37,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 from core.database import get_session
 from core.dependencies import Superuser, require_permissions
 from core.models.user import User
-from core.models.permission import Role, Permission
+from core.models.permission import Role, Permission, RolePermission
+from core.models.user import User, UserRole
 from apps.crawler.models import (
     Article,
     ArxivCategory,
@@ -3412,4 +3413,186 @@ async def get_sources_stats(
             "total": wechat_total.scalar() or 0,
             "active": wechat_active.scalar() or 0,
         },
+    }
+
+
+# ============================================================================
+# RBAC: Role & Permission Management
+# ============================================================================
+# 角色和权限管理 API —— 提供 RBAC 体系的完整管理能力
+
+
+class RoleCreateUpdate(BaseModel):
+    """Request schema for creating or updating a role."""
+    name: str
+    description: str = ""
+    permission_ids: List[int] = []
+
+
+@router.get("/roles")
+async def list_roles(
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """List all roles with their permissions and user counts."""
+    result = await session.execute(
+        select(Role).order_by(Role.id)
+    )
+    roles = result.scalars().all()
+
+    role_list = []
+    for role in roles:
+        # 统计该角色关联的用户数
+        user_count_result = await session.execute(
+            select(func.count(UserRole.user_id)).where(UserRole.role_id == role.id)
+        )
+        user_count = user_count_result.scalar() or 0
+
+        role_list.append({
+            "id": role.id,
+            "name": role.name,
+            "description": role.description,
+            "permissions": [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "resource": p.resource,
+                    "action": p.action,
+                    "description": p.description,
+                }
+                for p in role.permissions
+            ],
+            "user_count": user_count,
+            "created_at": role.created_at.isoformat() if role.created_at else None,
+        })
+
+    return {"roles": role_list}
+
+
+@router.post("/roles")
+async def create_role(
+    data: RoleCreateUpdate,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Create a new role with specified permissions."""
+    # 检查角色名是否已存在
+    existing = await session.execute(
+        select(Role).where(Role.name == data.name)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail=f"Role '{data.name}' already exists")
+
+    # 创建角色
+    role = Role(name=data.name, description=data.description)
+    session.add(role)
+    await session.flush()  # 获取 role.id
+
+    # 关联权限
+    if data.permission_ids:
+        perm_result = await session.execute(
+            select(Permission).where(Permission.id.in_(data.permission_ids))
+        )
+        permissions = perm_result.scalars().all()
+        role.permissions = list(permissions)
+
+    return {"status": "ok", "role_id": role.id, "message": f"Role '{data.name}' created"}
+
+
+@router.put("/roles/{role_id}")
+async def update_role(
+    role_id: int,
+    data: RoleCreateUpdate,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Update a role's name, description and permissions."""
+    result = await session.execute(select(Role).where(Role.id == role_id))
+    role = result.scalar_one_or_none()
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    # 检查名称冲突
+    if data.name != role.name:
+        name_check = await session.execute(
+            select(Role).where(Role.name == data.name)
+        )
+        if name_check.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail=f"Role '{data.name}' already exists")
+
+    role.name = data.name
+    role.description = data.description
+
+    # 更新权限关联
+    if data.permission_ids is not None:
+        perm_result = await session.execute(
+            select(Permission).where(Permission.id.in_(data.permission_ids))
+        )
+        permissions = perm_result.scalars().all()
+        role.permissions = list(permissions)
+
+    return {"status": "ok", "message": f"Role '{role.name}' updated"}
+
+
+@router.delete("/roles/{role_id}")
+async def delete_role(
+    role_id: int,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Delete a role. Fails if users are still assigned to it."""
+    result = await session.execute(select(Role).where(Role.id == role_id))
+    role = result.scalar_one_or_none()
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    # 禁止删除内置角色
+    if role.name in ("superuser", "admin", "user", "guest"):
+        raise HTTPException(status_code=400, detail=f"Cannot delete built-in role '{role.name}'")
+
+    # 检查是否还有用户关联
+    user_count_result = await session.execute(
+        select(func.count(UserRole.user_id)).where(UserRole.role_id == role.id)
+    )
+    user_count = user_count_result.scalar() or 0
+    if user_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete role '{role.name}': {user_count} user(s) still assigned"
+        )
+
+    await session.delete(role)
+    return {"status": "ok", "message": f"Role '{role.name}' deleted"}
+
+
+@router.get("/permissions")
+async def list_permissions(
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """List all permissions grouped by resource."""
+    result = await session.execute(
+        select(Permission).order_by(Permission.resource, Permission.action)
+    )
+    permissions = result.scalars().all()
+
+    # 按 resource 分组
+    grouped: Dict[str, list] = {}
+    for p in permissions:
+        if p.resource not in grouped:
+            grouped[p.resource] = []
+        grouped[p.resource].append({
+            "id": p.id,
+            "name": p.name,
+            "resource": p.resource,
+            "action": p.action,
+            "description": p.description,
+        })
+
+    return {
+        "permissions": [
+            {"id": p.id, "name": p.name, "resource": p.resource, "action": p.action, "description": p.description}
+            for p in permissions
+        ],
+        "grouped": grouped,
     }

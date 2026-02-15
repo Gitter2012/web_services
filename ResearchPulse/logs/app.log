@@ -1,0 +1,312 @@
+2026-02-15 11:09:44 | INFO     | uvicorn.error | Started server process [663353]
+2026-02-15 11:09:44 | INFO     | uvicorn.error | Waiting for application startup.
+2026-02-15 11:09:44 | INFO     | main | Starting ResearchPulse v2...
+2026-02-15 11:09:44 | INFO     | core.database | Database engine created
+2026-02-15 11:09:44 | INFO     | core.database | Database tables created/verified
+2026-02-15 11:09:44 | INFO     | main | Database initialized
+2026-02-15 11:09:44 | INFO     | common.feature_config | Seeded 0 default config rows (53 already existed)
+2026-02-15 11:09:44 | INFO     | main | Feature config defaults seeded
+2026-02-15 11:09:44 | INFO     | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-02-15 11:09:44 | INFO     | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-02-15 11:09:44 | INFO     | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-02-15 11:09:44 | INFO     | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-02-15 11:09:44 | INFO     | apps.scheduler.tasks | AI processing job skipped (feature.ai_processor disabled)
+2026-02-15 11:09:44 | INFO     | apps.scheduler.tasks | Embedding computation job skipped (feature.embedding disabled)
+2026-02-15 11:09:44 | INFO     | apps.scheduler.tasks | Event clustering job skipped (feature.event_clustering disabled)
+2026-02-15 11:09:44 | INFO     | apps.scheduler.tasks | Topic discovery job skipped (feature.topic_radar disabled)
+2026-02-15 11:09:44 | INFO     | apscheduler.scheduler | Added job "Crawl articles from all sources" to job store "default"
+2026-02-15 11:09:44 | INFO     | apscheduler.scheduler | Added job "Cleanup old articles" to job store "default"
+2026-02-15 11:09:44 | INFO     | apscheduler.scheduler | Added job "Backup articles before cleanup" to job store "default"
+2026-02-15 11:09:44 | INFO     | apscheduler.scheduler | Added job "Cleanup duplicate articles" to job store "default"
+2026-02-15 11:09:44 | INFO     | apscheduler.scheduler | Scheduler started
+2026-02-15 11:09:44 | INFO     | apps.scheduler.tasks | Scheduler started
+2026-02-15 11:09:44 | INFO     | main | Scheduler started
+2026-02-15 11:09:44 | INFO     | main | ResearchPulse v2 started successfully
+2026-02-15 11:09:44 | INFO     | uvicorn.error | Application startup complete.
+2026-02-15 11:09:44 | INFO     | uvicorn.error | Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2026-02-15 11:10:24 | ERROR    | main | Unhandled exception: (pymysql.err.OperationalError) (1054, "Unknown column 'backup_records.updated_at' in 'field list'")
+[SQL: SELECT backup_records.id, backup_records.backup_date, backup_records.backup_file, backup_records.backup_size, backup_records.article_count, backup_records.status, backup_records.completed_at, backup_records.error_message, backup_records.created_at, backup_records.updated_at 
+FROM backup_records ORDER BY backup_records.created_at DESC 
+ LIMIT %s, %s]
+[parameters: (0, 20)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 230, in execute
+    self._adapt_connection._handle_exception(error)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 368, in _handle_exception
+    raise error.with_traceback(exc_info[2])
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 228, in execute
+    return self.await_(self._execute_async(operation, parameters))
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 251, in _execute_async
+    result = await self._cursor.execute(operation, parameters)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/cursors.py", line 239, in execute
+    await self._query(query)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/cursors.py", line 457, in _query
+    await conn.query(q)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 469, in query
+    await self._read_query_result(unbuffered=unbuffered)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 683, in _read_query_result
+    await result.read()
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 1164, in read
+    first_packet = await self.connection._read_packet()
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 652, in _read_packet
+    packet.raise_for_error()
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/pymysql/protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/pymysql/err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.OperationalError: (1054, "Unknown column 'backup_records.updated_at' in 'field list'")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/middleware/cors.py", line 87, in __call__
+    await self.app(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/fastapi/routing.py", line 119, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/fastapi/routing.py", line 105, in app
+    response = await f(request)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/fastapi/routing.py", line 424, in app
+    raw_response = await run_endpoint_function(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/fastapi/routing.py", line 312, in run_endpoint_function
+    return await dependant.call(**values)
+  File "/data/workspace/work/codes/web_services/ResearchPulse/apps/admin/api.py", line 950, in list_backups
+    result = await session.execute(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/ext/asyncio/session.py", line 449, in execute
+    result = await greenlet_spawn(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 203, in greenlet_spawn
+    result = context.switch(value)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/sql/elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 230, in execute
+    self._adapt_connection._handle_exception(error)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 368, in _handle_exception
+    raise error.with_traceback(exc_info[2])
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 228, in execute
+    return self.await_(self._execute_async(operation, parameters))
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 251, in _execute_async
+    result = await self._cursor.execute(operation, parameters)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/cursors.py", line 239, in execute
+    await self._query(query)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/cursors.py", line 457, in _query
+    await conn.query(q)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 469, in query
+    await self._read_query_result(unbuffered=unbuffered)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 683, in _read_query_result
+    await result.read()
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 1164, in read
+    first_packet = await self.connection._read_packet()
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 652, in _read_packet
+    packet.raise_for_error()
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/pymysql/protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/pymysql/err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (1054, "Unknown column 'backup_records.updated_at' in 'field list'")
+[SQL: SELECT backup_records.id, backup_records.backup_date, backup_records.backup_file, backup_records.backup_size, backup_records.article_count, backup_records.status, backup_records.completed_at, backup_records.error_message, backup_records.created_at, backup_records.updated_at 
+FROM backup_records ORDER BY backup_records.created_at DESC 
+ LIMIT %s, %s]
+[parameters: (0, 20)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-02-15 11:10:24 | ERROR    | uvicorn.error | Exception in ASGI application
+Traceback (most recent call last):
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 230, in execute
+    self._adapt_connection._handle_exception(error)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 368, in _handle_exception
+    raise error.with_traceback(exc_info[2])
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 228, in execute
+    return self.await_(self._execute_async(operation, parameters))
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 251, in _execute_async
+    result = await self._cursor.execute(operation, parameters)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/cursors.py", line 239, in execute
+    await self._query(query)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/cursors.py", line 457, in _query
+    await conn.query(q)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 469, in query
+    await self._read_query_result(unbuffered=unbuffered)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 683, in _read_query_result
+    await result.read()
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 1164, in read
+    first_packet = await self.connection._read_packet()
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 652, in _read_packet
+    packet.raise_for_error()
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/pymysql/protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/pymysql/err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.OperationalError: (1054, "Unknown column 'backup_records.updated_at' in 'field list'")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/uvicorn/protocols/http/httptools_impl.py", line 416, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/fastapi/applications.py", line 1134, in __call__
+    await super().__call__(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/applications.py", line 107, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/middleware/cors.py", line 87, in __call__
+    await self.app(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/fastapi/routing.py", line 119, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/fastapi/routing.py", line 105, in app
+    response = await f(request)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/fastapi/routing.py", line 424, in app
+    raw_response = await run_endpoint_function(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/fastapi/routing.py", line 312, in run_endpoint_function
+    return await dependant.call(**values)
+  File "/data/workspace/work/codes/web_services/ResearchPulse/apps/admin/api.py", line 950, in list_backups
+    result = await session.execute(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/ext/asyncio/session.py", line 449, in execute
+    result = await greenlet_spawn(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 203, in greenlet_spawn
+    result = context.switch(value)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/sql/elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 230, in execute
+    self._adapt_connection._handle_exception(error)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 368, in _handle_exception
+    raise error.with_traceback(exc_info[2])
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 228, in execute
+    return self.await_(self._execute_async(operation, parameters))
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/sqlalchemy/connectors/asyncio.py", line 251, in _execute_async
+    result = await self._cursor.execute(operation, parameters)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/cursors.py", line 239, in execute
+    await self._query(query)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/cursors.py", line 457, in _query
+    await conn.query(q)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 469, in query
+    await self._read_query_result(unbuffered=unbuffered)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 683, in _read_query_result
+    await result.read()
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 1164, in read
+    first_packet = await self.connection._read_packet()
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/aiomysql/connection.py", line 652, in _read_packet
+    packet.raise_for_error()
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/pymysql/protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "/data/workspace/mambaforge/envs/python310/lib/python3.10/site-packages/pymysql/err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (1054, "Unknown column 'backup_records.updated_at' in 'field list'")
+[SQL: SELECT backup_records.id, backup_records.backup_date, backup_records.backup_file, backup_records.backup_size, backup_records.article_count, backup_records.status, backup_records.completed_at, backup_records.error_message, backup_records.created_at, backup_records.updated_at 
+FROM backup_records ORDER BY backup_records.created_at DESC 
+ LIMIT %s, %s]
+[parameters: (0, 20)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-02-15 11:11:20 | INFO     | uvicorn.error | Shutting down
+2026-02-15 11:11:20 | INFO     | uvicorn.error | Waiting for application shutdown.
+2026-02-15 11:11:20 | INFO     | main | Shutting down ResearchPulse v2...
+2026-02-15 11:11:20 | INFO     | apps.scheduler.tasks | Scheduler stopped
+2026-02-15 11:11:20 | INFO     | core.database | Database connections closed
+2026-02-15 11:11:20 | INFO     | main | ResearchPulse v2 shutdown complete
+2026-02-15 11:11:20 | INFO     | apscheduler.scheduler | Scheduler has been shut down
+2026-02-15 11:11:20 | INFO     | uvicorn.error | Application shutdown complete.
+2026-02-15 11:11:20 | INFO     | uvicorn.error | Finished server process [663353]
