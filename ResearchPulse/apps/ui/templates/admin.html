@@ -4,6 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>管理后台 - ResearchPulse</title>
+    <script>
+        // 动态检测代理前缀（提前执行，供静态 HTML 使用）
+        (function() {
+            var path = window.location.pathname;
+            var rpIndex = path.indexOf('/researchpulse');
+            var prefix = rpIndex > 0 ? path.substring(0, rpIndex) : '';
+            window.APP_BASE = prefix + '/researchpulse';
+            window.API_BASE = prefix + '/researchpulse/api';
+            window.AUTH_BASE = prefix + '/api/v1';
+            window.ADMIN_BASE = prefix + '/api/v1/admin';
+        })();
+    </script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; min-height: 100vh; }
@@ -1203,17 +1215,7 @@
     </div>
 
     <script>
-        // 动态检测代理前缀，支持反向代理部署
-        (function() {
-            const path = window.location.pathname;
-            // 查找 /researchpulse 在路径中的位置
-            const rpIndex = path.indexOf('/researchpulse');
-            const prefix = rpIndex > 0 ? path.substring(0, rpIndex) : '';
-            window.APP_BASE = prefix + '/researchpulse';
-            window.API_BASE = prefix + '/researchpulse/api';
-            window.AUTH_BASE = prefix + '/api/v1';
-            window.ADMIN_BASE = prefix + '/api/v1/admin';
-        })();
+        // APP_BASE 等变量已在 <head> 中定义
 
         let currentCrawlerTab = 'arxiv';
         let currentSourceTab = 'arxiv';
