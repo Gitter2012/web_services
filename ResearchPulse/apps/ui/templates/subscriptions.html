@@ -157,8 +157,8 @@
                 <span></span>
             </button>
             <div class="nav" id="nav-menu">
-                <a href="/researchpulse/">首页</a>
-                <a href="/researchpulse/subscriptions" class="active">订阅管理</a>
+                <a href="#" onclick="location.href=APP_BASE+'/'; return false;">首页</a>
+                <a href="#" onclick="location.href=APP_BASE+'/subscriptions'; return false;" class="active">订阅管理</a>
             </div>
             <div class="auth-area" id="auth-area">
                 <span class="user-info">👤 Loading...</span>
@@ -312,10 +312,10 @@
 
         function updateMobileNav(user) {
             const mobileNav = document.getElementById('mobile-nav');
-            let html = '<a href="/researchpulse/">首页</a>';
-            html += '<a href="/researchpulse/subscriptions" class="active">订阅管理</a>';
+            let html = `<a href="${APP_BASE}/">首页</a>`;
+            html += `<a href="${APP_BASE}/subscriptions">订阅管理</a>`;
             if (user && user.is_superuser) {
-                html += '<a href="/researchpulse/admin">管理后台</a>';
+                html += `<a href="${APP_BASE}/admin">管理后台</a>`;
             }
             if (user) {
                 html += `<a href="#" onclick="logout(); return false;">退出登录</a>`;
@@ -360,13 +360,13 @@
                 <span class="user-info">👤 ${currentUser.username}</span>
                 <a href="#" onclick="logout()">退出</a>
             `;
-            
+
             // 更新导航菜单，仅超级管理员显示管理后台
             const navMenu = document.getElementById('nav-menu');
-            let navHtml = '<a href="/researchpulse/">首页</a>';
-            navHtml += '<a href="/researchpulse/subscriptions" class="active">订阅管理</a>';
+            let navHtml = `<a href="${APP_BASE}/">首页</a>`;
+            navHtml += `<a href="${APP_BASE}/subscriptions" class="active">订阅管理</a>`;
             if (currentUser.is_superuser) {
-                navHtml += '<a href="/researchpulse/admin">管理后台</a>';
+                navHtml += `<a href="${APP_BASE}/admin">管理后台</a>`;
             }
             navMenu.innerHTML = navHtml;
         }
@@ -404,7 +404,7 @@
 
         function logout() {
             localStorage.removeItem('access_token');
-            location.href = '/researchpulse/';
+            location.href = APP_BASE + '/';
         }
 
         // Subscriptions

@@ -206,7 +206,7 @@
                 <a href="#" class="nav-item" onclick="switchSection('roles')">🔐 角色管理</a>
                 <a href="#" class="nav-item" onclick="switchSection('audit')">📋 审计日志</a>
                 <a href="#" class="nav-item" onclick="switchSection('config')">⚙️ 系统配置</a>
-                <a href="/researchpulse/" class="nav-item">🏠 返回首页</a>
+                <a href="#" class="nav-item" onclick="location.href=APP_BASE; return false;">🏠 返回首页</a>
             </nav>
         </div>
 
@@ -1256,7 +1256,7 @@
             const token = localStorage.getItem('access_token');
             if (!token) {
                 alert('请先登录');
-                location.href = '/researchpulse/';
+                location.href = APP_BASE + '/';
                 return;
             }
 
@@ -1268,16 +1268,16 @@
                     currentUser = await res.json();
                     if (!currentUser.is_superuser && !currentUser.roles?.includes('admin')) {
                         alert('需要管理员权限');
-                        location.href = '/researchpulse/';
+                        location.href = APP_BASE + '/';
                         return;
                     }
                     loadDashboard();
                 } else {
                     localStorage.removeItem('access_token');
-                    location.href = '/researchpulse/';
+                    location.href = APP_BASE + '/';
                 }
             } catch (e) {
-                location.href = '/researchpulse/';
+                location.href = APP_BASE + '/';
             }
         }
 

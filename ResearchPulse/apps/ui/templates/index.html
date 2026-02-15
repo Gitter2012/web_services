@@ -228,7 +228,7 @@
                 <span></span>
             </button>
             <div class="nav" id="nav-menu">
-                <a href="/researchpulse/" class="active">首页</a>
+                <a href="#" onclick="location.href=APP_BASE+'/'; return false;">首页</a>
                 <!-- 订阅管理和管理后台仅对登录用户显示 -->
             </div>
             <div class="auth-area" id="auth-area">
@@ -432,11 +432,11 @@
 
         function updateMobileNav(user) {
             const mobileNav = document.getElementById('mobile-nav');
-            let html = '<a href="/researchpulse/" class="active">首页</a>';
+            let html = `<a href="${APP_BASE}/">首页</a>`;
             if (user) {
-                html += `<a href="/researchpulse/subscriptions">订阅管理</a>`;
+                html += `<a href="#" onclick="goTo('subscriptions'); closeMobileMenu(); return false;">订阅管理</a>`;
                 if (user.is_superuser) {
-                    html += `<a href="/researchpulse/admin">管理后台</a>`;
+                    html += `<a href="#" onclick="goTo('admin'); closeMobileMenu(); return false;">管理后台</a>`;
                 }
                 html += `<a href="#" onclick="logout(); return false;">退出登录</a>`;
             } else {
@@ -481,19 +481,19 @@
             const area = document.getElementById('auth-area');
             const navMenu = document.getElementById('nav-menu');
             const exportSection = document.getElementById('export-section');
-            
+
             if (currentUser) {
                 // 已登录用户显示用户名和退出按钮
                 area.innerHTML = `
                     <span class="user-info">👤 ${currentUser.username}</span>
                     <a href="#" onclick="doLogout()">退出</a>
                 `;
-                
+
                 // 显示导出功能
                 exportSection.style.display = 'block';
-                
+
                 // 显示订阅管理
-                let navHtml = '<a href="/researchpulse/" class="active">首页</a>';
+                let navHtml = `<a href="${APP_BASE}/">首页</a>`;
                 navHtml += '<a href="#" onclick="goTo(\'subscriptions\')">订阅管理</a>';
                 // 仅超级管理员显示管理后台
                 if (currentUser.is_superuser) {
@@ -507,10 +507,10 @@
                     <a href="#" onclick="showModal('login')">登录</a>
                     <a href="#" onclick="showModal('register')">注册</a>
                 `;
-                
+
                 // 隐藏导出功能、订阅管理和管理后台
                 exportSection.style.display = 'none';
-                navMenu.innerHTML = '<a href="/researchpulse/" class="active">首页</a>';
+                navMenu.innerHTML = `<a href="${APP_BASE}/">首页</a>`;
                 updateMobileNav(null);
             }
         }
@@ -608,9 +608,9 @@
             }
             // Navigate to page
             if (page === 'subscriptions') {
-                location.href = '/researchpulse/subscriptions';
+                location.href = APP_BASE + '/subscriptions';
             } else if (page === 'admin') {
-                location.href = '/researchpulse/admin';
+                location.href = APP_BASE + '/admin';
             }
         }
 
