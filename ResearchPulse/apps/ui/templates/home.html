@@ -138,6 +138,54 @@
         .footer a:hover {
             color: white;
         }
+
+        /* Responsive - Mobile */
+        @media (max-width: 768px) {
+            .container {
+                padding: 24px 16px;
+            }
+            .header {
+                margin-bottom: 40px;
+            }
+            .header h1 {
+                font-size: 32px;
+            }
+            .header p {
+                font-size: 15px;
+            }
+            .services-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+            .service-card {
+                padding: 24px;
+            }
+            .service-icon {
+                width: 56px;
+                height: 56px;
+                font-size: 24px;
+                border-radius: 12px;
+            }
+            .service-card h3 {
+                font-size: 18px;
+            }
+            .service-card p {
+                font-size: 13px;
+            }
+            .footer {
+                margin-top: 40px;
+            }
+        }
+
+        /* Responsive - Small Mobile */
+        @media (max-width: 480px) {
+            .header h1 {
+                font-size: 26px;
+            }
+            .service-card {
+                padding: 20px;
+            }
+        }
     </style>
 </head>
 <body>
