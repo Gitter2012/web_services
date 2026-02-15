@@ -455,22 +455,19 @@
             <div id="section-email" class="section" style="display:none;">
                 <div class="page-header">
                     <h1>邮件推送</h1>
-                    <p>配置邮件推送功能，支持多种邮件后端</p>
+                    <p>配置邮件推送功能，支持多种邮件后端和多配置优先级failover</p>
                 </div>
 
                 <div class="tabs">
                     <button class="tab active" onclick="switchEmailTab('general')">推送设置</button>
-                    <button class="tab" onclick="switchEmailTab('smtp')">SMTP</button>
-                    <button class="tab" onclick="switchEmailTab('sendgrid')">SendGrid</button>
-                    <button class="tab" onclick="switchEmailTab('mailgun')">Mailgun</button>
-                    <button class="tab" onclick="switchEmailTab('brevo')">Brevo</button>
+                    <button class="tab" onclick="switchEmailTab('configs')">配置列表</button>
                 </div>
 
                 <!-- General Settings -->
                 <div id="email-general-panel" class="email-panel">
                     <div class="card">
                         <div class="card-header">
-                            <h3>推送设置</h3>
+                            <h3>全局推送设置</h3>
                         </div>
                         <div class="card-body">
                             <div class="toggle-item">
@@ -485,22 +482,6 @@
                             </div>
 
                             <div class="form-group" style="margin-top: 16px;">
-                                <label class="form-label">活跃后端</label>
-                                <select class="form-select" id="email-active-backend">
-                                    <option value="smtp">SMTP</option>
-                                    <option value="sendgrid">SendGrid</option>
-                                    <option value="mailgun">Mailgun</option>
-                                    <option value="brevo">Brevo</option>
-                                </select>
-                                <p style="font-size: 12px; color: #888; margin-top: 4px;">选择用于发送邮件的后端服务</p>
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">发件人邮箱</label>
-                                <input type="email" class="form-input" id="email-sender" placeholder="noreply@example.com">
-                            </div>
-
-                            <div class="form-group">
                                 <label class="form-label">推送频率</label>
                                 <select class="form-select" id="email-frequency">
                                     <option value="daily">每天</option>
@@ -519,103 +500,52 @@
                                 <input type="number" class="form-input" id="email-max-articles" value="20">
                             </div>
 
-                            <button class="btn btn-primary" onclick="saveEmailGeneral()">保存设置</button>
+                            <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                                <p style="font-size: 13px; color: #0369a1; margin: 0;">
+                                    💡 <strong>优先级机制：</strong>系统按优先级顺序尝试发送邮件，优先使用数字小的配置。如果发送失败，自动切换到下一个配置，直到成功或全部失败。
+                                </p>
+                            </div>
+
+                            <button class="btn btn-primary" onclick="saveEmailSettings()">保存设置</button>
                         </div>
                     </div>
                 </div>
 
-                <!-- SMTP Settings -->
-                <div id="email-smtp-panel" class="email-panel" style="display:none;">
+                <!-- Configurations List -->
+                <div id="email-configs-panel" class="email-panel" style="display:none;">
                     <div class="card">
                         <div class="card-header">
-                            <h3>SMTP 配置</h3>
+                            <h3>邮件发送配置</h3>
+                            <button class="btn btn-primary btn-sm" onclick="showAddEmailConfigModal()">新建配置</button>
                         </div>
                         <div class="card-body">
-                            <div class="form-group">
-                                <label class="form-label">SMTP 服务器</label>
-                                <input type="text" class="form-input" id="smtp-host" placeholder="smtp.example.com">
+                            <!-- Filter -->
+                            <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center;">
+                                <select class="form-select" id="email-config-filter" style="width: auto;" onchange="loadEmailConfigs()">
+                                    <option value="">全部类型</option>
+                                    <option value="smtp">SMTP</option>
+                                    <option value="sendgrid">SendGrid</option>
+                                    <option value="mailgun">Mailgun</option>
+                                    <option value="brevo">Brevo</option>
+                                </select>
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">SMTP 端口</label>
-                                <input type="number" class="form-input" id="smtp-port" value="587">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">用户名</label>
-                                <input type="text" class="form-input" id="smtp-user" placeholder="your@email.com">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">密码/授权码</label>
-                                <input type="password" class="form-input" id="smtp-password" placeholder="留空保持不变">
-                                <p style="font-size: 12px; color: #888; margin-top: 4px;">显示为 **** 表示已设置，留空则保持原值</p>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">
-                                    <input type="checkbox" id="smtp-use-tls" checked>
-                                    使用 TLS
-                                </label>
-                            </div>
-                            <button class="btn btn-primary" onclick="saveEmailSmtp()">保存 SMTP 配置</button>
-                            <button class="btn" onclick="testEmailBackend('smtp')">发送测试邮件</button>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- SendGrid Settings -->
-                <div id="email-sendgrid-panel" class="email-panel" style="display:none;">
-                    <div class="card">
-                        <div class="card-header">
-                            <h3>SendGrid 配置</h3>
-                        </div>
-                        <div class="card-body">
-                            <div class="form-group">
-                                <label class="form-label">API Key</label>
-                                <input type="password" class="form-input" id="sendgrid-api-key" placeholder="SG.xxxxx">
-                                <p style="font-size: 12px; color: #888; margin-top: 4px;">显示为 **** 表示已设置，留空则保持原值</p>
-                            </div>
-                            <button class="btn btn-primary" onclick="saveEmailSendGrid()">保存 SendGrid 配置</button>
-                            <button class="btn" onclick="testEmailBackend('sendgrid')">发送测试邮件</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Mailgun Settings -->
-                <div id="email-mailgun-panel" class="email-panel" style="display:none;">
-                    <div class="card">
-                        <div class="card-header">
-                            <h3>Mailgun 配置</h3>
-                        </div>
-                        <div class="card-body">
-                            <div class="form-group">
-                                <label class="form-label">API Key</label>
-                                <input type="password" class="form-input" id="mailgun-api-key" placeholder="key-xxxxx">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Domain</label>
-                                <input type="text" class="form-input" id="mailgun-domain" placeholder="mg.example.com">
-                            </div>
-                            <button class="btn btn-primary" onclick="saveEmailMailgun()">保存 Mailgun 配置</button>
-                            <button class="btn" onclick="testEmailBackend('mailgun')">发送测试邮件</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Brevo Settings -->
-                <div id="email-brevo-panel" class="email-panel" style="display:none;">
-                    <div class="card">
-                        <div class="card-header">
-                            <h3>Brevo 配置</h3>
-                        </div>
-                        <div class="card-body">
-                            <div class="form-group">
-                                <label class="form-label">API Key</label>
-                                <input type="password" class="form-input" id="brevo-api-key" placeholder="xkeysib-xxxxx">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">发件人名称</label>
-                                <input type="text" class="form-input" id="brevo-from-name" value="ResearchPulse">
-                            </div>
-                            <button class="btn btn-primary" onclick="saveEmailBrevo()">保存 Brevo 配置</button>
-                            <button class="btn" onclick="testEmailBackend('brevo')">发送测试邮件</button>
+                            <!-- Config List Table -->
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>优先级</th>
+                                        <th>名称</th>
+                                        <th>类型</th>
+                                        <th>发件邮箱</th>
+                                        <th>状态</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="email-config-list">
+                                    <tr><td colspan="6">加载中...</td></tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -1273,9 +1203,17 @@
     </div>
 
     <script>
-        const API_BASE = '/researchpulse/api';
-        const AUTH_BASE = '/api/v1';
-        const ADMIN_BASE = '/api/v1/admin';
+        // 动态检测代理前缀，支持反向代理部署
+        (function() {
+            const path = window.location.pathname;
+            // 查找 /researchpulse 在路径中的位置
+            const rpIndex = path.indexOf('/researchpulse');
+            const prefix = rpIndex > 0 ? path.substring(0, rpIndex) : '';
+            window.APP_BASE = prefix + '/researchpulse';
+            window.API_BASE = prefix + '/researchpulse/api';
+            window.AUTH_BASE = prefix + '/api/v1';
+            window.ADMIN_BASE = prefix + '/api/v1/admin';
+        })();
 
         let currentCrawlerTab = 'arxiv';
         let currentSourceTab = 'arxiv';
@@ -2154,7 +2092,7 @@
 
         // Email Config
         let currentEmailTab = 'general';
-        let emailConfig = {};
+        let emailConfigs = [];
 
         function switchEmailTab(tab) {
             currentEmailTab = tab;
@@ -2162,66 +2100,44 @@
             event.target.classList.add('active');
             document.querySelectorAll('.email-panel').forEach(p => p.style.display = 'none');
             document.getElementById(`email-${tab}-panel`).style.display = 'block';
+            if (tab === 'configs') loadEmailConfigs();
         }
 
-        async function loadEmailConfig() {
+        async function loadEmailSettings() {
             const token = localStorage.getItem('access_token');
             try {
-                const res = await fetch(`${ADMIN_BASE}/email/config`, {
+                const res = await fetch(`${ADMIN_BASE}/email/settings`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
-                emailConfig = data.config || {};
+                const settings = data.settings || {};
 
-                // Populate general settings
-                document.getElementById('email-enabled').checked = emailConfig.email_enabled || false;
-                document.getElementById('email-active-backend').value = emailConfig.active_backend || 'smtp';
-                document.getElementById('email-sender').value = emailConfig.sender_email || '';
-                document.getElementById('email-frequency').value = emailConfig.push_frequency || 'daily';
-                document.getElementById('email-time').value = emailConfig.push_time || '09:00';
-                document.getElementById('email-max-articles').value = emailConfig.max_articles_per_email || 20;
-
-                // Populate SMTP settings
-                document.getElementById('smtp-host').value = emailConfig.smtp_host || '';
-                document.getElementById('smtp-port').value = emailConfig.smtp_port || 587;
-                document.getElementById('smtp-user').value = emailConfig.smtp_user || '';
-                document.getElementById('smtp-password').value = emailConfig.smtp_password || '';
-                document.getElementById('smtp-use-tls').checked = emailConfig.smtp_use_tls !== false;
-
-                // Populate SendGrid settings
-                document.getElementById('sendgrid-api-key').value = emailConfig.sendgrid_api_key || '';
-
-                // Populate Mailgun settings
-                document.getElementById('mailgun-api-key').value = emailConfig.mailgun_api_key || '';
-                document.getElementById('mailgun-domain').value = emailConfig.mailgun_domain || '';
-
-                // Populate Brevo settings
-                document.getElementById('brevo-api-key').value = emailConfig.brevo_api_key || '';
-                document.getElementById('brevo-from-name').value = emailConfig.brevo_from_name || 'ResearchPulse';
+                document.getElementById('email-enabled').checked = settings.email_enabled || false;
+                document.getElementById('email-frequency').value = settings.push_frequency || 'daily';
+                document.getElementById('email-time').value = settings.push_time || '09:00';
+                document.getElementById('email-max-articles').value = settings.max_articles_per_email || 20;
             } catch (e) {
-                console.error('Failed to load email config:', e);
+                console.error('Failed to load email settings:', e);
             }
         }
 
-        async function saveEmailGeneral() {
+        async function saveEmailSettings() {
             const token = localStorage.getItem('access_token');
-            const config = {
+            const settings = {
                 email_enabled: document.getElementById('email-enabled').checked,
-                active_backend: document.getElementById('email-active-backend').value,
-                sender_email: document.getElementById('email-sender').value,
                 push_frequency: document.getElementById('email-frequency').value,
                 push_time: document.getElementById('email-time').value,
                 max_articles_per_email: parseInt(document.getElementById('email-max-articles').value) || 20,
             };
 
             try {
-                const res = await fetch(`${ADMIN_BASE}/email/config`, {
+                const res = await fetch(`${ADMIN_BASE}/email/settings`, {
                     method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(config)
+                    body: JSON.stringify(settings)
                 });
 
                 if (res.ok) {
@@ -2235,23 +2151,193 @@
             }
         }
 
-        async function saveEmailSmtp() {
+        async function loadEmailConfigs() {
             const token = localStorage.getItem('access_token');
+            const filter = document.getElementById('email-config-filter').value;
+            
+            try {
+                const url = filter ? `${ADMIN_BASE}/email/configs?backend_type=${filter}` : `${ADMIN_BASE}/email/configs`;
+                const res = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                emailConfigs = data.configs || [];
+
+                const tbody = document.getElementById('email-config-list');
+                if (emailConfigs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #888;">暂无配置，点击"新建配置"添加</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = emailConfigs.map(config => `
+                    <tr>
+                        <td><span class="badge badge-info">${config.priority}</span></td>
+                        <td>${escapeHtml(config.name)}</td>
+                        <td><span class="badge" style="background: ${getBackendColor(config.backend_type)}; color: white;">${config.backend_type.toUpperCase()}</span></td>
+                        <td>${escapeHtml(config.sender_email || '-')}</td>
+                        <td><span class="badge ${config.is_active ? 'badge-success' : 'badge-danger'}">${config.is_active ? '启用' : '禁用'}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="editEmailConfig(${config.id})">编辑</button>
+                            <button class="btn btn-sm ${config.is_active ? 'btn-danger' : 'btn-success'}" onclick="toggleEmailConfig(${config.id}, ${config.is_active})">${config.is_active ? '禁用' : '启用'}</button>
+                            <button class="btn btn-sm" onclick="testEmailConfig(${config.id})">测试</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteEmailConfig(${config.id}, '${escapeHtml(config.name)}')">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load email configs:', e);
+            }
+        }
+
+        function getBackendColor(type) {
+            const colors = { smtp: '#f39c12', sendgrid: '#1a82c4', mailgun: '#e21b5c', brevo: '#0b99e5' };
+            return colors[type] || '#6b7280';
+        }
+
+        function showAddEmailConfigModal() {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.id = 'email-config-modal';
+            modal.innerHTML = `
+                <div class="modal-content" style="width: 500px;">
+                    <div class="modal-header">
+                        <h3>新建邮件配置</h3>
+                        <span class="modal-close" onclick="document.getElementById('email-config-modal').remove()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="form-label">后端类型</label>
+                            <select class="form-select" id="new-backend-type" onchange="updateConfigForm()">
+                                <option value="smtp">SMTP</option>
+                                <option value="sendgrid">SendGrid</option>
+                                <option value="mailgun">Mailgun</option>
+                                <option value="brevo">Brevo</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">配置名称</label>
+                            <input type="text" class="form-input" id="new-config-name" placeholder="如：主邮箱、备份邮箱">
+                        </div>
+                        <div id="backend-specific-fields"></div>
+                        <div class="form-group">
+                            <label class="form-label">发件人邮箱</label>
+                            <input type="email" class="form-input" id="new-sender-email" placeholder="noreply@example.com">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">优先级</label>
+                            <input type="number" class="form-input" id="new-priority" value="1" style="width: 100px;">
+                            <p style="font-size: 12px; color: #888; margin-top: 4px;">数字越小优先级越高</p>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">
+                                <input type="checkbox" id="new-is-active" checked>
+                                启用此配置
+                            </label>
+                        </div>
+                        <div style="text-align: right; margin-top: 16px;">
+                            <button class="btn" onclick="document.getElementById('email-config-modal').remove()">取消</button>
+                            <button class="btn btn-primary" style="margin-left: 8px;" onclick="createEmailConfig()">创建</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            updateConfigForm();
+        }
+
+        function updateConfigForm() {
+            const type = document.getElementById('new-backend-type').value;
+            const container = document.getElementById('backend-specific-fields');
+            
+            if (type === 'smtp') {
+                container.innerHTML = `
+                    <div class="form-group">
+                        <label class="form-label">SMTP 服务器</label>
+                        <input type="text" class="form-input" id="new-smtp-host" placeholder="smtp.example.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">SMTP 端口</label>
+                        <input type="number" class="form-input" id="new-smtp-port" value="587" style="width: 100px;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">用户名</label>
+                        <input type="text" class="form-input" id="new-smtp-user" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">密码/授权码</label>
+                        <input type="password" class="form-input" id="new-smtp-password">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            <input type="checkbox" id="new-smtp-use-tls" checked>
+                            使用 TLS
+                        </label>
+                    </div>
+                `;
+            } else if (type === 'sendgrid') {
+                container.innerHTML = `
+                    <div class="form-group">
+                        <label class="form-label">SendGrid API Key</label>
+                        <input type="password" class="form-input" id="new-sendgrid-api-key" placeholder="SG.xxxxx">
+                    </div>
+                `;
+            } else if (type === 'mailgun') {
+                container.innerHTML = `
+                    <div class="form-group">
+                        <label class="form-label">Mailgun API Key</label>
+                        <input type="password" class="form-input" id="new-mailgun-api-key" placeholder="key-xxxxx">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Mailgun Domain</label>
+                        <input type="text" class="form-input" id="new-mailgun-domain" placeholder="mg.example.com">
+                    </div>
+                `;
+            } else if (type === 'brevo') {
+                container.innerHTML = `
+                    <div class="form-group">
+                        <label class="form-label">Brevo API Key</label>
+                        <input type="password" class="form-input" id="new-brevo-api-key" placeholder="xkeysib-xxxxx">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">发件人名称</label>
+                        <input type="text" class="form-input" id="new-brevo-from-name" value="ResearchPulse">
+                    </div>
+                `;
+            }
+        }
+
+        async function createEmailConfig() {
+            const token = localStorage.getItem('access_token');
+            const type = document.getElementById('new-backend-type').value;
+            
             const config = {
-                smtp_host: document.getElementById('smtp-host').value,
-                smtp_port: parseInt(document.getElementById('smtp-port').value) || 587,
-                smtp_user: document.getElementById('smtp-user').value,
-                smtp_use_tls: document.getElementById('smtp-use-tls').checked,
+                backend_type: type,
+                name: document.getElementById('new-config-name').value,
+                sender_email: document.getElementById('new-sender-email').value,
+                priority: parseInt(document.getElementById('new-priority').value) || 1,
+                is_active: document.getElementById('new-is-active').checked,
             };
 
-            const password = document.getElementById('smtp-password').value;
-            if (password && !password.startsWith('****')) {
-                config.smtp_password = password;
+            // Add backend-specific fields
+            if (type === 'smtp') {
+                config.smtp_host = document.getElementById('new-smtp-host').value;
+                config.smtp_port = parseInt(document.getElementById('new-smtp-port').value) || 587;
+                config.smtp_user = document.getElementById('new-smtp-user').value;
+                config.smtp_password = document.getElementById('new-smtp-password').value;
+                config.smtp_use_tls = document.getElementById('new-smtp-use-tls').checked;
+            } else if (type === 'sendgrid') {
+                config.sendgrid_api_key = document.getElementById('new-sendgrid-api-key').value;
+            } else if (type === 'mailgun') {
+                config.mailgun_api_key = document.getElementById('new-mailgun-api-key').value;
+                config.mailgun_domain = document.getElementById('new-mailgun-domain').value;
+            } else if (type === 'brevo') {
+                config.brevo_api_key = document.getElementById('new-brevo-api-key').value;
+                config.brevo_from_name = document.getElementById('new-brevo-from-name').value;
             }
 
             try {
-                const res = await fetch(`${ADMIN_BASE}/email/config`, {
-                    method: 'PUT',
+                const res = await fetch(`${ADMIN_BASE}/email/configs`, {
+                    method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
@@ -2260,121 +2346,204 @@
                 });
 
                 if (res.ok) {
-                    alert('SMTP 配置已保存');
-                    loadEmailConfig();
+                    document.getElementById('email-config-modal').remove();
+                    loadEmailConfigs();
+                    alert('配置创建成功');
                 } else {
                     const err = await res.json();
-                    alert(err.detail || '保存失败');
+                    alert(err.detail || '创建失败');
                 }
             } catch (e) {
-                alert('保存失败');
+                alert('创建失败');
             }
         }
 
-        async function saveEmailSendGrid() {
-            const token = localStorage.getItem('access_token');
-            const apiKey = document.getElementById('sendgrid-api-key').value;
-            const config = {};
+        async function editEmailConfig(configId) {
+            const config = emailConfigs.find(c => c.id === configId);
+            if (!config) return;
 
-            if (apiKey && !apiKey.startsWith('****')) {
-                config.sendgrid_api_key = apiKey;
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.id = 'email-edit-modal';
+            
+            let specificFields = '';
+            if (config.backend_type === 'smtp') {
+                specificFields = `
+                    <div class="form-group">
+                        <label class="form-label">SMTP 服务器</label>
+                        <input type="text" class="form-input" id="edit-smtp-host" value="${config.smtp_host || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">SMTP 端口</label>
+                        <input type="number" class="form-input" id="edit-smtp-port" value="${config.smtp_port || 587}" style="width: 100px;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">用户名</label>
+                        <input type="text" class="form-input" id="edit-smtp-user" value="${config.smtp_user || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">密码 (留空保持不变)</label>
+                        <input type="password" class="form-input" id="edit-smtp-password" placeholder="${config.smtp_password || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            <input type="checkbox" id="edit-smtp-use-tls" ${config.smtp_use_tls !== false ? 'checked' : ''}>
+                            使用 TLS
+                        </label>
+                    </div>
+                `;
+            } else if (config.backend_type === 'sendgrid') {
+                specificFields = `
+                    <div class="form-group">
+                        <label class="form-label">API Key (留空保持不变)</label>
+                        <input type="password" class="form-input" id="edit-sendgrid-api-key" placeholder="${config.sendgrid_api_key || ''}">
+                    </div>
+                `;
+            } else if (config.backend_type === 'mailgun') {
+                specificFields = `
+                    <div class="form-group">
+                        <label class="form-label">API Key (留空保持不变)</label>
+                        <input type="password" class="form-input" id="edit-mailgun-api-key" placeholder="${config.mailgun_api_key || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Domain</label>
+                        <input type="text" class="form-input" id="edit-mailgun-domain" value="${config.mailgun_domain || ''}">
+                    </div>
+                `;
+            } else if (config.backend_type === 'brevo') {
+                specificFields = `
+                    <div class="form-group">
+                        <label class="form-label">API Key (留空保持不变)</label>
+                        <input type="password" class="form-input" id="edit-brevo-api-key" placeholder="${config.brevo_api_key || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">发件人名称</label>
+                        <input type="text" class="form-input" id="edit-brevo-from-name" value="${config.brevo_from_name || 'ResearchPulse'}">
+                    </div>
+                `;
             }
 
-            try {
-                const res = await fetch(`${ADMIN_BASE}/email/config`, {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(config)
-                });
-
-                if (res.ok) {
-                    alert('SendGrid 配置已保存');
-                    loadEmailConfig();
-                } else {
-                    const err = await res.json();
-                    alert(err.detail || '保存失败');
-                }
-            } catch (e) {
-                alert('保存失败');
-            }
+            modal.innerHTML = `
+                <div class="modal-content" style="width: 500px;">
+                    <div class="modal-header">
+                        <h3>编辑 ${config.name}</h3>
+                        <span class="modal-close" onclick="document.getElementById('email-edit-modal').remove()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="form-label">配置名称</label>
+                            <input type="text" class="form-input" id="edit-config-name" value="${config.name}">
+                        </div>
+                        ${specificFields}
+                        <div class="form-group">
+                            <label class="form-label">发件人邮箱</label>
+                            <input type="email" class="form-input" id="edit-sender-email" value="${config.sender_email || ''}">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">优先级</label>
+                            <input type="number" class="form-input" id="edit-priority" value="${config.priority}" style="width: 100px;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">
+                                <input type="checkbox" id="edit-is-active" ${config.is_active ? 'checked' : ''}>
+                                启用此配置
+                            </label>
+                        </div>
+                        <div style="text-align: right; margin-top: 16px;">
+                            <button class="btn" onclick="document.getElementById('email-edit-modal').remove()">取消</button>
+                            <button class="btn btn-primary" style="margin-left: 8px;" onclick="saveEmailConfig(${configId})">保存</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
         }
 
-        async function saveEmailMailgun() {
+        async function saveEmailConfig(configId) {
             const token = localStorage.getItem('access_token');
-            const config = {
-                mailgun_domain: document.getElementById('mailgun-domain').value,
+            const config = emailConfigs.find(c => c.id === configId);
+            
+            const update = {
+                name: document.getElementById('edit-config-name').value,
+                sender_email: document.getElementById('edit-sender-email').value,
+                priority: parseInt(document.getElementById('edit-priority').value) || 0,
+                is_active: document.getElementById('edit-is-active').checked,
             };
 
-            const apiKey = document.getElementById('mailgun-api-key').value;
-            if (apiKey && !apiKey.startsWith('****')) {
-                config.mailgun_api_key = apiKey;
+            // Add backend-specific fields
+            if (config.backend_type === 'smtp') {
+                update.smtp_host = document.getElementById('edit-smtp-host').value;
+                update.smtp_port = parseInt(document.getElementById('edit-smtp-port').value) || 587;
+                update.smtp_user = document.getElementById('edit-smtp-user').value;
+                update.smtp_use_tls = document.getElementById('edit-smtp-use-tls').checked;
+                const pwd = document.getElementById('edit-smtp-password').value;
+                if (pwd && !pwd.startsWith('****')) update.smtp_password = pwd;
+            } else if (config.backend_type === 'sendgrid') {
+                const key = document.getElementById('edit-sendgrid-api-key').value;
+                if (key && !key.startsWith('****')) update.sendgrid_api_key = key;
+            } else if (config.backend_type === 'mailgun') {
+                const key = document.getElementById('edit-mailgun-api-key').value;
+                if (key && !key.startsWith('****')) update.mailgun_api_key = key;
+                update.mailgun_domain = document.getElementById('edit-mailgun-domain').value;
+            } else if (config.backend_type === 'brevo') {
+                const key = document.getElementById('edit-brevo-api-key').value;
+                if (key && !key.startsWith('****')) update.brevo_api_key = key;
+                update.brevo_from_name = document.getElementById('edit-brevo-from-name').value;
             }
 
             try {
-                const res = await fetch(`${ADMIN_BASE}/email/config`, {
+                const res = await fetch(`${ADMIN_BASE}/email/configs/${configId}`, {
                     method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(config)
+                    body: JSON.stringify(update)
                 });
 
                 if (res.ok) {
-                    alert('Mailgun 配置已保存');
-                    loadEmailConfig();
+                    document.getElementById('email-edit-modal').remove();
+                    loadEmailConfigs();
+                    alert('配置已更新');
                 } else {
                     const err = await res.json();
-                    alert(err.detail || '保存失败');
+                    alert(err.detail || '更新失败');
                 }
             } catch (e) {
-                alert('保存失败');
+                alert('更新失败');
             }
         }
 
-        async function saveEmailBrevo() {
+        async function toggleEmailConfig(configId, currentActive) {
             const token = localStorage.getItem('access_token');
-            const config = {
-                brevo_from_name: document.getElementById('brevo-from-name').value,
-            };
-
-            const apiKey = document.getElementById('brevo-api-key').value;
-            if (apiKey && !apiKey.startsWith('****')) {
-                config.brevo_api_key = apiKey;
-            }
-
             try {
-                const res = await fetch(`${ADMIN_BASE}/email/config`, {
+                const res = await fetch(`${ADMIN_BASE}/email/configs/${configId}`, {
                     method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(config)
+                    body: JSON.stringify({ is_active: !currentActive })
                 });
 
                 if (res.ok) {
-                    alert('Brevo 配置已保存');
-                    loadEmailConfig();
+                    loadEmailConfigs();
                 } else {
                     const err = await res.json();
-                    alert(err.detail || '保存失败');
+                    alert(err.detail || '操作失败');
                 }
             } catch (e) {
-                alert('保存失败');
+                alert('操作失败');
             }
         }
 
-        async function testEmailBackend(backend) {
-            const testEmailAddress = prompt('请输入测试邮件接收地址：');
-            if (!testEmailAddress) return;
+        async function testEmailConfig(configId) {
+            const testEmail = prompt('请输入测试邮件接收地址：');
+            if (!testEmail) return;
 
             const token = localStorage.getItem('access_token');
             try {
-                const res = await fetch(`${ADMIN_BASE}/email/test?test_email=${encodeURIComponent(testEmailAddress)}`, {
+                const res = await fetch(`${ADMIN_BASE}/email/configs/${configId}/test?test_email=${encodeURIComponent(testEmail)}`, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
@@ -2390,12 +2559,30 @@
             }
         }
 
-        async function saveEmailConfig() {
-            saveEmailGeneral();
+        async function deleteEmailConfig(configId, configName) {
+            if (!confirm(`确定要删除配置 "${configName}" 吗？`)) return;
+
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/email/configs/${configId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (res.ok) {
+                    loadEmailConfigs();
+                    alert('配置已删除');
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '删除失败');
+                }
+            } catch (e) {
+                alert('删除失败');
+            }
         }
 
-        async function testEmail() {
-            testEmailBackend('smtp');
+        async function loadEmailConfig() {
+            await loadEmailSettings();
         }
 
         // Config

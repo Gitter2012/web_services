@@ -360,10 +360,29 @@ async def list_articles(
             for state in state_result.scalars().all():
                 user_states[state.article_id] = state
 
+    # ---- 批量获取 RSS 源名称 ----
+    # 收集所有 RSS 文章的 source_id，批量查询对应的 feed title
+    from apps.crawler.models.source import RssFeed
+    rss_source_ids = set()
+    for article in articles:
+        if article.source_type == "rss" and article.source_id:
+            rss_source_ids.add(article.source_id)
+    
+    rss_feed_titles = {}
+    if rss_source_ids:
+        rss_result = await session.execute(
+            select(RssFeed.id, RssFeed.title).where(RssFeed.id.in_(rss_source_ids))
+        )
+        for feed_id, feed_title in rss_result.fetchall():
+            rss_feed_titles[str(feed_id)] = feed_title
+
     # ---- 构建响应数据 ----
     article_list = []
     for article in articles:
         article_dict = _article_to_dict(article)
+        # 添加 RSS 源名称
+        if article.source_type == "rss" and article.source_id:
+            article_dict["source_name"] = rss_feed_titles.get(str(article.source_id), "")
         # 如果存在用户状态，将已读/收藏信息合并到文章数据中
         if article.id in user_states:
             state = user_states[article.id]

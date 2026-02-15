@@ -516,11 +516,14 @@ CREATE TABLE `system_config` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统配置表';
 
 -- -----------------------------------------------------------------------------
--- email_configs 表 - 邮件推送配置
+-- email_configs 表 - 邮件推送配置（支持多后端多配置）
 -- -----------------------------------------------------------------------------
 DROP TABLE IF EXISTS `email_configs`;
 CREATE TABLE `email_configs` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
+  -- 后端类型与名称
+  `backend_type` VARCHAR(20) NOT NULL DEFAULT 'smtp' COMMENT '后端类型: smtp, sendgrid, mailgun, brevo',
+  `name` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '配置名称，如：主邮箱、备份邮箱',
   -- SMTP 配置
   `smtp_host` VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'SMTP服务器地址',
   `smtp_port` INT NOT NULL DEFAULT 587 COMMENT 'SMTP服务器端口',
@@ -536,17 +539,22 @@ CREATE TABLE `email_configs` (
   `brevo_api_key` VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'Brevo API密钥',
   `brevo_from_name` VARCHAR(100) NOT NULL DEFAULT 'ResearchPulse' COMMENT 'Brevo发件人名称',
   -- 推送设置
-  `email_enabled` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用邮件通知',
-  `active_backend` VARCHAR(20) NOT NULL DEFAULT 'smtp' COMMENT '当前使用的邮件后端: smtp, sendgrid, mailgun, brevo',
+  `email_enabled` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用邮件通知（全局开关）',
   `sender_email` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '发件人邮箱地址',
   `push_frequency` VARCHAR(20) NOT NULL DEFAULT 'daily' COMMENT '推送频率: daily, weekly, instant',
   `push_time` VARCHAR(10) NOT NULL DEFAULT '09:00' COMMENT '推送时间（HH:MM格式）',
   `max_articles_per_email` INT NOT NULL DEFAULT 20 COMMENT '每封邮件最大文章数',
+  -- 优先级与状态
+  `priority` INT NOT NULL DEFAULT 0 COMMENT '优先级，数字越小越优先',
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用此配置',
   -- 时间戳
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='邮件推送配置表';
+  PRIMARY KEY (`id`),
+  INDEX `idx_backend_type` (`backend_type`),
+  INDEX `idx_priority` (`priority`),
+  INDEX `idx_is_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='邮件推送配置表（支持多后端多配置）';
 
 -- =============================================================================
 -- 初始化数据

@@ -81,9 +81,9 @@
         .article-title { font-size: 17px; font-weight: 600; color: #1a1a2e; line-height: 1.4; }
         .article-title a { color: inherit; text-decoration: none; }
         .article-title a:hover { color: #4ecdc4; }
-        .article-source { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: 16px; }
-        .source-badge { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
-        .source-badge.arxiv { background: #fef2f2; color: #b91c1c; }
+        .article-source { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: 16px; max-width: 200px; }
+        .source-badge { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+        .source-badge.arxiv { background: #fef2f2; color: #b91c1c; text-transform: uppercase; }
         .source-badge.rss { background: #fffbeb; color: #d97706; }
         .source-badge.wechat { background: #ecfdf5; color: #059669; }
 
@@ -200,7 +200,8 @@
             .article-card { padding: 16px; }
             .article-title { font-size: 15px; }
             .article-header { flex-direction: column; gap: 8px; }
-            .article-source { margin-left: 0; }
+            .article-source { margin-left: 0; max-width: 100%; }
+            .source-badge { max-width: 120px; }
             .article-meta { gap: 12px; font-size: 12px; }
             .article-content { font-size: 13px; }
             .article-footer { flex-direction: column; gap: 12px; align-items: flex-start; }
@@ -378,8 +379,16 @@
     </div>
 
     <script>
-        const API_BASE = '/researchpulse/api';
-        const AUTH_BASE = '/api/v1';
+        // 动态检测代理前缀，支持反向代理部署
+        (function() {
+            const path = window.location.pathname;
+            // 查找 /researchpulse 在路径中的位置
+            const rpIndex = path.indexOf('/researchpulse');
+            const prefix = rpIndex > 0 ? path.substring(0, rpIndex) : '';
+            window.APP_BASE = prefix + '/researchpulse';
+            window.API_BASE = prefix + '/researchpulse/api';
+            window.AUTH_BASE = prefix + '/api/v1';
+        })();
 
         let currentPage = 1;
         let pageSize = 20;
@@ -756,7 +765,15 @@
         }
 
         function renderArticle(article) {
-            const sourceBadge = `<span class="source-badge ${article.source_type}">${article.source_type}</span>`;
+            // 构建源标签：RSS 显示具体源名称，其他显示源类型
+            let sourceBadge = '';
+            if (article.source_type === 'rss' && article.source_name) {
+                sourceBadge = `<span class="source-badge ${article.source_type}" title="${escapeHtml(article.source_name)}">${escapeHtml(article.source_name)}</span>`;
+            } else if (article.source_type === 'wechat' && article.wechat_account_name) {
+                sourceBadge = `<span class="source-badge ${article.source_type}" title="${escapeHtml(article.wechat_account_name)}">${escapeHtml(article.wechat_account_name)}</span>`;
+            } else {
+                sourceBadge = `<span class="source-badge ${article.source_type}">${article.source_type}</span>`;
+            }
 
             // Clean HTML tags from summary for display
             const cleanSummary = stripHtml(article.summary || '');

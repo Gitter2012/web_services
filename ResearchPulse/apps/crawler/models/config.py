@@ -240,21 +240,36 @@ class AuditLog(Base):
 # 职责: 存储邮件推送配置，支持多种邮件后端
 # 表名: email_configs
 # 设计决策:
-#   1. 单行设计：只存储一条配置记录（id=1），简化管理
-#   2. 支持多后端：SMTP、SendGrid、Mailgun、Brevo，可灵活切换
-#   3. 敏感字段（密码、API Key）在 API 返回时需要脱敏
-#   4. 推送设置支持多种频率：daily、weekly、instant
+#   1. 多行设计：支持多个邮件配置，通过 backend_type 区分后端类型
+#   2. 支持多后端：SMTP、SendGrid、Mailgun、Brevo，每种类型可有多个配置
+#   3. 优先级机制：priority 字段决定使用顺序，数字越小越优先
+#   4. 敏感字段（密码、API Key）在 API 返回时需要脱敏
+#   5. 推送设置支持多种频率：daily、weekly、instant
 # =============================================================================
 class EmailConfig(Base, TimestampMixin):
     """Email configuration for notifications.
 
-    邮件通知配置模型。
+    邮件通知配置模型，支持多后端多配置。
     """
 
     __tablename__ = "email_configs"
 
-    # 主键（单行设计，通常只有 id=1）
+    # 主键
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # ---- 后端类型与名称 ----
+    backend_type: Mapped[str] = mapped_column(
+        String(20),
+        default="smtp",
+        nullable=False,
+        comment="Backend type: smtp, sendgrid, mailgun, brevo",
+    )
+    name: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+        nullable=False,
+        comment="Configuration name",
+    )
 
     # ---- SMTP 配置 ----
     smtp_host: Mapped[str] = mapped_column(
@@ -329,13 +344,7 @@ class EmailConfig(Base, TimestampMixin):
         Boolean,
         default=False,
         nullable=False,
-        comment="Enable email notifications",
-    )
-    active_backend: Mapped[str] = mapped_column(
-        String(20),
-        default="smtp",
-        nullable=False,
-        comment="Active backend: smtp, sendgrid, mailgun, brevo",
+        comment="Enable email notifications (global switch)",
     )
     sender_email: Mapped[str] = mapped_column(
         String(255),
@@ -362,10 +371,24 @@ class EmailConfig(Base, TimestampMixin):
         comment="Max articles per email",
     )
 
+    # ---- 优先级与状态 ----
+    priority: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+        comment="Priority (lower = higher priority)",
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+        comment="Is this configuration active",
+    )
+
     def __repr__(self) -> str:
         """Return a readable email config representation.
 
         返回邮件配置的字符串表示。
         """
-        return f"<EmailConfig(enabled={self.email_enabled}, backend={self.active_backend})>"
+        return f"<EmailConfig(id={self.id}, backend={self.backend_type}, name={self.name}, active={self.is_active})>"
 

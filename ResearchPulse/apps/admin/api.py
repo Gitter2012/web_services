@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, HttpUrl, field_validator
-from sqlalchemy import desc, select, func
+from sqlalchemy import desc, select, func, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from apscheduler.triggers.cron import CronTrigger
@@ -1376,48 +1376,15 @@ async def list_audit_resource_types(
 # ============================================================================
 # Email Configuration Management
 # ============================================================================
-# 邮件配置管理 —— 管理邮件推送的后端设置和推送参数
+# 邮件配置管理 —— 管理邮件推送的后端设置和推送参数（支持多后端多配置）
 
-class EmailConfigUpdate(BaseModel):
-    """Request model for updating email configuration.
-
-    邮件配置更新请求体，支持更新 SMTP、SendGrid、Mailgun、Brevo
-    等多种邮件后端的配置，以及推送频率和时间等参数。
-
-    Attributes:
-        smtp_host: SMTP server hostname.
-            SMTP 服务器主机名。
-        smtp_port: SMTP server port.
-            SMTP 服务器端口。
-        smtp_user: SMTP authentication username.
-            SMTP 认证用户名。
-        smtp_password: SMTP authentication password.
-            SMTP 认证密码。
-        smtp_use_tls: Whether to use TLS for SMTP connection.
-            是否使用 TLS 连接 SMTP。
-        sendgrid_api_key: SendGrid API key for SendGrid backend.
-            SendGrid API 密钥。
-        mailgun_api_key: Mailgun API key for Mailgun backend.
-            Mailgun API 密钥。
-        mailgun_domain: Mailgun domain for sending emails.
-            Mailgun 发件域名。
-        brevo_api_key: Brevo (formerly Sendinblue) API key.
-            Brevo API 密钥。
-        brevo_from_name: Sender name for Brevo emails.
-            Brevo 发件人名称。
-        email_enabled: Whether to enable email notifications.
-            是否启用邮件通知。
-        active_backend: Active email backend (smtp, sendgrid, mailgun, brevo).
-            当前使用的邮件后端。
-        sender_email: Email address to send from.
-            发件人邮箱地址。
-        push_frequency: Email notification frequency (daily, weekly, etc.).
-            邮件推送频率。
-        push_time: Time of day to send notifications (HH:MM format).
-            推送时间（HH:MM 格式）。
-        max_articles_per_email: Maximum articles to include per email.
-            每封邮件包含的最大文章数。
+class EmailConfigCreate(BaseModel):
+    """Request model for creating email configuration.
+    
+    创建邮件配置请求体。
     """
+    backend_type: str  # smtp, sendgrid, mailgun, brevo
+    name: str  # 配置名称
     # SMTP settings
     smtp_host: Optional[str] = None
     smtp_port: Optional[int] = None
@@ -1432,10 +1399,44 @@ class EmailConfigUpdate(BaseModel):
     # Brevo settings
     brevo_api_key: Optional[str] = None
     brevo_from_name: Optional[str] = None
-    # Push settings
-    email_enabled: Optional[bool] = None
-    active_backend: Optional[str] = None
+    # Common settings
     sender_email: Optional[str] = None
+    priority: Optional[int] = 0
+    is_active: Optional[bool] = True
+
+
+class EmailConfigUpdate(BaseModel):
+    """Request model for updating email configuration.
+    
+    更新邮件配置请求体。
+    """
+    name: Optional[str] = None
+    # SMTP settings
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_use_tls: Optional[bool] = None
+    # SendGrid settings
+    sendgrid_api_key: Optional[str] = None
+    # Mailgun settings
+    mailgun_api_key: Optional[str] = None
+    mailgun_domain: Optional[str] = None
+    # Brevo settings
+    brevo_api_key: Optional[str] = None
+    brevo_from_name: Optional[str] = None
+    # Common settings
+    sender_email: Optional[str] = None
+    priority: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class EmailGlobalSettings(BaseModel):
+    """Request model for global email settings.
+    
+    全局邮件设置请求体。
+    """
+    email_enabled: Optional[bool] = None
     push_frequency: Optional[str] = None
     push_time: Optional[str] = None
     max_articles_per_email: Optional[int] = None
@@ -1448,153 +1449,297 @@ def _mask_sensitive(value: str, show_last: int = 4) -> str:
     return "****" + value[-show_last:]
 
 
-@router.get("/email/config")
-async def get_email_config(
+@router.get("/email/configs")
+async def list_email_configs(
+    backend_type: Optional[str] = None,
     admin: Superuser = None,
     session: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
-    """Get email configuration (sensitive fields are masked).
-
+    """List all email configurations.
+    
+    获取所有邮件配置列表，支持按后端类型筛选。
+    
+    Args:
+        backend_type: Filter by backend type (smtp, sendgrid, mailgun, brevo).
+        admin: Superuser dependency.
+        session: Async database session.
+        
     Returns:
-        Dict[str, Any]: Email configuration with masked secrets.
+        Dict[str, Any]: List of email configurations with masked secrets.
     """
-    result = await session.execute(select(EmailConfig))
+    query = select(EmailConfig).order_by(EmailConfig.backend_type, EmailConfig.priority)
+    if backend_type:
+        query = query.where(EmailConfig.backend_type == backend_type)
+    
+    result = await session.execute(query)
+    configs = result.scalars().all()
+    
+    config_list = []
+    for config in configs:
+        config_dict = {
+            "id": config.id,
+            "backend_type": config.backend_type,
+            "name": config.name,
+            "sender_email": config.sender_email,
+            "priority": config.priority,
+            "is_active": config.is_active,
+            "created_at": config.created_at.isoformat() if config.created_at else None,
+            "updated_at": config.updated_at.isoformat() if config.updated_at else None,
+        }
+        # Add backend-specific fields (with masking)
+        if config.backend_type == "smtp":
+            config_dict.update({
+                "smtp_host": config.smtp_host,
+                "smtp_port": config.smtp_port,
+                "smtp_user": config.smtp_user,
+                "smtp_password": _mask_sensitive(config.smtp_password) if config.smtp_password else "",
+                "smtp_use_tls": config.smtp_use_tls,
+            })
+        elif config.backend_type == "sendgrid":
+            config_dict["sendgrid_api_key"] = _mask_sensitive(config.sendgrid_api_key) if config.sendgrid_api_key else ""
+        elif config.backend_type == "mailgun":
+            config_dict.update({
+                "mailgun_api_key": _mask_sensitive(config.mailgun_api_key) if config.mailgun_api_key else "",
+                "mailgun_domain": config.mailgun_domain,
+            })
+        elif config.backend_type == "brevo":
+            config_dict.update({
+                "brevo_api_key": _mask_sensitive(config.brevo_api_key) if config.brevo_api_key else "",
+                "brevo_from_name": config.brevo_from_name,
+            })
+        config_list.append(config_dict)
+    
+    return {"status": "ok", "configs": config_list}
+
+
+@router.post("/email/configs")
+async def create_email_config(
+    data: EmailConfigCreate,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Create a new email configuration.
+    
+    创建新的邮件配置。
+    """
+    # Validate backend_type
+    if data.backend_type not in ("smtp", "sendgrid", "mailgun", "brevo"):
+        raise HTTPException(status_code=400, detail="Invalid backend_type. Must be one of: smtp, sendgrid, mailgun, brevo")
+    
+    config = EmailConfig(
+        backend_type=data.backend_type,
+        name=data.name,
+        sender_email=data.sender_email or "",
+        priority=data.priority or 0,
+        is_active=data.is_active if data.is_active is not None else True,
+    )
+    
+    # Set backend-specific fields
+    if data.backend_type == "smtp":
+        config.smtp_host = data.smtp_host or ""
+        config.smtp_port = data.smtp_port or 587
+        config.smtp_user = data.smtp_user or ""
+        config.smtp_password = data.smtp_password or ""
+        config.smtp_use_tls = data.smtp_use_tls if data.smtp_use_tls is not None else True
+    elif data.backend_type == "sendgrid":
+        config.sendgrid_api_key = data.sendgrid_api_key or ""
+    elif data.backend_type == "mailgun":
+        config.mailgun_api_key = data.mailgun_api_key or ""
+        config.mailgun_domain = data.mailgun_domain or ""
+    elif data.backend_type == "brevo":
+        config.brevo_api_key = data.brevo_api_key or ""
+        config.brevo_from_name = data.brevo_from_name or "ResearchPulse"
+    
+    session.add(config)
+    await session.flush()
+    
+    return {"status": "ok", "message": "Email configuration created", "id": config.id}
+
+
+@router.put("/email/configs/{config_id}")
+async def update_email_config(
+    config_id: int,
+    data: EmailConfigUpdate,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Update an email configuration.
+    
+    更新邮件配置。
+    """
+    result = await session.execute(
+        select(EmailConfig).where(EmailConfig.id == config_id)
+    )
     config = result.scalar_one_or_none()
-
+    
     if not config:
-        # Create default config if not exists
-        config = EmailConfig()
-        session.add(config)
-        await session.flush()
+        raise HTTPException(status_code=404, detail="Email configuration not found")
+    
+    # Update common fields
+    if data.name is not None:
+        config.name = data.name
+    if data.sender_email is not None:
+        config.sender_email = data.sender_email
+    if data.priority is not None:
+        config.priority = data.priority
+    if data.is_active is not None:
+        config.is_active = data.is_active
+    
+    # Update backend-specific fields
+    if config.backend_type == "smtp":
+        if data.smtp_host is not None:
+            config.smtp_host = data.smtp_host
+        if data.smtp_port is not None:
+            config.smtp_port = data.smtp_port
+        if data.smtp_user is not None:
+            config.smtp_user = data.smtp_user
+        if data.smtp_password is not None and not data.smtp_password.startswith("****"):
+            config.smtp_password = data.smtp_password
+        if data.smtp_use_tls is not None:
+            config.smtp_use_tls = data.smtp_use_tls
+    elif config.backend_type == "sendgrid":
+        if data.sendgrid_api_key is not None and not data.sendgrid_api_key.startswith("****"):
+            config.sendgrid_api_key = data.sendgrid_api_key
+    elif config.backend_type == "mailgun":
+        if data.mailgun_api_key is not None and not data.mailgun_api_key.startswith("****"):
+            config.mailgun_api_key = data.mailgun_api_key
+        if data.mailgun_domain is not None:
+            config.mailgun_domain = data.mailgun_domain
+    elif config.backend_type == "brevo":
+        if data.brevo_api_key is not None and not data.brevo_api_key.startswith("****"):
+            config.brevo_api_key = data.brevo_api_key
+        if data.brevo_from_name is not None:
+            config.brevo_from_name = data.brevo_from_name
+    
+    return {"status": "ok", "message": "Email configuration updated"}
 
+
+@router.delete("/email/configs/{config_id}")
+async def delete_email_config(
+    config_id: int,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Delete an email configuration.
+    
+    删除邮件配置。
+    """
+    result = await session.execute(
+        select(EmailConfig).where(EmailConfig.id == config_id)
+    )
+    config = result.scalar_one_or_none()
+    
+    if not config:
+        raise HTTPException(status_code=404, detail="Email configuration not found")
+    
+    await session.execute(
+        delete(EmailConfig).where(EmailConfig.id == config_id)
+    )
+    
+    return {"status": "ok", "message": "Email configuration deleted"}
+
+
+@router.get("/email/settings")
+async def get_email_settings(
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Get global email settings.
+    
+    获取全局邮件设置（从第一个配置中获取，或返回默认值）。
+    """
+    # Get first config for global settings, or return defaults
+    result = await session.execute(
+        select(EmailConfig).limit(1)
+    )
+    config = result.scalar_one_or_none()
+    
+    if config:
+        return {
+            "status": "ok",
+            "settings": {
+                "email_enabled": config.email_enabled,
+                "push_frequency": config.push_frequency,
+                "push_time": config.push_time,
+                "max_articles_per_email": config.max_articles_per_email,
+            }
+        }
+    
+    # Return defaults if no config exists
     return {
         "status": "ok",
-        "config": {
-            # SMTP
-            "smtp_host": config.smtp_host,
-            "smtp_port": config.smtp_port,
-            "smtp_user": config.smtp_user,
-            "smtp_password": _mask_sensitive(config.smtp_password) if config.smtp_password else "",
-            "smtp_use_tls": config.smtp_use_tls,
-            # SendGrid
-            "sendgrid_api_key": _mask_sensitive(config.sendgrid_api_key) if config.sendgrid_api_key else "",
-            # Mailgun
-            "mailgun_api_key": _mask_sensitive(config.mailgun_api_key) if config.mailgun_api_key else "",
-            "mailgun_domain": config.mailgun_domain,
-            # Brevo
-            "brevo_api_key": _mask_sensitive(config.brevo_api_key) if config.brevo_api_key else "",
-            "brevo_from_name": config.brevo_from_name,
-            # Push settings
-            "email_enabled": config.email_enabled,
-            "active_backend": config.active_backend,
-            "sender_email": config.sender_email,
-            "push_frequency": config.push_frequency,
-            "push_time": config.push_time,
-            "max_articles_per_email": config.max_articles_per_email,
+        "settings": {
+            "email_enabled": False,
+            "push_frequency": "daily",
+            "push_time": "09:00",
+            "max_articles_per_email": 20,
         }
     }
 
 
-@router.put("/email/config")
-async def update_email_config(
-    update: EmailConfigUpdate,
+@router.put("/email/settings")
+async def update_email_settings(
+    data: EmailGlobalSettings,
     admin: Superuser = None,
     session: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
-    """Update email configuration.
-
-    Args:
-        update: Partial email configuration updates.
-        admin: Superuser dependency.
-        session: Async database session.
-
-    Returns:
-        Dict[str, Any]: Update status.
+    """Update global email settings.
+    
+    更新全局邮件设置（应用到所有配置）。
     """
-    result = await session.execute(select(EmailConfig))
-    config = result.scalar_one_or_none()
-
-    if not config:
-        config = EmailConfig()
-        session.add(config)
-
-    # Update fields (only update if value is provided)
-    if update.smtp_host is not None:
-        config.smtp_host = update.smtp_host
-    if update.smtp_port is not None:
-        config.smtp_port = update.smtp_port
-    if update.smtp_user is not None:
-        config.smtp_user = update.smtp_user
-    # Only update password if it's not a masked value
-    if update.smtp_password is not None and not update.smtp_password.startswith("****"):
-        config.smtp_password = update.smtp_password
-    if update.smtp_use_tls is not None:
-        config.smtp_use_tls = update.smtp_use_tls
-    if update.sendgrid_api_key is not None and not update.sendgrid_api_key.startswith("****"):
-        config.sendgrid_api_key = update.sendgrid_api_key
-    if update.mailgun_api_key is not None and not update.mailgun_api_key.startswith("****"):
-        config.mailgun_api_key = update.mailgun_api_key
-    if update.mailgun_domain is not None:
-        config.mailgun_domain = update.mailgun_domain
-    if update.brevo_api_key is not None and not update.brevo_api_key.startswith("****"):
-        config.brevo_api_key = update.brevo_api_key
-    if update.brevo_from_name is not None:
-        config.brevo_from_name = update.brevo_from_name
-    if update.email_enabled is not None:
-        config.email_enabled = update.email_enabled
-    if update.active_backend is not None:
-        config.active_backend = update.active_backend
-    if update.sender_email is not None:
-        config.sender_email = update.sender_email
-    if update.push_frequency is not None:
-        config.push_frequency = update.push_frequency
-    if update.push_time is not None:
-        config.push_time = update.push_time
-    if update.max_articles_per_email is not None:
-        config.max_articles_per_email = update.max_articles_per_email
-
-    return {"status": "ok", "message": "Email configuration updated"}
+    # Update all configs with global settings
+    if data.email_enabled is not None or data.push_frequency is not None or data.push_time is not None or data.max_articles_per_email is not None:
+        update_stmt = update(EmailConfig)
+        if data.email_enabled is not None:
+            update_stmt = update_stmt.values(email_enabled=data.email_enabled)
+        if data.push_frequency is not None:
+            update_stmt = update_stmt.values(push_frequency=data.push_frequency)
+        if data.push_time is not None:
+            update_stmt = update_stmt.values(push_time=data.push_time)
+        if data.max_articles_per_email is not None:
+            update_stmt = update_stmt.values(max_articles_per_email=data.max_articles_per_email)
+        
+        await session.execute(update_stmt)
+    
+    return {"status": "ok", "message": "Global email settings updated"}
 
 
-@router.post("/email/test")
+@router.post("/email/configs/{config_id}/test")
 async def test_email_config(
+    config_id: int,
     test_email: str,
     admin: Superuser = None,
     session: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
-    """Send a test email to verify configuration.
-
-    Args:
-        test_email: Recipient address to receive the test email.
-        admin: Superuser dependency.
-        session: Async database session.
-
-    Returns:
-        Dict[str, Any]: Test result message.
-
-    Raises:
-        HTTPException: If configuration is missing or the backend fails.
+    """Send a test email using a specific configuration.
+    
+    使用指定配置发送测试邮件。
     """
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
 
-    result = await session.execute(select(EmailConfig))
+    result = await session.execute(
+        select(EmailConfig).where(EmailConfig.id == config_id)
+    )
     config = result.scalar_one_or_none()
 
     if not config:
-        raise HTTPException(status_code=400, detail="Email configuration not found")
+        raise HTTPException(status_code=404, detail="Email configuration not found")
 
-    if config.active_backend == "smtp":
+    if not config.is_active:
+        raise HTTPException(status_code=400, detail="This configuration is not active")
+
+    if config.backend_type == "smtp":
         if not config.smtp_host or not config.smtp_user:
-            raise HTTPException(status_code=400, detail="SMTP not configured")
+            raise HTTPException(status_code=400, detail="SMTP not fully configured")
 
         try:
             msg = MIMEMultipart()
-            msg["From"] = config.smtp_user
+            msg["From"] = config.sender_email or config.smtp_user
             msg["To"] = test_email
-            msg["Subject"] = "ResearchPulse Test Email"
-            msg.attach(MIMEText("This is a test email from ResearchPulse.", "plain"))
+            msg["Subject"] = f"ResearchPulse Test Email - {config.name}"
+            msg.attach(MIMEText(f"This is a test email from ResearchPulse using {config.name}.", "plain"))
 
             with smtplib.SMTP(config.smtp_host, config.smtp_port, timeout=10) as server:
                 if config.smtp_use_tls:
@@ -1602,16 +1747,63 @@ async def test_email_config(
                 server.login(config.smtp_user, config.smtp_password)
                 server.send_message(msg)
 
-            return {"status": "ok", "message": f"Test email sent to {test_email}"}
+            return {"status": "ok", "message": f"Test email sent to {test_email} via {config.name}"}
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
-    elif config.active_backend in ("sendgrid", "mailgun", "brevo"):
+    elif config.backend_type in ("sendgrid", "mailgun", "brevo"):
         # These would require HTTP API calls
-        return {"status": "ok", "message": f"Test email would be sent to {test_email} via {config.active_backend}"}
+        return {"status": "ok", "message": f"Test email would be sent to {test_email} via {config.backend_type} ({config.name})"}
 
     else:
-        raise HTTPException(status_code=400, detail=f"Unknown backend: {config.active_backend}")
+        raise HTTPException(status_code=400, detail=f"Unknown backend: {config.backend_type}")
+
+
+# Legacy API endpoints (for backward compatibility)
+@router.get("/email/config")
+async def get_email_config_legacy(
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Get first active email configuration (legacy endpoint).
+    
+    获取第一个活跃的邮件配置（兼容旧API）。
+    """
+    result = await session.execute(
+        select(EmailConfig)
+        .where(EmailConfig.is_active == True)
+        .order_by(EmailConfig.priority)
+    )
+    config = result.scalar_one_or_none()
+
+    if not config:
+        return {"status": "ok", "config": {}}
+
+    return {
+        "status": "ok",
+        "config": {
+            "id": config.id,
+            "backend_type": config.backend_type,
+            "name": config.name,
+            "smtp_host": config.smtp_host,
+            "smtp_port": config.smtp_port,
+            "smtp_user": config.smtp_user,
+            "smtp_password": _mask_sensitive(config.smtp_password) if config.smtp_password else "",
+            "smtp_use_tls": config.smtp_use_tls,
+            "sendgrid_api_key": _mask_sensitive(config.sendgrid_api_key) if config.sendgrid_api_key else "",
+            "mailgun_api_key": _mask_sensitive(config.mailgun_api_key) if config.mailgun_api_key else "",
+            "mailgun_domain": config.mailgun_domain,
+            "brevo_api_key": _mask_sensitive(config.brevo_api_key) if config.brevo_api_key else "",
+            "brevo_from_name": config.brevo_from_name,
+            "email_enabled": config.email_enabled,
+            "sender_email": config.sender_email,
+            "push_frequency": config.push_frequency,
+            "push_time": config.push_time,
+            "max_articles_per_email": config.max_articles_per_email,
+            "priority": config.priority,
+            "is_active": config.is_active,
+        }
+    }
 
 
 # ============================================================================

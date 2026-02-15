@@ -659,3 +659,153 @@ async def send_notification_email(
     # 在线程池中执行同步发送操作，避免阻塞异步事件循环
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _send)
+
+
+# ======================
+# 8. 基于数据库配置的优先级发送
+# 从数据库读取配置，按优先级顺序尝试发送，直到成功或全部失败
+# ======================
+async def send_email_with_priority(
+    to_addrs: List[str],
+    subject: str,
+    body: str,
+    session: Any,  # AsyncSession
+    html_body: Optional[str] = None,
+    backend_type: Optional[str] = None,  # 可选：限定后端类型
+) -> Tuple[bool, str]:
+    """Send email using database configs with priority-based failover.
+
+    从数据库读取邮件配置，按优先级顺序尝试发送，直到成功或全部失败。
+    这是推荐的通知邮件发送方式，支持多配置自动切换。
+
+    Args:
+        to_addrs: List of recipient email addresses
+            收件人邮箱地址列表
+        subject: Email subject
+            邮件主题
+        body: Plain text body
+            纯文本正文
+        session: Async database session
+            异步数据库会话
+        html_body: Optional HTML body
+            可选的 HTML 正文
+        backend_type: Optional backend type filter (smtp, sendgrid, mailgun, brevo)
+            可选的后端类型筛选
+
+    Returns:
+        Tuple[bool, str]: (success, error_message)
+            (是否成功, 错误信息)
+    """
+    from sqlalchemy import select
+    from apps.crawler.models.config import EmailConfig
+
+    # 构建查询：获取所有活跃配置，按优先级排序
+    query = select(EmailConfig).where(
+        EmailConfig.is_active == True
+    )
+    if backend_type:
+        query = query.where(EmailConfig.backend_type == backend_type)
+    query = query.order_by(EmailConfig.priority.asc())
+
+    result = await session.execute(query)
+    configs = result.scalars().all()
+
+    if not configs:
+        msg = "No active email configuration found in database"
+        logger.error(msg)
+        return False, msg
+
+    # 按优先级尝试每个配置
+    last_error = ""
+    for config in configs:
+        logger.info(f"→ Attempting email send via '{config.name}' (backend: {config.backend_type}, priority: {config.priority})...")
+
+        ok, err = await _send_with_config(
+            to_addrs=to_addrs,
+            subject=subject,
+            body=body,
+            config=config,
+            html_body=html_body,
+        )
+
+        if ok:
+            logger.info(f"✓ Email sent successfully via '{config.name}'")
+            return True, ""
+
+        last_error = err
+        logger.warning(f"✗ Failed to send via '{config.name}': {err}")
+
+    # 所有配置都失败
+    msg = f"All email configurations failed. Last error: {last_error}"
+    logger.error(msg)
+    return False, msg
+
+
+async def _send_with_config(
+    to_addrs: List[str],
+    subject: str,
+    body: str,
+    config: Any,  # EmailConfig
+    html_body: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """Send email using a specific EmailConfig.
+
+    使用指定的邮件配置发送邮件。
+    """
+    import asyncio
+
+    def _send():
+        from_addr = config.sender_email or ""
+
+        if config.backend_type == "smtp":
+            return send_email(
+                subject=subject,
+                body=body,
+                to_addrs=to_addrs,
+                html_body=html_body,
+                backend="smtp",
+                from_addr=from_addr or config.smtp_user,
+                smtp_host=config.smtp_host,
+                smtp_port=config.smtp_port,
+                smtp_user=config.smtp_user,
+                smtp_password=config.smtp_password,
+                use_tls=config.smtp_use_tls,
+            )
+        elif config.backend_type == "sendgrid":
+            return send_email(
+                subject=subject,
+                body=body,
+                to_addrs=to_addrs,
+                html_body=html_body,
+                backend="sendgrid",
+                from_addr=from_addr,
+                sendgrid_api_key=config.sendgrid_api_key,
+            )
+        elif config.backend_type == "mailgun":
+            return send_email(
+                subject=subject,
+                body=body,
+                to_addrs=to_addrs,
+                html_body=html_body,
+                backend="mailgun",
+                from_addr=from_addr,
+                mailgun_api_key=config.mailgun_api_key,
+                mailgun_domain=config.mailgun_domain,
+            )
+        elif config.backend_type == "brevo":
+            return send_email(
+                subject=subject,
+                body=body,
+                to_addrs=to_addrs,
+                html_body=html_body,
+                backend="brevo",
+                from_addr=from_addr,
+                brevo_api_key=config.brevo_api_key,
+                brevo_from_name=config.brevo_from_name,
+            )
+        else:
+            return False, f"Unknown backend type: {config.backend_type}"
+
+    # 在线程池中执行同步发送
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _send)

@@ -264,8 +264,16 @@
     </div>
 
     <script>
-        const API_BASE = '/researchpulse/api';
-        const AUTH_BASE = '/api/v1';
+        // 动态检测代理前缀，支持反向代理部署
+        (function() {
+            const path = window.location.pathname;
+            // 查找 /researchpulse 在路径中的位置
+            const rpIndex = path.indexOf('/researchpulse');
+            const prefix = rpIndex > 0 ? path.substring(0, rpIndex) : '';
+            window.APP_BASE = prefix + '/researchpulse';
+            window.API_BASE = prefix + '/researchpulse/api';
+            window.AUTH_BASE = prefix + '/api/v1';
+        })();
 
         let currentTab = 'arxiv';
         let currentUser = null;
