@@ -1,3 +1,22 @@
+# =============================================================================
+# 模块: common/email.py
+# 功能: 统一邮件发送模块，支持多后端和自动降级
+# 架构角色: 作为通用基础设施层，为整个应用提供邮件发送能力。
+#   被通知系统、报告导出、用户注册确认等场景调用。
+#   主要特点：
+#   1. 多后端支持：SMTP、SendGrid、Mailgun、Brevo（原 Sendinblue）
+#   2. SMTP 多端口重试：当某个端口不可用时自动尝试其他端口
+#   3. 多后端自动降级（Fallback）：一个后端失败自动尝试下一个
+#   4. 指数退避重试机制
+#   5. 支持纯文本和 HTML 邮件
+#
+# 设计决策:
+#   - 每个后端封装为独立的私有函数（_send_via_*），便于维护和扩展
+#   - send_email 作为统一入口，通过 backend 参数路由到具体实现
+#   - send_email_with_fallback 提供多后端降级策略
+#   - send_notification_email 是异步包装器，在线程池中执行同步发送
+#   - API 密钥优先从参数获取，其次从环境变量，保持灵活性
+# =============================================================================
 """Email sending module for ResearchPulse v2.
 
 Supports multiple backends:
@@ -49,7 +68,34 @@ def _send_via_smtp(
     use_tls: bool = True,
     use_ssl: bool = False,
 ) -> Tuple[bool, str]:
-    """Send email via SMTP with multi-port retry support."""
+    """Send email via SMTP with multi-port retry support.
+
+    通过 SMTP 协议发送邮件，支持多端口重试策略。
+    当某个端口连接失败时，自动尝试 smtp_ports 列表中的下一个端口。
+    每个端口内部还有独立的重试次数（retries）。
+
+    参数:
+        subject: 邮件主题
+        body: 纯文本正文
+        from_addr: 发件人地址
+        to_addrs: 收件人地址列表
+        smtp_host: SMTP 服务器主机名
+        smtp_port: 默认 SMTP 端口
+        smtp_user: SMTP 认证用户名
+        smtp_password: SMTP 认证密码
+        html_body: 可选的 HTML 正文（发送 multipart/alternative 邮件）
+        smtp_ports: 可选的端口列表，用于多端口重试
+        smtp_ssl_ports: 使用 SSL 直连的端口列表
+        timeout: 连接超时（秒）
+        retries: 每个端口的重试次数
+        retry_backoff: 重试间隔退避时间（秒）
+        use_tls: 是否启用 STARTTLS
+        use_ssl: 是否使用 SSL 直连
+
+    返回值:
+        Tuple[bool, str]: (是否成功, 错误信息)
+    """
+    # 参数校验
     if not smtp_host or not from_addr:
         msg = "SMTP configuration error: host or from_addr missing"
         logger.error(msg)
@@ -59,7 +105,8 @@ def _send_via_smtp(
         logger.error(msg)
         return False, msg
 
-    # Build message
+    # 构建邮件消息
+    # 如果有 HTML 正文，使用 multipart/alternative 格式（同时包含纯文本和 HTML）
     if html_body:
         msg = MIMEMultipart("alternative")
         msg.attach(MIMEText(body, "plain", "utf-8"))
@@ -70,33 +117,43 @@ def _send_via_smtp(
     msg["From"] = from_addr
     msg["To"] = ", ".join(to_addrs)
 
-    # Deduplicate ports
+    # 端口去重并合并：默认端口 + 额外端口 + SSL 端口
+    # dict.fromkeys 保持顺序的同时去重
     ports = list(dict.fromkeys((smtp_ports or [smtp_port]) + (smtp_ssl_ports or [])))
     ssl_ports_set = set(smtp_ssl_ports or [])
-    retries = max(retries, 1)
+    retries = max(retries, 1)  # 至少尝试一次
 
     last_tb = ""
+    # 外层循环：遍历所有可用端口
     for port in ports:
+        # 内层循环：每个端口的重试
         for attempt in range(retries):
             server = None
             try:
+                # 判断当前端口是否应使用 SSL 直连
                 use_ssl_port = port in ssl_ports_set or use_ssl
+                # STARTTLS 和 SSL 互斥
                 use_tls_port = use_tls and not use_ssl_port
+                # 根据是否 SSL 选择不同的 SMTP 类
                 server = (
                     smtplib.SMTP_SSL(smtp_host, port, timeout=timeout)
                     if use_ssl_port
                     else smtplib.SMTP(smtp_host, port, timeout=timeout)
                 )
-                server.ehlo()
+                server.ehlo()  # 向服务器发送 EHLO 命令标识自己
+                # 非 SSL 端口且非 localhost 时启用 STARTTLS 加密
                 if use_tls_port and smtp_host.lower() != "localhost":
                     server.starttls()
-                    server.ehlo()
+                    server.ehlo()  # TLS 升级后需要重新 EHLO
+                # 有认证信息时执行登录
                 if smtp_user:
                     server.login(smtp_user, smtp_password)
+                # 发送邮件
                 server.sendmail(from_addr, to_addrs, msg.as_string())
                 logger.info(f"✓ Email sent via SMTP (port {port})")
                 return True, ""
             except Exception:
+                # 最后一次重试失败时记录详细的异常堆栈
                 if attempt == retries - 1:
                     last_tb = traceback.format_exc()
                     logger.error(
@@ -105,15 +162,19 @@ def _send_via_smtp(
                         retries,
                         last_tb,
                     )
+                # 确保关闭 SMTP 连接
                 if server:
                     try:
                         server.quit()
                     except Exception:
                         pass
+                # 非最后一次重试时等待退避时间
                 if attempt < retries - 1:
                     time.sleep(retry_backoff)
+        # 当前端口所有重试失败，继续尝试下一个端口
         if last_tb:
             continue
+    # 所有端口都失败
     return False, last_tb
 
 
@@ -130,7 +191,25 @@ def _send_via_sendgrid(
     retries: int = 1,
     retry_backoff: float = 10.0,
 ) -> Tuple[bool, str]:
-    """Send email via SendGrid API."""
+    """Send email via SendGrid API.
+
+    通过 SendGrid REST API 发送邮件。
+    SendGrid 返回 202 表示邮件已被接受（异步发送）。
+
+    参数:
+        subject: 邮件主题
+        body: 纯文本正文
+        to_addrs: 收件人列表
+        from_addr: 发件人地址
+        html_body: 可选的 HTML 正文
+        api_key: SendGrid API 密钥，为空时从环境变量获取
+        retries: 重试次数
+        retry_backoff: 重试退避时间（秒）
+
+    返回值:
+        Tuple[bool, str]: (是否成功, 错误信息)
+    """
+    # API 密钥优先从参数获取，其次从环境变量
     api_key = api_key or os.getenv("SENDGRID_API_KEY")
     if not api_key or not from_addr:
         msg = "SendGrid config missing: API key or from_addr"
@@ -145,6 +224,7 @@ def _send_via_sendgrid(
     last_tb = ""
     for attempt in range(attempts):
         try:
+            # 构建 SendGrid v3 API 请求体
             content = [{"type": "text/plain", "value": body}]
             if html_body:
                 content.append({"type": "text/html", "value": html_body})
@@ -160,6 +240,7 @@ def _send_via_sendgrid(
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 timeout=30,
             )
+            # SendGrid 成功接受邮件返回 202
             if resp.status_code == 202:
                 logger.info("✓ Email sent via SendGrid")
                 return True, ""
@@ -188,7 +269,25 @@ def _send_via_mailgun(
     retries: int = 1,
     retry_backoff: float = 10.0,
 ) -> Tuple[bool, str]:
-    """Send email via Mailgun API."""
+    """Send email via Mailgun API.
+
+    通过 Mailgun REST API 发送邮件。
+    使用 HTTP Basic Auth 认证（用户名固定为 "api"）。
+
+    参数:
+        subject: 邮件主题
+        body: 纯文本正文
+        to_addrs: 收件人列表
+        from_addr: 发件人地址
+        html_body: 可选的 HTML 正文
+        api_key: Mailgun API 密钥
+        domain: Mailgun 发送域名
+        retries: 重试次数
+        retry_backoff: 重试退避时间（秒）
+
+    返回值:
+        Tuple[bool, str]: (是否成功, 错误信息)
+    """
     api_key = api_key or os.getenv("MAILGUN_API_KEY")
     domain = domain or os.getenv("MAILGUN_DOMAIN")
     if not api_key or not domain or not from_addr:
@@ -204,12 +303,13 @@ def _send_via_mailgun(
     last_tb = ""
     for attempt in range(attempts):
         try:
+            # Mailgun 使用 form-data 格式提交
             data = {"from": from_addr, "to": to_addrs, "subject": subject, "text": body}
             if html_body:
                 data["html"] = html_body
             resp = httpx.post(
                 f"https://api.mailgun.net/v3/{domain}/messages",
-                auth=("api", api_key),
+                auth=("api", api_key),  # Mailgun 使用 HTTP Basic Auth
                 data=data,
                 timeout=30,
             )
@@ -228,7 +328,7 @@ def _send_via_mailgun(
 
 
 # ======================
-# 4. Brevo API
+# 4. Brevo API（原 Sendinblue）
 # ======================
 def _send_via_brevo(
     subject: str,
@@ -241,7 +341,25 @@ def _send_via_brevo(
     retries: int = 1,
     retry_backoff: float = 10.0,
 ) -> Tuple[bool, str]:
-    """Send email via Brevo (formerly Sendinblue) API."""
+    """Send email via Brevo (formerly Sendinblue) API.
+
+    通过 Brevo REST API 发送邮件。
+    Brevo 成功返回 200 或 201。
+
+    参数:
+        subject: 邮件主题
+        body: 纯文本正文
+        to_addrs: 收件人列表
+        from_addr: 可选的发件人地址
+        html_body: 可选的 HTML 正文
+        api_key: Brevo API 密钥
+        from_name: 发件人显示名称
+        retries: 重试次数
+        retry_backoff: 重试退避时间（秒）
+
+    返回值:
+        Tuple[bool, str]: (是否成功, 错误信息)
+    """
     api_key = api_key or os.getenv("BREVO_API_KEY")
     if not api_key:
         msg = "Brevo config missing: API key"
@@ -256,6 +374,7 @@ def _send_via_brevo(
     last_tb = ""
     for attempt in range(attempts):
         try:
+            # 构建 Brevo API 请求体
             payload: Dict[str, Any] = {
                 "sender": {"name": from_name, **({"email": from_addr} if from_addr else {})},
                 "to": [{"email": e} for e in to_addrs],
@@ -271,6 +390,7 @@ def _send_via_brevo(
                 headers={"api-key": api_key, "Content-Type": "application/json"},
                 timeout=30,
             )
+            # Brevo 成功返回 200 或 201
             if resp.status_code in (200, 201):
                 logger.info("✓ Email sent via Brevo")
                 return True, ""
@@ -287,6 +407,7 @@ def _send_via_brevo(
 
 # ======================
 # 5. 统一发送接口（核心）
+# 作为所有邮件发送的单一入口，根据 backend 参数路由到对应的后端实现
 # ======================
 def send_email(
     subject: str,
@@ -301,17 +422,28 @@ def send_email(
     """
     Unified email sending interface with multiple backend support.
 
+    统一邮件发送接口。根据 backend 参数将请求路由到对应的后端实现。
+    from_addr 如果未提供，会按优先级从 kwargs 和环境变量中自动获取。
+
     Args:
         subject: Email subject
+            邮件主题
         body: Plain text body
+            纯文本正文
         to_addrs: Recipient email addresses
+            收件人地址（可迭代对象）
         html_body: Optional HTML body
+            可选的 HTML 正文
         backend: Email backend ('smtp', 'sendgrid', 'mailgun', 'brevo')
+            邮件发送后端
         from_addr: Sender email address
+            发件人地址
         **kwargs: Backend-specific parameters
+            各后端特有的参数（如 smtp_host, api_key 等）
 
     Returns:
         Tuple[bool, str]: (success, error_message)
+            (是否成功, 错误信息字符串)
 
     Example:
         # SMTP with custom port
@@ -327,13 +459,14 @@ def send_email(
         send_email("Test", "Hi", ["user@example.com"], backend="brevo",
                    from_name="MyApp")
     """
+    # 清理收件人列表：去除空白和空字符串
     to_list = [e.strip() for e in to_addrs if e.strip()]
     if not to_list:
         msg = "Email send aborted: no valid recipients"
         logger.error(msg)
         return False, msg
 
-    # Auto-fill from_addr (priority order)
+    # 自动填充发件人地址（按优先级从多个来源获取）
     if not from_addr:
         from_addr = (
             kwargs.get("smtp_user")
@@ -349,6 +482,7 @@ def send_email(
         return False, msg
 
     try:
+        # 根据 backend 参数路由到对应的发送函数
         if backend == "smtp":
             return _send_via_smtp(
                 subject=subject,
@@ -403,17 +537,20 @@ def send_email(
                 retries=int(kwargs.get("retries", 3)),
                 retry_backoff=float(kwargs.get("retry_backoff", 10.0)),
             )
+        # 不支持的后端
         msg = f"Unsupported email backend: {backend}"
         logger.error(msg)
         return False, msg
     except Exception:
+        # 捕获所有未预期的异常，确保不会因为邮件发送失败而崩溃
         tb = traceback.format_exc()
         logger.error("Unexpected error in send_email (backend=%s)\n%s", backend, tb)
         return False, tb
 
 
 # ======================
-# 6. 多后端 Fallback
+# 6. 多后端 Fallback（降级策略）
+# 按优先级依次尝试多个后端，直到一个成功为止
 # ======================
 def send_email_with_fallback(
     subject: str,
@@ -429,16 +566,26 @@ def send_email_with_fallback(
 
     Default order: SendGrid > Brevo > Mailgun > SMTP
 
+    按优先级依次尝试多个邮件后端，直到一个成功发送。
+    默认优先级：SendGrid（最快） > Brevo > Mailgun > SMTP（最后兜底）
+
     Args:
         subject: Email subject
+            邮件主题
         body: Plain text body
+            纯文本正文
         to_addrs: Recipient email addresses
+            收件人地址
         html_body: Optional HTML body
+            可选的 HTML 正文
         backends: List of backends to try in order
+            后端优先级列表，自定义降级顺序
         **kwargs: Backend-specific parameters
+            各后端特有的参数
 
     Returns:
         Tuple[bool, str]: (success, error_message)
+            (是否成功, 错误信息)
     """
     backends = backends or ["sendgrid", "brevo", "mailgun", "smtp"]
     for bk in backends:
@@ -446,13 +593,15 @@ def send_email_with_fallback(
         ok, tb = send_email(subject, body, to_addrs, html_body=html_body, backend=bk, **kwargs)
         if ok:
             return True, ""
+    # 所有后端均失败
     msg = "✗ All email backends failed"
     logger.error(msg)
     return False, msg
 
 
 # ======================
-# 7. Convenience function for notifications
+# 7. 通知邮件便捷函数
+# 提供异步接口，内部通过线程池执行同步发送，避免阻塞事件循环
 # ======================
 async def send_notification_email(
     to_addr: str,
@@ -465,25 +614,35 @@ async def send_notification_email(
 
     This is an async wrapper for the sync send_email function.
 
+    使用配置中指定的后端发送通知邮件。
+    这是一个异步包装器，将同步的邮件发送操作放到线程池中执行，
+    避免阻塞 FastAPI 的异步事件循环。
+
     Args:
         to_addr: Recipient email address
+            收件人邮箱地址
         subject: Email subject
+            邮件主题
         body: Plain text body
+            纯文本正文
         html_body: Optional HTML body
+            可选的 HTML 正文
 
     Returns:
         bool: True if sent successfully
+            发送成功返回 True
     """
     import asyncio
 
     def _send():
-        # Get backend from settings
+        # 从全局配置中获取邮件后端设置
         from settings import settings
         backend = settings.email_backend
+        # 支持逗号分隔的多后端配置（依次尝试）
         backends = backend.split(",") if "," in backend else [backend]
         backends = [b.strip() for b in backends if b.strip()]
 
-        # Try backends in order
+        # 按配置顺序尝试各后端
         for bk in backends:
             ok, _ = send_email(
                 subject=subject,
@@ -497,6 +656,6 @@ async def send_notification_email(
                 return True
         return False
 
-    # Run in thread pool to avoid blocking
+    # 在线程池中执行同步发送操作，避免阻塞异步事件循环
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _send)

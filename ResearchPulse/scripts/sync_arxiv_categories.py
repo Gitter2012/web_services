@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import sys
 from pathlib import Path
@@ -29,6 +30,9 @@ except ImportError:
 
 # ArXiv category page URL
 ARXIV_CATEGORIES_URL = "https://arxiv.org/category_taxonomy"
+
+# Logger for this module
+logger = logging.getLogger(__name__)
 
 # Known arXiv categories (fallback if scraping fails)
 ARXIV_CATEGORIES = {
@@ -202,7 +206,13 @@ ARXIV_CATEGORIES = {
 
 
 async def fetch_categories_from_web() -> Dict[str, tuple]:
-    """Fetch categories from arXiv website."""
+    """Fetch category taxonomy from the arXiv website.
+
+    从 arXiv 分类页面抓取分类代码、名称与父级领域。
+
+    Returns:
+        Dict[str, tuple]: Mapping of category code to (name, parent).
+    """
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(ARXIV_CATEGORIES_URL)
@@ -234,17 +244,29 @@ async def fetch_categories_from_web() -> Dict[str, tuple]:
         return categories
 
     except Exception as e:
-        print(f"Warning: Failed to fetch categories from web: {e}")
+        logger.warning(f"Failed to fetch categories from web: {e}")
         return {}
 
 
 def get_all_categories() -> Dict[str, tuple]:
-    """Get all known arXiv categories."""
+    """Return all known arXiv categories.
+
+    返回内置的 arXiv 分类字典副本。
+
+    Returns:
+        Dict[str, tuple]: Mapping of category code to (name, parent).
+    """
     return ARXIV_CATEGORIES.copy()
 
 
 async def sync_categories_to_db():
-    """Sync all categories to the database."""
+    """Sync all categories to the database.
+
+    将分类数据写入数据库，已存在则更新名称与父级。
+
+    Returns:
+        None: This function does not return a value.
+    """
     from core.database import get_session_factory
     from apps.crawler.models import ArxivCategory
     from sqlalchemy import select
@@ -255,7 +277,7 @@ async def sync_categories_to_db():
     # Merge with known categories (known takes precedence)
     all_categories = {**web_categories, **ARXIV_CATEGORIES}
 
-    print(f"Total categories to sync: {len(all_categories)}")
+    logger.info(f"Total categories to sync: {len(all_categories)}")
 
     factory = get_session_factory()
 
@@ -283,7 +305,7 @@ async def sync_categories_to_db():
 
         await session.commit()
 
-    print(f"Synced {len(all_categories)} categories to database")
+    logger.info(f"Synced {len(all_categories)} categories to database")
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+[ -x "/root/myenv/bin/python" ] && PYTHON_BIN="/root/myenv/bin/python" || PYTHON_BIN="python"
 
 WITH_SAMPLE_DATA=false
 
@@ -58,7 +59,7 @@ fi
 # 2. 默认数据
 echo -e "${YELLOW}[2/2] 初始化默认数据...${NC}"
 
-python3 << 'PYTHON_SCRIPT'
+$PYTHON_BIN << 'PYTHON_SCRIPT'
 import asyncio
 
 async def init_data():

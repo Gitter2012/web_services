@@ -81,6 +81,13 @@
         .stat-card { background: white; border-radius: 12px; padding: 20px; text-align: center; }
         .stat-value { font-size: 32px; font-weight: 600; color: #1a1a2e; }
         .stat-label { font-size: 13px; color: #888; margin-top: 4px; }
+        
+        .form-group { margin-bottom: 16px; }
+        .form-input { width: 100%; padding: 12px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; }
+        .form-input:focus { outline: none; border-color: #4ecdc4; }
+        
+        .validation-success { background: #dcfce7; color: #059669; padding: 12px; border-radius: 8px; margin-top: 12px; }
+        .validation-error { background: #fee2e2; color: #dc2626; padding: 12px; border-radius: 8px; margin-top: 12px; }
     </style>
 </head>
 <body>
@@ -89,10 +96,9 @@
             <div class="logo">
                 <h1>ResearchPulse</h1>
             </div>
-            <div class="nav">
+            <div class="nav" id="nav-menu">
                 <a href="/researchpulse/">首页</a>
                 <a href="/researchpulse/subscriptions" class="active">订阅管理</a>
-                <a href="/researchpulse/admin">管理后台</a>
             </div>
             <div class="auth-area" id="auth-area">
                 <span class="user-info">👤 Loading...</span>
@@ -125,9 +131,10 @@
             <button class="tab active" onclick="switchTab('arxiv')">ArXiv 类目</button>
             <button class="tab" onclick="switchTab('rss')">RSS 源</button>
             <button class="tab" onclick="switchTab('wechat')">微信公众号</button>
+            <button class="tab" onclick="switchTab('add-rss')" style="background: #4ecdc4; color: white;">+ 添加 RSS 源</button>
         </div>
 
-        <div class="content-card">
+        <div class="content-card" id="main-content">
             <div class="search-box">
                 <input type="text" id="search-input" placeholder="搜索..." oninput="filterItems()">
             </div>
@@ -143,6 +150,36 @@
                     <div class="text">加载中...</div>
                 </div>
             </div>
+        </div>
+
+        <!-- Add RSS Feed Card -->
+        <div class="content-card" id="add-rss-content" style="display: none;">
+            <div class="section-title">
+                <span>添加自定义 RSS 源</span>
+                <span style="color: #888; font-size: 13px; font-weight: 400;">提交后需等待管理员审批</span>
+            </div>
+            
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px;">RSS Feed URL *</label>
+                <input type="url" id="new-feed-url" class="form-input" placeholder="https://example.com/feed.xml" style="width: 100%; padding: 12px; border: 1px solid #e0e0e0; border-radius: 8px;">
+            </div>
+            
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px;">标题（可选）</label>
+                <input type="text" id="new-feed-title" class="form-input" placeholder="留空则自动从 Feed 中获取" style="width: 100%; padding: 12px; border: 1px solid #e0e0e0; border-radius: 8px;">
+            </div>
+            
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px;">分类</label>
+                <input type="text" id="new-feed-category" class="form-input" value="用户添加" style="width: 100%; padding: 12px; border: 1px solid #e0e0e0; border-radius: 8px;">
+            </div>
+            
+            <div style="display: flex; gap: 12px;">
+                <button class="btn" onclick="validateRssFeed()" style="background: #6b7280; color: white; padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer;">验证</button>
+                <button class="btn btn-subscribe" onclick="submitRssFeed()" style="padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer;">提交</button>
+            </div>
+            
+            <div id="validation-result" style="margin-top: 16px; display: none;"></div>
         </div>
     </div>
 
@@ -207,6 +244,15 @@
                 <span class="user-info">👤 ${currentUser.username}</span>
                 <a href="#" onclick="logout()">退出</a>
             `;
+            
+            // 更新导航菜单，仅超级管理员显示管理后台
+            const navMenu = document.getElementById('nav-menu');
+            let navHtml = '<a href="/researchpulse/">首页</a>';
+            navHtml += '<a href="/researchpulse/subscriptions" class="active">订阅管理</a>';
+            if (currentUser.is_superuser) {
+                navHtml += '<a href="/researchpulse/admin">管理后台</a>';
+            }
+            navMenu.innerHTML = navHtml;
         }
 
         function showLoginModal() {
@@ -276,7 +322,113 @@
             currentTab = tab;
             document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent.toLowerCase().includes(tab)));
             document.getElementById('search-input').value = '';
-            loadItems();
+            
+            // Show/hide add RSS form
+            if (tab === 'add-rss') {
+                document.getElementById('main-content').style.display = 'none';
+                document.getElementById('add-rss-content').style.display = 'block';
+                document.getElementById('validation-result').style.display = 'none';
+            } else {
+                document.getElementById('main-content').style.display = 'block';
+                document.getElementById('add-rss-content').style.display = 'none';
+                loadItems();
+            }
+        }
+
+        // Validate RSS Feed
+        async function validateRssFeed() {
+            const feedUrl = document.getElementById('new-feed-url').value;
+            const resultDiv = document.getElementById('validation-result');
+            
+            if (!feedUrl) {
+                resultDiv.className = 'validation-error';
+                resultDiv.innerHTML = '请输入 RSS Feed URL';
+                resultDiv.style.display = 'block';
+                return;
+            }
+            
+            const token = localStorage.getItem('access_token');
+            resultDiv.className = '';
+            resultDiv.innerHTML = '正在验证...';
+            resultDiv.style.display = 'block';
+            
+            try {
+                const res = await fetch(`${API_BASE}/feeds/validate`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ feed_url: feedUrl })
+                });
+                
+                const data = await res.json();
+                
+                if (data.valid) {
+                    resultDiv.className = 'validation-success';
+                    resultDiv.innerHTML = `
+                        <strong>✓ 验证成功</strong><br>
+                        <strong>标题:</strong> ${escapeHtml(data.title || '未知')}<br>
+                        <strong>描述:</strong> ${escapeHtml(data.description || '无')}
+                    `;
+                    // Auto-fill title if empty
+                    if (!document.getElementById('new-feed-title').value && data.title) {
+                        document.getElementById('new-feed-title').value = data.title;
+                    }
+                } else {
+                    resultDiv.className = 'validation-error';
+                    resultDiv.innerHTML = `<strong>✗ 验证失败</strong><br>${escapeHtml(data.error || '未知错误')}`;
+                }
+            } catch (e) {
+                resultDiv.className = 'validation-error';
+                resultDiv.innerHTML = '验证失败，请检查 URL 是否正确';
+            }
+        }
+
+        // Submit RSS Feed
+        async function submitRssFeed() {
+            const feedUrl = document.getElementById('new-feed-url').value;
+            const title = document.getElementById('new-feed-title').value;
+            const category = document.getElementById('new-feed-category').value;
+            const resultDiv = document.getElementById('validation-result');
+            
+            if (!feedUrl) {
+                alert('请输入 RSS Feed URL');
+                return;
+            }
+            
+            const token = localStorage.getItem('access_token');
+            
+            try {
+                const res = await fetch(`${API_BASE}/feeds/add`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        feed_url: feedUrl, 
+                        title: title || null, 
+                        category: category 
+                    })
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok) {
+                    alert(data.message || 'RSS 源已提交，等待管理员审批');
+                    // Clear form
+                    document.getElementById('new-feed-url').value = '';
+                    document.getElementById('new-feed-title').value = '';
+                    resultDiv.style.display = 'none';
+                    // Switch to RSS tab
+                    switchTab('rss');
+                } else {
+                    alert(data.detail || '提交失败');
+                }
+            } catch (e) {
+                alert('提交失败，请重试');
+            }
         }
 
         // Items

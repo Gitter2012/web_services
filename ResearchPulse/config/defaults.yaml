@@ -20,7 +20,7 @@ cache:
 
 jwt:
   algorithm: HS256
-  access_token_expire_minutes: 30
+  access_token_expire_minutes: 1440  # 1 day = 24 hours * 60 minutes
   refresh_token_expire_days: 7
 
 crawler:
@@ -55,7 +55,6 @@ logging:
 
 email:
   enabled: false
-  backends: smtp
   from: ""
   # Email backends (comma-separated for fallback): smtp, sendgrid, mailgun, brevo
   # Default: smtp
@@ -95,3 +94,115 @@ email:
     frequency: daily  # daily, weekly, instant
     time: "09:00"
     max_articles: 20
+
+# AI Processing Configuration
+ai_processor:
+  enabled: false
+  provider: "ollama"  # ollama, openai, claude
+  ollama:
+    base_url: "http://localhost:11434"
+    model: "qwen3:32b"
+    model_light: ""
+    model_screen: ""
+    timeout: 120
+    keep_alive: 300
+    thinking_enabled: false
+    concurrent_enabled: false
+    workers_heavy: 2
+    workers_screen: 4
+  openai:
+    model: "gpt-4o"
+    model_light: "gpt-4o-mini"
+    timeout: 60
+  claude:
+    model: "claude-sonnet-4-20250514"
+    model_light: "claude-haiku-4-20250514"
+    timeout: 60
+  rule_optimization:
+    skip_enabled: true
+    skip_low_importance_enabled: true
+    skip_low_importance_threshold: 3
+    skip_short_content_threshold: 150
+    rule_only_enabled: true
+    rule_only_max_content_length: 1000
+    rule_only_min_keyword_boost: 1
+    minimal_prompt_enabled: true
+    minimal_prompt_threshold: 4
+    minimal_prompt_min_confidence: 0.5
+    paper_prompt_enabled: true
+    paper_extended_content_length: 2500
+    paper_upgrade_importance_threshold: 10
+    paper_upgrade_novelty_boost: 0
+  cache:
+    enabled: true
+    ttl: 86400
+  max_content_length: 1500
+  max_title_length: 200
+
+# Embedding Configuration (with Milvus)
+embedding:
+  enabled: false
+  provider: "sentence-transformers"  # sentence-transformers, openai
+  model: "all-MiniLM-L6-v2"
+  dimension: 384
+  similarity_threshold: 0.85
+  milvus:
+    host: "localhost"
+    port: 19530
+    user: ""
+    password: ""
+    collection_name: "article_embeddings"
+    index_type: "HNSW"
+    metric_type: "COSINE"
+    index_params:
+      M: 16
+      efConstruction: 256
+    search_params:
+      ef: 64
+    batch_size: 1000
+    timeout: 30
+
+# Event Clustering Configuration
+event:
+  enabled: false
+  clustering:
+    rule_weight: 0.4
+    semantic_weight: 0.6
+    min_similarity: 0.7
+    time_window_days: 3
+    min_importance_for_new_cluster: 6
+  cache_ttl: 3600
+
+# Topic Configuration
+topic:
+  enabled: false
+  discovery:
+    min_frequency: 5
+    lookback_days: 14
+    min_confidence: 0.5
+  radar:
+    snapshot_interval: "daily"
+    min_relevance: 0.3
+
+# Action Items Configuration
+action:
+  enabled: false
+
+# Report Generation Configuration
+report:
+  enabled: false
+
+# Notification Configuration
+notification:
+  wechat:
+    enabled: false
+    appid: ""
+    appsecret: ""
+
+# Video Generation Configuration (optional)
+video:
+  enabled: false
+  tts:
+    provider: "edge-tts"
+    voice: "yunxi"
+  output_dir: "./videos"

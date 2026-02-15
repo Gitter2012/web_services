@@ -99,6 +99,10 @@
         .modal-close { font-size: 24px; cursor: pointer; color: #999; }
         .modal-body { padding: 24px; }
         .modal-footer { padding: 16px 24px; border-top: 1px solid #f0f0f0; display: flex; justify-content: flex-end; gap: 8px; }
+
+        .toggle-list { max-height: 500px; overflow-y: auto; }
+        .config-panel { animation: fadeIn 0.2s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body>
@@ -110,9 +114,17 @@
             </div>
             <nav class="sidebar-nav">
                 <a href="#" class="nav-item active" onclick="switchSection('dashboard')">📊 仪表盘</a>
+                <a href="#" class="nav-item" onclick="switchSection('sources')">📡 数据源管理</a>
                 <a href="#" class="nav-item" onclick="switchSection('crawlers')">🕷️ 抓取配置</a>
                 <a href="#" class="nav-item" onclick="switchSection('users')">👥 用户管理</a>
                 <a href="#" class="nav-item" onclick="switchSection('email')">📧 邮件推送</a>
+                <a href="#" class="nav-item" onclick="switchSection('ai')">🤖 AI 配置</a>
+                <a href="#" class="nav-item" onclick="switchSection('embedding')">🧠 向量嵌入</a>
+                <a href="#" class="nav-item" onclick="switchSection('events')">📰 事件管理</a>
+                <a href="#" class="nav-item" onclick="switchSection('topics')">🏷️ 主题管理</a>
+                <a href="#" class="nav-item" onclick="switchSection('reports')">📄 报告管理</a>
+                <a href="#" class="nav-item" onclick="switchSection('backups')">💾 备份管理</a>
+                <a href="#" class="nav-item" onclick="switchSection('audit')">📋 审计日志</a>
                 <a href="#" class="nav-item" onclick="switchSection('config')">⚙️ 系统配置</a>
                 <a href="/researchpulse/" class="nav-item">🏠 返回首页</a>
             </nav>
@@ -162,6 +174,137 @@
                             </thead>
                             <tbody id="recent-articles"></tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sources Section -->
+            <div id="section-sources" class="section" style="display:none;">
+                <div class="page-header">
+                    <h1>数据源管理</h1>
+                    <p>管理 ArXiv 分类、RSS 源和微信公众号</p>
+                </div>
+
+                <div class="stats-grid" id="sources-stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-arxiv-total">0</div>
+                        <div class="stat-label">ArXiv 分类总数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-arxiv-active">0</div>
+                        <div class="stat-label">ArXiv 活跃分类</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-rss-total">0</div>
+                        <div class="stat-label">RSS 源总数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-rss-active">0</div>
+                        <div class="stat-label">RSS 活跃源</div>
+                    </div>
+                </div>
+
+                <div class="tabs">
+                    <button class="tab active" onclick="switchSourceTab('arxiv')">ArXiv 分类</button>
+                    <button class="tab" onclick="switchSourceTab('rss')">RSS 源</button>
+                    <button class="tab" onclick="switchSourceTab('wechat')">微信公众号</button>
+                    <button class="tab" onclick="switchSourceTab('pending')">待审批 RSS</button>
+                </div>
+
+                <!-- ArXiv Categories -->
+                <div id="source-arxiv" class="source-panel">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>ArXiv 分类管理</h3>
+                            <div>
+                                <button class="btn btn-primary btn-sm" onclick="batchToggleArxiv(true)">批量启用</button>
+                                <button class="btn btn-sm" onclick="batchToggleArxiv(false)">批量禁用</button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <input type="text" class="form-input" id="arxiv-search" placeholder="搜索分类代码或名称..." oninput="loadArxivCategories()">
+                            </div>
+                            <div id="arxiv-list" style="max-height: 500px; overflow-y: auto;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RSS Feeds -->
+                <div id="source-rss" class="source-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>RSS 源管理</h3>
+                            <button class="btn btn-primary btn-sm" onclick="showAddRssModal()">添加 RSS 源</button>
+                        </div>
+                        <div class="card-body">
+                            <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+                                <input type="text" class="form-input" id="rss-search" placeholder="搜索..." style="flex: 1;" oninput="loadRssFeeds()">
+                                <select class="form-select" id="rss-category-filter" style="width: 150px;" onchange="loadRssFeeds()">
+                                    <option value="">全部分类</option>
+                                </select>
+                            </div>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="rss-select-all" onchange="toggleSelectAll('rss')"></th>
+                                        <th>标题</th>
+                                        <th>分类</th>
+                                        <th>状态</th>
+                                        <th>最后抓取</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="rss-list"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- WeChat Accounts -->
+                <div id="source-wechat" class="source-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>微信公众号管理</h3>
+                            <button class="btn btn-primary btn-sm" onclick="showAddWechatModal()">添加公众号</button>
+                        </div>
+                        <div class="card-body">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>名称</th>
+                                        <th>账号 ID</th>
+                                        <th>状态</th>
+                                        <th>最后抓取</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="wechat-list"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pending RSS -->
+                <div id="source-pending" class="source-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>待审批 RSS 源</h3>
+                            <span style="color: #888; font-size: 13px;">用户提交的 RSS 源，审核通过后将加入抓取列表</span>
+                        </div>
+                        <div class="card-body">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>标题</th>
+                                        <th>Feed URL</th>
+                                        <th>提交时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pending-rss-list"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -232,69 +375,559 @@
             <div id="section-email" class="section" style="display:none;">
                 <div class="page-header">
                     <h1>邮件推送</h1>
-                    <p>配置邮件推送功能</p>
+                    <p>配置邮件推送功能，支持多种邮件后端</p>
+                </div>
+
+                <div class="tabs">
+                    <button class="tab active" onclick="switchEmailTab('general')">推送设置</button>
+                    <button class="tab" onclick="switchEmailTab('smtp')">SMTP</button>
+                    <button class="tab" onclick="switchEmailTab('sendgrid')">SendGrid</button>
+                    <button class="tab" onclick="switchEmailTab('mailgun')">Mailgun</button>
+                    <button class="tab" onclick="switchEmailTab('brevo')">Brevo</button>
+                </div>
+
+                <!-- General Settings -->
+                <div id="email-general-panel" class="email-panel">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>推送设置</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="toggle-item">
+                                <div class="toggle-info">
+                                    <h4>启用邮件推送</h4>
+                                    <p>定期向用户推送订阅的新文章</p>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="email-enabled">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+
+                            <div class="form-group" style="margin-top: 16px;">
+                                <label class="form-label">活跃后端</label>
+                                <select class="form-select" id="email-active-backend">
+                                    <option value="smtp">SMTP</option>
+                                    <option value="sendgrid">SendGrid</option>
+                                    <option value="mailgun">Mailgun</option>
+                                    <option value="brevo">Brevo</option>
+                                </select>
+                                <p style="font-size: 12px; color: #888; margin-top: 4px;">选择用于发送邮件的后端服务</p>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">发件人邮箱</label>
+                                <input type="email" class="form-input" id="email-sender" placeholder="noreply@example.com">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">推送频率</label>
+                                <select class="form-select" id="email-frequency">
+                                    <option value="daily">每天</option>
+                                    <option value="weekly">每周</option>
+                                    <option value="instant">实时</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">推送时间</label>
+                                <input type="time" class="form-input" id="email-time" value="09:00">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">每封邮件最大文章数</label>
+                                <input type="number" class="form-input" id="email-max-articles" value="20">
+                            </div>
+
+                            <button class="btn btn-primary" onclick="saveEmailGeneral()">保存设置</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SMTP Settings -->
+                <div id="email-smtp-panel" class="email-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>SMTP 配置</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">SMTP 服务器</label>
+                                <input type="text" class="form-input" id="smtp-host" placeholder="smtp.example.com">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">SMTP 端口</label>
+                                <input type="number" class="form-input" id="smtp-port" value="587">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">用户名</label>
+                                <input type="text" class="form-input" id="smtp-user" placeholder="your@email.com">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">密码/授权码</label>
+                                <input type="password" class="form-input" id="smtp-password" placeholder="留空保持不变">
+                                <p style="font-size: 12px; color: #888; margin-top: 4px;">显示为 **** 表示已设置，留空则保持原值</p>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <input type="checkbox" id="smtp-use-tls" checked>
+                                    使用 TLS
+                                </label>
+                            </div>
+                            <button class="btn btn-primary" onclick="saveEmailSmtp()">保存 SMTP 配置</button>
+                            <button class="btn" onclick="testEmailBackend('smtp')">发送测试邮件</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SendGrid Settings -->
+                <div id="email-sendgrid-panel" class="email-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>SendGrid 配置</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">API Key</label>
+                                <input type="password" class="form-input" id="sendgrid-api-key" placeholder="SG.xxxxx">
+                                <p style="font-size: 12px; color: #888; margin-top: 4px;">显示为 **** 表示已设置，留空则保持原值</p>
+                            </div>
+                            <button class="btn btn-primary" onclick="saveEmailSendGrid()">保存 SendGrid 配置</button>
+                            <button class="btn" onclick="testEmailBackend('sendgrid')">发送测试邮件</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mailgun Settings -->
+                <div id="email-mailgun-panel" class="email-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Mailgun 配置</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">API Key</label>
+                                <input type="password" class="form-input" id="mailgun-api-key" placeholder="key-xxxxx">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Domain</label>
+                                <input type="text" class="form-input" id="mailgun-domain" placeholder="mg.example.com">
+                            </div>
+                            <button class="btn btn-primary" onclick="saveEmailMailgun()">保存 Mailgun 配置</button>
+                            <button class="btn" onclick="testEmailBackend('mailgun')">发送测试邮件</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Brevo Settings -->
+                <div id="email-brevo-panel" class="email-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Brevo 配置</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">API Key</label>
+                                <input type="password" class="form-input" id="brevo-api-key" placeholder="xkeysib-xxxxx">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">发件人名称</label>
+                                <input type="text" class="form-input" id="brevo-from-name" value="ResearchPulse">
+                            </div>
+                            <button class="btn btn-primary" onclick="saveEmailBrevo()">保存 Brevo 配置</button>
+                            <button class="btn" onclick="testEmailBackend('brevo')">发送测试邮件</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Configuration Section -->
+            <div id="section-ai" class="section" style="display:none;">
+                <div class="page-header">
+                    <h1>AI 配置</h1>
+                    <p>配置 AI 处理器，支持 Ollama、OpenAI、Claude</p>
+                </div>
+
+                <div class="tabs">
+                    <button class="tab active" onclick="switchAITab('general')">通用设置</button>
+                    <button class="tab" onclick="switchAITab('ollama')">Ollama</button>
+                    <button class="tab" onclick="switchAITab('openai')">OpenAI</button>
+                    <button class="tab" onclick="switchAITab('claude')">Claude</button>
+                </div>
+
+                <!-- General Settings -->
+                <div id="ai-general-panel" class="ai-panel">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>通用设置</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">AI Provider</label>
+                                <select class="form-select" id="ai-provider">
+                                    <option value="ollama">Ollama (本地)</option>
+                                    <option value="openai">OpenAI</option>
+                                    <option value="claude">Claude</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <input type="checkbox" id="ai-cache-enabled" checked>
+                                    启用缓存
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">缓存 TTL（秒）</label>
+                                <input type="number" class="form-input" id="ai-cache-ttl" value="86400">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">最大内容长度</label>
+                                <input type="number" class="form-input" id="ai-max-content" value="1500">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">最大标题长度</label>
+                                <input type="number" class="form-input" id="ai-max-title" value="200">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <input type="checkbox" id="ai-thinking-enabled">
+                                    启用思考模式
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <input type="checkbox" id="ai-concurrent-enabled">
+                                    启用并发处理
+                                </label>
+                            </div>
+                            <button class="btn btn-primary" onclick="saveAIGeneral()">保存设置</button>
+                            <button class="btn" onclick="testAIConnection()">测试连接</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ollama Settings -->
+                <div id="ai-ollama-panel" class="ai-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Ollama 配置</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">Base URL</label>
+                                <input type="text" class="form-input" id="ai-ollama-url" value="http://localhost:11434">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">主模型</label>
+                                <input type="text" class="form-input" id="ai-ollama-model" value="qwen3:32b">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">轻量模型（可选）</label>
+                                <input type="text" class="form-input" id="ai-ollama-model-light" placeholder="用于简单任务">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">超时时间（秒）</label>
+                                <input type="number" class="form-input" id="ai-ollama-timeout" value="120">
+                            </div>
+                            <button class="btn btn-primary" onclick="saveAIOllama()">保存配置</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- OpenAI Settings -->
+                <div id="ai-openai-panel" class="ai-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>OpenAI 配置</h3>
+                        </div>
+                        <div class="card-body">
+                            <p style="color: #888; margin-bottom: 16px;">
+                                OpenAI API Key 需要在环境变量中设置（OPENAI_API_KEY）
+                            </p>
+                            <div class="form-group">
+                                <label class="form-label">主模型</label>
+                                <input type="text" class="form-input" id="ai-openai-model" value="gpt-4o">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">轻量模型</label>
+                                <input type="text" class="form-input" id="ai-openai-model-light" value="gpt-4o-mini">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">超时时间（秒）</label>
+                                <input type="number" class="form-input" id="ai-openai-timeout" value="60">
+                            </div>
+                            <button class="btn btn-primary" onclick="saveAIOpenAI()">保存配置</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Claude Settings -->
+                <div id="ai-claude-panel" class="ai-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Claude 配置</h3>
+                        </div>
+                        <div class="card-body">
+                            <p style="color: #888; margin-bottom: 16px;">
+                                Claude API Key 需要在环境变量中设置（ANTHROPIC_API_KEY）
+                            </p>
+                            <div class="form-group">
+                                <label class="form-label">主模型</label>
+                                <input type="text" class="form-input" id="ai-claude-model" value="claude-sonnet-4-20250514">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">轻量模型</label>
+                                <input type="text" class="form-input" id="ai-claude-model-light" value="claude-haiku-4-20250514">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">超时时间（秒）</label>
+                                <input type="number" class="form-input" id="ai-claude-timeout" value="60">
+                            </div>
+                            <button class="btn btn-primary" onclick="saveAIClaude()">保存配置</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Embedding Section -->
+            <div id="section-embedding" class="section" style="display:none;">
+                <div class="page-header">
+                    <h1>向量嵌入</h1>
+                    <p>管理向量嵌入配置和统计</p>
+                </div>
+
+                <div class="stats-grid" id="embedding-stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-embedding-total">-</div>
+                        <div class="stat-label">总文章数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-embedding-computed">-</div>
+                        <div class="stat-label">已嵌入数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-embedding-missing">-</div>
+                        <div class="stat-label">未嵌入数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-embedding-provider">-</div>
+                        <div class="stat-label">Provider</div>
+                    </div>
                 </div>
 
                 <div class="card">
                     <div class="card-header">
-                        <h3>推送配置</h3>
+                        <h3>嵌入配置</h3>
                     </div>
                     <div class="card-body">
-                        <div class="toggle-item">
-                            <div class="toggle-info">
-                                <h4>启用邮件推送</h4>
-                                <p>定期向用户推送订阅的新文章</p>
-                            </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="email-enabled">
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        
-                        <div class="form-group" style="margin-top: 16px;">
-                            <label class="form-label">推送频率</label>
-                            <select class="form-select" id="email-frequency">
-                                <option value="daily">每天</option>
-                                <option value="weekly">每周</option>
-                                <option value="instant">实时</option>
+                        <div class="form-group">
+                            <label class="form-label">Provider</label>
+                            <select class="form-select" id="embedding-provider">
+                                <option value="sentence-transformers">sentence-transformers</option>
+                                <option value="openai">OpenAI</option>
                             </select>
                         </div>
-                        
                         <div class="form-group">
-                            <label class="form-label">推送时间</label>
-                            <input type="time" class="form-input" id="email-time" value="09:00">
+                            <label class="form-label">模型</label>
+                            <input type="text" class="form-input" id="embedding-model" value="all-MiniLM-L6-v2">
                         </div>
-                        
                         <div class="form-group">
-                            <label class="form-label">每封邮件最大文章数</label>
-                            <input type="number" class="form-input" id="email-max-articles" value="20">
+                            <label class="form-label">相似度阈值</label>
+                            <input type="number" class="form-input" id="embedding-threshold" value="0.85" step="0.01">
+                        </div>
+                        <button class="btn btn-primary" onclick="saveEmbeddingConfig()">保存配置</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Milvus 配置</h3>
+                    </div>
+                    <div class="card-body">
+                        <div style="display: flex; gap: 12px;">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Host</label>
+                                <input type="text" class="form-input" id="milvus-host" value="localhost">
+                            </div>
+                            <div class="form-group" style="width: 120px;">
+                                <label class="form-label">Port</label>
+                                <input type="number" class="form-input" id="milvus-port" value="19530">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Collection</label>
+                            <input type="text" class="form-input" id="milvus-collection" value="article_embeddings">
+                        </div>
+                        <button class="btn btn-primary" onclick="saveMilvusConfig()">保存配置</button>
+                        <button class="btn" onclick="testMilvusConnection()">测试连接</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>批量操作</h3>
+                    </div>
+                    <div class="card-body">
+                        <p style="margin-bottom: 16px; color: #666;">
+                            重新计算嵌入向量可能会消耗较多时间和资源。
+                        </p>
+                        <button class="btn" onclick="recomputeMissingEmbeddings()">计算缺失嵌入</button>
+                        <button class="btn btn-danger" style="margin-left: 8px;" onclick="recomputeAllEmbeddings()">全部重新计算</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Events Section -->
+            <div id="section-events" class="section" style="display:none;">
+                <div class="page-header">
+                    <h1>事件管理</h1>
+                    <p>管理事件聚类，查看、编辑、合并相关文章</p>
+                </div>
+
+                <div class="tabs">
+                    <button class="tab active" onclick="switchEventTab('list')">事件列表</button>
+                    <button class="tab" onclick="switchEventTab('config')">聚类配置</button>
+                </div>
+
+                <div id="event-list-panel" class="event-panel">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>事件列表</h3>
+                            <span id="event-total" style="color: #888; font-size: 13px;">共 0 个事件</span>
+                        </div>
+                        <div class="card-body">
+                            <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+                                <input type="text" class="form-input" id="event-search" placeholder="搜索事件..." style="flex: 1;" oninput="loadEvents()">
+                                <select class="form-select" id="event-active-filter" style="width: 120px;" onchange="loadEvents()">
+                                    <option value="">全部状态</option>
+                                    <option value="true">活跃</option>
+                                    <option value="false">不活跃</option>
+                                </select>
+                                <button class="btn btn-primary" onclick="mergeSelectedEvents()">合并选中</button>
+                            </div>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="event-select-all" onchange="toggleEventSelectAll()"></th>
+                                        <th>标题</th>
+                                        <th>分类</th>
+                                        <th>文章数</th>
+                                        <th>最后更新</th>
+                                        <th>状态</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="event-list">
+                                    <tr><td colspan="7">加载中...</td></tr>
+                                </tbody>
+                            </table>
+                            <div id="event-pagination" style="margin-top: 16px; display: flex; justify-content: center; gap: 8px;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="event-config-panel" class="event-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>聚类配置</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">规则权重</label>
+                                <input type="number" class="form-input" id="event-rule-weight" value="0.4" step="0.1" min="0" max="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">语义权重</label>
+                                <input type="number" class="form-input" id="event-semantic-weight" value="0.6" step="0.1" min="0" max="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">最小相似度</label>
+                                <input type="number" class="form-input" id="event-min-similarity" value="0.7" step="0.05" min="0" max="1">
+                            </div>
+                            <button class="btn btn-primary" onclick="saveEventConfig()">保存配置</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Topics Section -->
+            <div id="section-topics" class="section" style="display:none;">
+                <div class="page-header">
+                    <h1>主题管理</h1>
+                    <p>管理研究主题，支持手动创建和自动发现</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>主题列表</h3>
+                        <button class="btn btn-primary btn-sm" onclick="showAddTopicModal()">创建主题</button>
+                    </div>
+                    <div class="card-body">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>主题名称</th>
+                                    <th>类型</th>
+                                    <th>关键词</th>
+                                    <th>文章数</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="topic-list">
+                                <tr><td colspan="6">加载中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reports Section -->
+            <div id="section-reports" class="section" style="display:none;">
+                <div class="page-header">
+                    <h1>报告管理</h1>
+                    <p>生成和管理研究报告</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>生成报告</h3>
+                    </div>
+                    <div class="card-body">
+                        <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">报告类型</label>
+                                <select class="form-select" id="report-type">
+                                    <option value="weekly">周报</option>
+                                    <option value="monthly">月报</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="display: flex; align-items: flex-end;">
+                                <button class="btn btn-primary" onclick="generateReport()">生成报告</button>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="card">
                     <div class="card-header">
-                        <h3>SMTP 配置</h3>
+                        <h3>报告列表</h3>
                     </div>
                     <div class="card-body">
-                        <div class="form-group">
-                            <label class="form-label">SMTP 服务器</label>
-                            <input type="text" class="form-input" id="smtp-host" placeholder="smtp.example.com">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">SMTP 端口</label>
-                            <input type="number" class="form-input" id="smtp-port" value="587">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">发件人邮箱</label>
-                            <input type="email" class="form-input" id="smtp-user" placeholder="noreply@example.com">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">邮箱密码/授权码</label>
-                            <input type="password" class="form-input" id="smtp-password">
-                        </div>
-                        <button class="btn btn-primary" onclick="saveEmailConfig()">保存配置</button>
-                        <button class="btn" onclick="testEmail()">发送测试邮件</button>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>报告名称</th>
+                                    <th>类型</th>
+                                    <th>时间范围</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="report-list">
+                                <tr><td colspan="5">加载中...</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -303,25 +936,224 @@
             <div id="section-config" class="section" style="display:none;">
                 <div class="page-header">
                     <h1>系统配置</h1>
-                    <p>管理系统参数</p>
+                    <p>管理系统参数和功能设置</p>
+                </div>
+
+                <div class="tabs">
+                    <button class="tab active" onclick="switchConfigTab('retention')">数据保留</button>
+                    <button class="tab" onclick="switchConfigTab('scheduler')">调度设置</button>
+                    <button class="tab" onclick="switchConfigTab('features')">功能开关</button>
+                    <button class="tab" onclick="switchConfigTab('advanced')">高级设置</button>
+                </div>
+
+                <!-- Retention Config -->
+                <div id="config-retention-panel" class="config-panel">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>数据保留设置</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">文章保留天数</label>
+                                <input type="number" class="form-input" id="config-retention-active-days" value="7">
+                                <p style="font-size: 12px; color: #888; margin-top: 4px;">超过此天数的文章将被清理</p>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">备份保留天数</label>
+                                <input type="number" class="form-input" id="config-retention-archive-days" value="30">
+                                <p style="font-size: 12px; color: #888; margin-top: 4px;">备份数据保留时间</p>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <input type="checkbox" id="config-backup-enabled" checked>
+                                    启用自动备份
+                                </label>
+                            </div>
+                            <button class="btn btn-primary" onclick="saveConfigGroup('retention')">保存配置</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scheduler Config -->
+                <div id="config-scheduler-panel" class="config-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>调度器设置</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">爬取间隔（小时）</label>
+                                <input type="number" class="form-input" id="config-crawl-interval" value="6">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">数据清理时间（小时，0-23）</label>
+                                <input type="number" class="form-input" id="config-cleanup-hour" value="3">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">备份时间（小时，0-23）</label>
+                                <input type="number" class="form-input" id="config-backup-hour" value="4">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">AI 处理间隔（小时）</label>
+                                <input type="number" class="form-input" id="config-ai-interval" value="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">向量嵌入间隔（小时）</label>
+                                <input type="number" class="form-input" id="config-embedding-interval" value="2">
+                            </div>
+                            <button class="btn btn-primary" onclick="saveConfigGroup('scheduler')">保存配置</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Features Config -->
+                <div id="config-features-panel" class="config-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>功能开关</h3>
+                            <span style="color: #888; font-size: 13px;">启用或禁用系统功能模块</span>
+                        </div>
+                        <div class="card-body" id="features-list">
+                            <p>加载中...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Advanced Config -->
+                <div id="config-advanced-panel" class="config-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>高级设置</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <input type="checkbox" id="config-cache-enabled">
+                                    启用缓存
+                                </label>
+                                <p style="font-size: 12px; color: #888; margin-top: 4px;">启用后可提高响应速度</p>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">缓存 TTL（秒）</label>
+                                <input type="number" class="form-input" id="config-cache-ttl" value="300">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Access Token 过期时间（分钟）</label>
+                                <input type="number" class="form-input" id="config-jwt-access-expire" value="30">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Refresh Token 过期时间（天）</label>
+                                <input type="number" class="form-input" id="config-jwt-refresh-expire" value="7">
+                            </div>
+                            <button class="btn btn-primary" onclick="saveConfigGroup('advanced')">保存配置</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Backups Section -->
+            <div id="section-backups" class="section" style="display:none;">
+                <div class="page-header">
+                    <h1>备份管理</h1>
+                    <p>管理数据备份，支持创建、下载和恢复</p>
                 </div>
 
                 <div class="card">
                     <div class="card-header">
-                        <h3>数据保留</h3>
+                        <h3>手动备份</h3>
                     </div>
                     <div class="card-body">
-                        <div class="form-group">
-                            <label class="form-label">文章保留天数</label>
-                            <input type="number" class="form-input" id="config-retention" value="7">
-                            <p style="font-size: 12px; color: #888; margin-top: 4px;">超过此天数的文章将被清理</p>
+                        <p style="margin-bottom: 16px; color: #666;">
+                            点击下方按钮将立即执行一次数据备份。备份将导出超过保留期限的文章为 JSON 文件。
+                        </p>
+                        <button class="btn btn-primary" onclick="createManualBackup()">创建备份</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>备份列表</h3>
+                    </div>
+                    <div class="card-body">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>备份时间</th>
+                                    <th>文件大小</th>
+                                    <th>文章数</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="backup-list">
+                                <tr><td colspan="6">加载中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Audit Logs Section -->
+            <div id="section-audit" class="section" style="display:none;">
+                <div class="page-header">
+                    <h1>审计日志</h1>
+                    <p>查看用户操作记录，支持筛选和导出</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>筛选条件</h3>
+                    </div>
+                    <div class="card-body">
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                            <div class="form-group" style="flex: 1; min-width: 150px;">
+                                <label class="form-label">操作类型</label>
+                                <select class="form-select" id="audit-action-filter">
+                                    <option value="">全部</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 1; min-width: 150px;">
+                                <label class="form-label">资源类型</label>
+                                <select class="form-select" id="audit-resource-filter">
+                                    <option value="">全部</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 1; min-width: 150px;">
+                                <label class="form-label">用户 ID</label>
+                                <input type="number" class="form-input" id="audit-user-filter" placeholder="用户 ID">
+                            </div>
+                            <div class="form-group" style="display: flex; align-items: flex-end;">
+                                <button class="btn btn-primary" onclick="loadAuditLogs()">筛选</button>
+                                <button class="btn" style="margin-left: 8px;" onclick="resetAuditFilters()">重置</button>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">备份保留天数</label>
-                            <input type="number" class="form-input" id="config-archive" value="30">
-                            <p style="font-size: 12px; color: #888; margin-top: 4px;">备份数据保留时间</p>
-                        </div>
-                        <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>操作记录</h3>
+                        <span id="audit-total" style="color: #888; font-size: 13px;">共 0 条记录</span>
+                    </div>
+                    <div class="card-body">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>时间</th>
+                                    <th>用户</th>
+                                    <th>操作</th>
+                                    <th>资源类型</th>
+                                    <th>资源 ID</th>
+                                    <th>IP 地址</th>
+                                    <th>详情</th>
+                                </tr>
+                            </thead>
+                            <tbody id="audit-list">
+                                <tr><td colspan="7">加载中...</td></tr>
+                            </tbody>
+                        </table>
+                        <div id="audit-pagination" style="margin-top: 16px; display: flex; justify-content: center; gap: 8px;"></div>
                     </div>
                 </div>
             </div>
@@ -334,6 +1166,7 @@
         const ADMIN_BASE = '/api/v1/admin';
 
         let currentCrawlerTab = 'arxiv';
+        let currentSourceTab = 'arxiv';
         let currentUser = null;
 
         // Initialize
@@ -355,7 +1188,7 @@
                 });
                 if (res.ok) {
                     currentUser = await res.json();
-                    if (!currentUser.is_superuser && !currentUser.roles.includes('admin')) {
+                    if (!currentUser.is_superuser && !currentUser.roles?.includes('admin')) {
                         alert('需要管理员权限');
                         location.href = '/researchpulse/';
                         return;
@@ -377,9 +1210,18 @@
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             event.target.classList.add('active');
 
+            if (name === 'sources') loadSources();
             if (name === 'crawlers') loadCrawlers();
             if (name === 'users') loadUsers();
             if (name === 'email') loadEmailConfig();
+            if (name === 'config') loadConfig();
+            if (name === 'backups') loadBackups();
+            if (name === 'audit') loadAuditLogs();
+            if (name === 'ai') loadAIConfig();
+            if (name === 'embedding') loadEmbeddingConfig();
+            if (name === 'events') loadEvents();
+            if (name === 'topics') loadTopics();
+            if (name === 'reports') loadReports();
         }
 
         // Dashboard
@@ -411,6 +1253,435 @@
             } catch (e) {
                 console.error('Failed to load dashboard:', e);
             }
+        }
+
+        // Sources Management
+        function switchSourceTab(tab) {
+            currentSourceTab = tab;
+            document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            document.querySelectorAll('.source-panel').forEach(p => p.style.display = 'none');
+            document.getElementById(`source-${tab}`).style.display = 'block';
+            
+            if (tab === 'arxiv') loadArxivCategories();
+            if (tab === 'rss') loadRssFeeds();
+            if (tab === 'wechat') loadWechatAccounts();
+            if (tab === 'pending') loadPendingRss();
+        }
+
+        async function loadSources() {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/stats`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                document.getElementById('stat-arxiv-total').textContent = data.arxiv?.total || 0;
+                document.getElementById('stat-arxiv-active').textContent = data.arxiv?.active || 0;
+                document.getElementById('stat-rss-total').textContent = data.rss?.total || 0;
+                document.getElementById('stat-rss-active').textContent = data.rss?.active || 0;
+                
+                loadArxivCategories();
+            } catch (e) {
+                console.error('Failed to load sources:', e);
+            }
+        }
+
+        async function loadArxivCategories() {
+            const token = localStorage.getItem('access_token');
+            const search = document.getElementById('arxiv-search')?.value || '';
+            const container = document.getElementById('arxiv-list');
+            
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/arxiv?search=${encodeURIComponent(search)}&page_size=200`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                container.innerHTML = `
+                    <div class="category-grid">
+                        ${data.categories.map(c => `
+                            <div class="category-item ${c.is_active ? 'enabled' : ''}">
+                                <div>
+                                    <code>${c.code}</code>
+                                    <span style="margin-left: 8px; color: #333;">${c.name}</span>
+                                </div>
+                                <input type="checkbox" 
+                                    data-id="${c.id}"
+                                    ${c.is_active ? 'checked' : ''}
+                                    onchange="toggleArxivCategory(${c.id}, this.checked)">
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } catch (e) {
+                container.innerHTML = '<p>加载失败</p>';
+            }
+        }
+
+        async function toggleArxivCategory(categoryId, isActive) {
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/sources/arxiv/${categoryId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ is_active: isActive })
+                });
+                loadSources();
+            } catch (e) {
+                alert('操作失败');
+            }
+        }
+
+        async function batchToggleArxiv(isActive) {
+            const token = localStorage.getItem('access_token');
+            const checkboxes = document.querySelectorAll('#arxiv-list input[type="checkbox"]:checked');
+            const ids = Array.from(checkboxes).map(cb => parseInt(cb.dataset.id));
+            
+            if (ids.length === 0) {
+                alert('请先选择要操作的分类');
+                return;
+            }
+            
+            try {
+                await fetch(`${ADMIN_BASE}/sources/arxiv/batch`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ category_ids: ids, is_active: isActive })
+                });
+                loadArxivCategories();
+            } catch (e) {
+                alert('批量操作失败');
+            }
+        }
+
+        async function loadRssFeeds() {
+            const token = localStorage.getItem('access_token');
+            const search = document.getElementById('rss-search')?.value || '';
+            const category = document.getElementById('rss-category-filter')?.value || '';
+            const tbody = document.getElementById('rss-list');
+            
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/rss?search=${encodeURIComponent(search)}&category=${encodeURIComponent(category)}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                tbody.innerHTML = data.feeds.map(f => `
+                    <tr>
+                        <td><input type="checkbox" data-id="${f.id}"></td>
+                        <td>
+                            <strong>${escapeHtml(f.title)}</strong>
+                            <br><small style="color: #888;">${escapeHtml(f.feed_url)}</small>
+                        </td>
+                        <td>${f.category || '-'}</td>
+                        <td><span class="badge ${f.is_active ? 'badge-success' : 'badge-warning'}">${f.is_active ? '活跃' : '禁用'}</span></td>
+                        <td>${f.last_fetched_at ? formatDate(f.last_fetched_at) : '从未'}</td>
+                        <td>
+                            <button class="btn btn-sm ${f.is_active ? 'btn-danger' : 'btn-success'}" onclick="toggleRssFeed(${f.id}, ${!f.is_active})">
+                                ${f.is_active ? '禁用' : '启用'}
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteRssFeed(${f.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+                
+                // Update category filter options
+                if (!document.getElementById('rss-category-filter').options.length) {
+                    const categories = [...new Set(data.feeds.map(f => f.category).filter(Boolean))];
+                    const select = document.getElementById('rss-category-filter');
+                    categories.forEach(cat => {
+                        const opt = document.createElement('option');
+                        opt.value = cat;
+                        opt.textContent = cat;
+                        select.appendChild(opt);
+                    });
+                }
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="6">加载失败</td></tr>';
+            }
+        }
+
+        async function toggleRssFeed(feedId, isActive) {
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/sources/rss/${feedId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ is_active: isActive })
+                });
+                loadRssFeeds();
+            } catch (e) {
+                alert('操作失败');
+            }
+        }
+
+        async function deleteRssFeed(feedId) {
+            if (!confirm('确定要删除此 RSS 源吗？')) return;
+            
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/sources/rss/${feedId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                loadRssFeeds();
+            } catch (e) {
+                alert('删除失败');
+            }
+        }
+
+        async function loadWechatAccounts() {
+            const token = localStorage.getItem('access_token');
+            const tbody = document.getElementById('wechat-list');
+            
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/wechat`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                tbody.innerHTML = data.accounts.length ? data.accounts.map(a => `
+                    <tr>
+                        <td>${escapeHtml(a.name)}</td>
+                        <td>${escapeHtml(a.account_id)}</td>
+                        <td><span class="badge ${a.is_active ? 'badge-success' : 'badge-warning'}">${a.is_active ? '活跃' : '禁用'}</span></td>
+                        <td>${a.last_fetched_at ? formatDate(a.last_fetched_at) : '从未'}</td>
+                        <td>
+                            <button class="btn btn-sm ${a.is_active ? 'btn-danger' : 'btn-success'}" onclick="toggleWechatAccount(${a.id}, ${!a.is_active})">
+                                ${a.is_active ? '禁用' : '启用'}
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteWechatAccount(${a.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('') : '<tr><td colspan="5" style="text-align: center; color: #888;">暂无微信公众号</td></tr>';
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="5">加载失败</td></tr>';
+            }
+        }
+
+        async function toggleWechatAccount(accountId, isActive) {
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/sources/wechat/${accountId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ is_active: isActive })
+                });
+                loadWechatAccounts();
+            } catch (e) {
+                alert('操作失败');
+            }
+        }
+
+        async function deleteWechatAccount(accountId) {
+            if (!confirm('确定要删除此公众号吗？')) return;
+            
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/sources/wechat/${accountId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                loadWechatAccounts();
+            } catch (e) {
+                alert('删除失败');
+            }
+        }
+
+        function showAddWechatModal() {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>添加微信公众号</h3>
+                        <span class="modal-close" onclick="this.closest('.modal').remove()">×</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="form-label">公众号名称 *</label>
+                            <input type="text" class="form-input" id="new-wechat-name" placeholder="例如：机器之心" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">账号 ID (biz) *</label>
+                            <input type="text" class="form-input" id="new-wechat-biz" placeholder="从文章 URL 中获取 __biz 参数" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">分类</label>
+                            <input type="text" class="form-input" id="new-wechat-category" value="微信公众号">
+                        </div>
+                        <p style="font-size: 12px; color: #888;">
+                            提示：打开公众号任意文章，从 URL 中找到 __biz 参数值即可。
+                        </p>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn" onclick="this.closest('.modal').remove()">取消</button>
+                        <button class="btn btn-primary" onclick="addWechatAccount()">添加</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function addWechatAccount() {
+            const token = localStorage.getItem('access_token');
+            const name = document.getElementById('new-wechat-name').value;
+            const biz = document.getElementById('new-wechat-biz').value;
+            const category = document.getElementById('new-wechat-category').value;
+            
+            if (!name || !biz) {
+                alert('请填写公众号名称和账号 ID');
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/wechat`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name, account_id: biz, category })
+                });
+                
+                if (res.ok) {
+                    document.querySelector('.modal').remove();
+                    loadWechatAccounts();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '添加失败');
+                }
+            } catch (e) {
+                alert('添加失败');
+            }
+        }
+
+        async function loadPendingRss() {
+            const token = localStorage.getItem('access_token');
+            const tbody = document.getElementById('pending-rss-list');
+            
+            try {
+                const res = await fetch(`${API_BASE}/feeds/pending`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                tbody.innerHTML = data.feeds.length ? data.feeds.map(f => `
+                    <tr>
+                        <td>${escapeHtml(f.title)}</td>
+                        <td><a href="${f.feed_url}" target="_blank" style="color: #4ecdc4;">${escapeHtml(f.feed_url)}</a></td>
+                        <td>${formatDate(f.created_at)}</td>
+                        <td>
+                            <button class="btn btn-sm btn-success" onclick="approveRssFeed(${f.id})">批准</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteRssFeed(${f.id})">拒绝</button>
+                        </td>
+                    </tr>
+                `).join('') : '<tr><td colspan="4" style="text-align: center; color: #888;">暂无待审批的 RSS 源</td></tr>';
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="4">加载失败</td></tr>';
+            }
+        }
+
+        async function approveRssFeed(feedId) {
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/sources/rss/${feedId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ is_active: true })
+                });
+                loadPendingRss();
+            } catch (e) {
+                alert('审批失败');
+            }
+        }
+
+        function showAddRssModal() {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>添加 RSS 源</h3>
+                        <span class="modal-close" onclick="this.closest('.modal').remove()">×</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="form-label">Feed URL *</label>
+                            <input type="url" class="form-input" id="new-rss-url" placeholder="https://example.com/feed.xml" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">标题（可选）</label>
+                            <input type="text" class="form-input" id="new-rss-title" placeholder="留空则自动获取">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">分类</label>
+                            <input type="text" class="form-input" id="new-rss-category" value="其他">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn" onclick="this.closest('.modal').remove()">取消</button>
+                        <button class="btn btn-primary" onclick="addRssFeed()">添加</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function addRssFeed() {
+            const token = localStorage.getItem('access_token');
+            const feedUrl = document.getElementById('new-rss-url').value;
+            const title = document.getElementById('new-rss-title').value;
+            const category = document.getElementById('new-rss-category').value;
+            
+            if (!feedUrl) {
+                alert('请输入 Feed URL');
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/rss`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ feed_url: feedUrl, title, category })
+                });
+                
+                if (res.ok) {
+                    document.querySelector('.modal').remove();
+                    loadRssFeeds();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '添加失败');
+                }
+            } catch (e) {
+                alert('添加失败');
+            }
+        }
+
+        function toggleSelectAll(type) {
+            const checkboxes = document.querySelectorAll(`#${type}-list input[type="checkbox"]`);
+            const selectAll = document.getElementById(`${type}-select-all`);
+            checkboxes.forEach(cb => cb.checked = selectAll.checked);
         }
 
         // Crawlers
@@ -530,21 +1801,1297 @@
         }
 
         // Email Config
+        let currentEmailTab = 'general';
+        let emailConfig = {};
+
+        function switchEmailTab(tab) {
+            currentEmailTab = tab;
+            document.querySelectorAll('#section-email .tabs .tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            document.querySelectorAll('.email-panel').forEach(p => p.style.display = 'none');
+            document.getElementById(`email-${tab}-panel`).style.display = 'block';
+        }
+
         async function loadEmailConfig() {
-            // Load from system config
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/email/config`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                emailConfig = data.config || {};
+
+                // Populate general settings
+                document.getElementById('email-enabled').checked = emailConfig.email_enabled || false;
+                document.getElementById('email-active-backend').value = emailConfig.active_backend || 'smtp';
+                document.getElementById('email-sender').value = emailConfig.sender_email || '';
+                document.getElementById('email-frequency').value = emailConfig.push_frequency || 'daily';
+                document.getElementById('email-time').value = emailConfig.push_time || '09:00';
+                document.getElementById('email-max-articles').value = emailConfig.max_articles_per_email || 20;
+
+                // Populate SMTP settings
+                document.getElementById('smtp-host').value = emailConfig.smtp_host || '';
+                document.getElementById('smtp-port').value = emailConfig.smtp_port || 587;
+                document.getElementById('smtp-user').value = emailConfig.smtp_user || '';
+                document.getElementById('smtp-password').value = emailConfig.smtp_password || '';
+                document.getElementById('smtp-use-tls').checked = emailConfig.smtp_use_tls !== false;
+
+                // Populate SendGrid settings
+                document.getElementById('sendgrid-api-key').value = emailConfig.sendgrid_api_key || '';
+
+                // Populate Mailgun settings
+                document.getElementById('mailgun-api-key').value = emailConfig.mailgun_api_key || '';
+                document.getElementById('mailgun-domain').value = emailConfig.mailgun_domain || '';
+
+                // Populate Brevo settings
+                document.getElementById('brevo-api-key').value = emailConfig.brevo_api_key || '';
+                document.getElementById('brevo-from-name').value = emailConfig.brevo_from_name || 'ResearchPulse';
+            } catch (e) {
+                console.error('Failed to load email config:', e);
+            }
+        }
+
+        async function saveEmailGeneral() {
+            const token = localStorage.getItem('access_token');
+            const config = {
+                email_enabled: document.getElementById('email-enabled').checked,
+                active_backend: document.getElementById('email-active-backend').value,
+                sender_email: document.getElementById('email-sender').value,
+                push_frequency: document.getElementById('email-frequency').value,
+                push_time: document.getElementById('email-time').value,
+                max_articles_per_email: parseInt(document.getElementById('email-max-articles').value) || 20,
+            };
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/email/config`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+
+                if (res.ok) {
+                    alert('设置已保存');
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '保存失败');
+                }
+            } catch (e) {
+                alert('保存失败');
+            }
+        }
+
+        async function saveEmailSmtp() {
+            const token = localStorage.getItem('access_token');
+            const config = {
+                smtp_host: document.getElementById('smtp-host').value,
+                smtp_port: parseInt(document.getElementById('smtp-port').value) || 587,
+                smtp_user: document.getElementById('smtp-user').value,
+                smtp_use_tls: document.getElementById('smtp-use-tls').checked,
+            };
+
+            const password = document.getElementById('smtp-password').value;
+            if (password && !password.startsWith('****')) {
+                config.smtp_password = password;
+            }
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/email/config`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+
+                if (res.ok) {
+                    alert('SMTP 配置已保存');
+                    loadEmailConfig();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '保存失败');
+                }
+            } catch (e) {
+                alert('保存失败');
+            }
+        }
+
+        async function saveEmailSendGrid() {
+            const token = localStorage.getItem('access_token');
+            const apiKey = document.getElementById('sendgrid-api-key').value;
+            const config = {};
+
+            if (apiKey && !apiKey.startsWith('****')) {
+                config.sendgrid_api_key = apiKey;
+            }
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/email/config`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+
+                if (res.ok) {
+                    alert('SendGrid 配置已保存');
+                    loadEmailConfig();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '保存失败');
+                }
+            } catch (e) {
+                alert('保存失败');
+            }
+        }
+
+        async function saveEmailMailgun() {
+            const token = localStorage.getItem('access_token');
+            const config = {
+                mailgun_domain: document.getElementById('mailgun-domain').value,
+            };
+
+            const apiKey = document.getElementById('mailgun-api-key').value;
+            if (apiKey && !apiKey.startsWith('****')) {
+                config.mailgun_api_key = apiKey;
+            }
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/email/config`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+
+                if (res.ok) {
+                    alert('Mailgun 配置已保存');
+                    loadEmailConfig();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '保存失败');
+                }
+            } catch (e) {
+                alert('保存失败');
+            }
+        }
+
+        async function saveEmailBrevo() {
+            const token = localStorage.getItem('access_token');
+            const config = {
+                brevo_from_name: document.getElementById('brevo-from-name').value,
+            };
+
+            const apiKey = document.getElementById('brevo-api-key').value;
+            if (apiKey && !apiKey.startsWith('****')) {
+                config.brevo_api_key = apiKey;
+            }
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/email/config`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+
+                if (res.ok) {
+                    alert('Brevo 配置已保存');
+                    loadEmailConfig();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '保存失败');
+                }
+            } catch (e) {
+                alert('保存失败');
+            }
+        }
+
+        async function testEmailBackend(backend) {
+            const testEmailAddress = prompt('请输入测试邮件接收地址：');
+            if (!testEmailAddress) return;
+
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/email/test?test_email=${encodeURIComponent(testEmailAddress)}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const data = await res.json();
+                if (res.ok) {
+                    alert(data.message || '测试邮件已发送');
+                } else {
+                    alert(data.detail || '发送失败');
+                }
+            } catch (e) {
+                alert('发送失败');
+            }
         }
 
         async function saveEmailConfig() {
-            alert('邮件配置已保存');
+            saveEmailGeneral();
         }
 
         async function testEmail() {
-            alert('测试邮件已发送');
+            testEmailBackend('smtp');
         }
 
         // Config
+        let currentConfigTab = 'retention';
+        let allConfigs = {};
+
+        function switchConfigTab(tab) {
+            currentConfigTab = tab;
+            document.querySelectorAll('#section-config .tabs .tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            document.querySelectorAll('.config-panel').forEach(p => p.style.display = 'none');
+            document.getElementById(`config-${tab}-panel`).style.display = 'block';
+
+            if (tab === 'features') loadFeaturesList();
+        }
+
+        async function loadConfig() {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/config/groups`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                allConfigs = data.groups || {};
+
+                // Populate retention settings
+                const retention = allConfigs.retention || {};
+                document.getElementById('config-retention-active-days').value = retention['retention.active_days'] || 7;
+                document.getElementById('config-retention-archive-days').value = retention['retention.archive_days'] || 30;
+                document.getElementById('config-backup-enabled').checked = (retention['retention.backup_enabled'] || 'true') === 'true';
+
+                // Populate scheduler settings
+                const scheduler = allConfigs.scheduler || {};
+                document.getElementById('config-crawl-interval').value = scheduler['scheduler.crawl_interval_hours'] || 6;
+                document.getElementById('config-cleanup-hour').value = scheduler['scheduler.cleanup_hour'] || 3;
+                document.getElementById('config-backup-hour').value = scheduler['scheduler.backup_hour'] || 4;
+                document.getElementById('config-ai-interval').value = scheduler['scheduler.ai_process_interval_hours'] || 1;
+                document.getElementById('config-embedding-interval').value = scheduler['scheduler.embedding_interval_hours'] || 2;
+
+                // Populate advanced settings
+                const cache = allConfigs.cache || {};
+                document.getElementById('config-cache-enabled').checked = (cache['cache.enabled'] || 'false') === 'true';
+                document.getElementById('config-cache-ttl').value = cache['cache.default_ttl'] || 300;
+
+                const jwt = allConfigs.jwt || {};
+                document.getElementById('config-jwt-access-expire').value = jwt['jwt.access_token_expire_minutes'] || 30;
+                document.getElementById('config-jwt-refresh-expire').value = jwt['jwt.refresh_token_expire_days'] || 7;
+
+                // Load features list
+                loadFeaturesList();
+            } catch (e) {
+                console.error('Failed to load config:', e);
+            }
+        }
+
+        async function loadFeaturesList() {
+            const token = localStorage.getItem('access_token');
+            const container = document.getElementById('features-list');
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/features`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const features = data.features || [];
+
+                const featureNames = {
+                    'feature.ai_processor': 'AI 文章处理',
+                    'feature.embedding': '向量嵌入',
+                    'feature.event_clustering': '事件聚类',
+                    'feature.topic_radar': '话题雷达',
+                    'feature.action_items': '行动项提取',
+                    'feature.report_generation': '报告生成',
+                    'feature.crawler': '数据爬取',
+                    'feature.backup': '自动备份',
+                    'feature.cleanup': '数据清理',
+                    'feature.email_notification': '邮件通知'
+                };
+
+                container.innerHTML = `
+                    <div class="toggle-list">
+                        ${features.map(f => `
+                            <div class="toggle-item">
+                                <div class="toggle-info">
+                                    <h4>${featureNames[f.key] || f.key}</h4>
+                                    <p>${f.key}</p>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" 
+                                        ${f.enabled ? 'checked' : ''} 
+                                        onchange="toggleFeature('${f.key}', this.checked)">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } catch (e) {
+                container.innerHTML = '<p>加载失败</p>';
+            }
+        }
+
+        async function toggleFeature(featureKey, enabled) {
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/features/${featureKey}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ enabled })
+                });
+            } catch (e) {
+                alert('操作失败');
+                loadFeaturesList();
+            }
+        }
+
+        async function saveConfigGroup(group) {
+            const token = localStorage.getItem('access_token');
+            const configs = {};
+
+            if (group === 'retention') {
+                configs['retention.active_days'] = document.getElementById('config-retention-active-days').value;
+                configs['retention.archive_days'] = document.getElementById('config-retention-archive-days').value;
+                configs['retention.backup_enabled'] = document.getElementById('config-backup-enabled').checked ? 'true' : 'false';
+            } else if (group === 'scheduler') {
+                configs['scheduler.crawl_interval_hours'] = document.getElementById('config-crawl-interval').value;
+                configs['scheduler.cleanup_hour'] = document.getElementById('config-cleanup-hour').value;
+                configs['scheduler.backup_hour'] = document.getElementById('config-backup-hour').value;
+                configs['scheduler.ai_process_interval_hours'] = document.getElementById('config-ai-interval').value;
+                configs['scheduler.embedding_interval_hours'] = document.getElementById('config-embedding-interval').value;
+            } else if (group === 'advanced') {
+                configs['cache.enabled'] = document.getElementById('config-cache-enabled').checked ? 'true' : 'false';
+                configs['cache.default_ttl'] = document.getElementById('config-cache-ttl').value;
+                configs['jwt.access_token_expire_minutes'] = document.getElementById('config-jwt-access-expire').value;
+                configs['jwt.refresh_token_expire_days'] = document.getElementById('config-jwt-refresh-expire').value;
+            }
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/config/batch`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ configs })
+                });
+
+                if (res.ok) {
+                    alert('配置已保存');
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '保存失败');
+                }
+            } catch (e) {
+                alert('保存失败');
+            }
+        }
+
         async function saveConfig() {
-            alert('配置已保存');
+            saveConfigGroup(currentConfigTab);
+        }
+
+        // Backups Management
+        let currentBackupPage = 1;
+
+        async function loadBackups() {
+            const token = localStorage.getItem('access_token');
+            const tbody = document.getElementById('backup-list');
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/backups?page=${currentBackupPage}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const backups = data.backups || [];
+
+                if (backups.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #888;">暂无备份记录</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = backups.map(b => `
+                    <tr>
+                        <td>${b.id}</td>
+                        <td>${formatDate(b.backup_date)}</td>
+                        <td>${formatSize(b.backup_size)}</td>
+                        <td>${b.article_count}</td>
+                        <td><span class="badge ${b.status === 'completed' ? 'badge-success' : 'badge-warning'}">${b.status}</span></td>
+                        <td>
+                            <button class="btn btn-sm" onclick="downloadBackup(${b.id})">下载</button>
+                            <button class="btn btn-sm btn-success" onclick="restoreBackup(${b.id})">恢复</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteBackup(${b.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="6">加载失败</td></tr>';
+            }
+        }
+
+        function formatSize(bytes) {
+            if (!bytes) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let i = 0;
+            while (bytes >= 1024 && i < units.length - 1) {
+                bytes /= 1024;
+                i++;
+            }
+            return `${bytes.toFixed(1)} ${units[i]}`;
+        }
+
+        async function createManualBackup() {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/backups/create`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    alert(`备份完成！\n备份文章数: ${data.result?.articles_backed_up || 0}\n删除文章数: ${data.result?.articles_deleted || 0}`);
+                    loadBackups();
+                } else {
+                    alert(data.message || '备份失败');
+                }
+            } catch (e) {
+                alert('备份失败');
+            }
+        }
+
+        async function downloadBackup(backupId) {
+            window.open(`${ADMIN_BASE}/backups/${backupId}/download?token=${localStorage.getItem('access_token')}`, '_blank');
+        }
+
+        async function restoreBackup(backupId) {
+            if (!confirm('确定要从备份恢复吗？这会将备份中的文章重新插入数据库。')) return;
+
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/backups/${backupId}/restore`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    alert(`恢复完成！\n恢复: ${data.restored_count}\n跳过: ${data.skipped_count}`);
+                } else {
+                    alert(data.detail || '恢复失败');
+                }
+            } catch (e) {
+                alert('恢复失败');
+            }
+        }
+
+        async function deleteBackup(backupId) {
+            if (!confirm('确定要删除此备份记录吗？')) return;
+            const deleteFile = confirm('是否同时删除备份文件？');
+
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/backups/${backupId}?delete_file=${deleteFile}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                loadBackups();
+            } catch (e) {
+                alert('删除失败');
+            }
+        }
+
+        // Audit Logs Management
+        let currentAuditPage = 1;
+
+        async function loadAuditLogs() {
+            const token = localStorage.getItem('access_token');
+            const tbody = document.getElementById('audit-list');
+
+            const action = document.getElementById('audit-action-filter').value;
+            const resourceType = document.getElementById('audit-resource-filter').value;
+            const userId = document.getElementById('audit-user-filter').value;
+
+            let url = `${ADMIN_BASE}/audit-logs?page=${currentAuditPage}&page_size=20`;
+            if (action) url += `&action=${encodeURIComponent(action)}`;
+            if (resourceType) url += `&resource_type=${encodeURIComponent(resourceType)}`;
+            if (userId) url += `&user_id=${userId}`;
+
+            try {
+                const res = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const logs = data.logs || [];
+
+                document.getElementById('audit-total').textContent = `共 ${data.total || 0} 条记录`;
+
+                if (logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #888;">暂无记录</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = logs.map(log => `
+                    <tr>
+                        <td>${formatDateTime(log.created_at)}</td>
+                        <td>${log.user_id || '-'}</td>
+                        <td><span class="badge badge-info">${escapeHtml(log.action)}</span></td>
+                        <td>${escapeHtml(log.resource_type)}</td>
+                        <td>${escapeHtml(log.resource_id) || '-'}</td>
+                        <td>${escapeHtml(log.ip_address) || '-'}</td>
+                        <td>
+                            <button class="btn btn-sm" onclick="showAuditDetails('${encodeURIComponent(JSON.stringify(log.details || {}))}')">查看</button>
+                        </td>
+                    </tr>
+                `).join('');
+
+                // Load filter options
+                loadAuditFilters();
+
+                // Pagination
+                const totalPages = Math.ceil((data.total || 0) / 20);
+                renderAuditPagination(totalPages);
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="7">加载失败</td></tr>';
+            }
+        }
+
+        function formatDateTime(iso) {
+            if (!iso) return '-';
+            return new Date(iso).toLocaleString('zh-CN');
+        }
+
+        async function loadAuditFilters() {
+            const token = localStorage.getItem('access_token');
+
+            try {
+                // Load actions
+                const actionsRes = await fetch(`${ADMIN_BASE}/audit-logs/actions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const actionsData = await actionsRes.json();
+                const actionSelect = document.getElementById('audit-action-filter');
+                const currentAction = actionSelect.value;
+                actionSelect.innerHTML = '<option value="">全部</option>' +
+                    actionsData.actions.map(a => `<option value="${a}">${a}</option>`).join('');
+                actionSelect.value = currentAction;
+
+                // Load resource types
+                const typesRes = await fetch(`${ADMIN_BASE}/audit-logs/resource-types`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const typesData = await typesRes.json();
+                const typeSelect = document.getElementById('audit-resource-filter');
+                const currentType = typeSelect.value;
+                typeSelect.innerHTML = '<option value="">全部</option>' +
+                    typesData.resource_types.map(t => `<option value="${t}">${t}</option>`).join('');
+                typeSelect.value = currentType;
+            } catch (e) {
+                console.error('Failed to load audit filters:', e);
+            }
+        }
+
+        function renderAuditPagination(totalPages) {
+            const container = document.getElementById('audit-pagination');
+            if (totalPages <= 1) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            for (let i = 1; i <= totalPages; i++) {
+                html += `<button class="btn ${i === currentAuditPage ? 'btn-primary' : ''}" onclick="goToAuditPage(${i})">${i}</button> `;
+            }
+            container.innerHTML = html;
+        }
+
+        function goToAuditPage(page) {
+            currentAuditPage = page;
+            loadAuditLogs();
+        }
+
+        function resetAuditFilters() {
+            document.getElementById('audit-action-filter').value = '';
+            document.getElementById('audit-resource-filter').value = '';
+            document.getElementById('audit-user-filter').value = '';
+            currentAuditPage = 1;
+            loadAuditLogs();
+        }
+
+        function showAuditDetails(encodedDetails) {
+            const details = JSON.parse(decodeURIComponent(encodedDetails));
+            alert(JSON.stringify(details, null, 2) || '无详情');
+        }
+
+        // AI Configuration
+        let currentAITab = 'general';
+        let aiConfig = {};
+
+        function switchAITab(tab) {
+            currentAITab = tab;
+            document.querySelectorAll('#section-ai .tabs .tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            document.querySelectorAll('.ai-panel').forEach(p => p.style.display = 'none');
+            document.getElementById(`ai-${tab}-panel`).style.display = 'block';
+        }
+
+        async function loadAIConfig() {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/ai/config`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                aiConfig = data.config || {};
+
+                // Populate general settings
+                document.getElementById('ai-provider').value = aiConfig.provider || 'ollama';
+                document.getElementById('ai-cache-enabled').checked = aiConfig.cache_enabled !== false;
+                document.getElementById('ai-cache-ttl').value = aiConfig.cache_ttl || 86400;
+                document.getElementById('ai-max-content').value = aiConfig.max_content_length || 1500;
+                document.getElementById('ai-max-title').value = aiConfig.max_title_length || 200;
+                document.getElementById('ai-thinking-enabled').checked = aiConfig.thinking_enabled || false;
+                document.getElementById('ai-concurrent-enabled').checked = aiConfig.concurrent_enabled || false;
+
+                // Populate Ollama settings
+                document.getElementById('ai-ollama-url').value = aiConfig.ollama_base_url || 'http://localhost:11434';
+                document.getElementById('ai-ollama-model').value = aiConfig.ollama_model || 'qwen3:32b';
+                document.getElementById('ai-ollama-model-light').value = aiConfig.ollama_model_light || '';
+                document.getElementById('ai-ollama-timeout').value = aiConfig.ollama_timeout || 120;
+
+                // Populate OpenAI settings
+                document.getElementById('ai-openai-model').value = aiConfig.openai_model || 'gpt-4o';
+                document.getElementById('ai-openai-model-light').value = aiConfig.openai_model_light || 'gpt-4o-mini';
+                document.getElementById('ai-openai-timeout').value = aiConfig.openai_timeout || 60;
+
+                // Populate Claude settings
+                document.getElementById('ai-claude-model').value = aiConfig.claude_model || 'claude-sonnet-4-20250514';
+                document.getElementById('ai-claude-model-light').value = aiConfig.claude_model_light || 'claude-haiku-4-20250514';
+                document.getElementById('ai-claude-timeout').value = aiConfig.claude_timeout || 60;
+            } catch (e) {
+                console.error('Failed to load AI config:', e);
+            }
+        }
+
+        async function saveAIGeneral() {
+            const token = localStorage.getItem('access_token');
+            const config = {
+                provider: document.getElementById('ai-provider').value,
+                cache_enabled: document.getElementById('ai-cache-enabled').checked,
+                cache_ttl: parseInt(document.getElementById('ai-cache-ttl').value) || 86400,
+                max_content_length: parseInt(document.getElementById('ai-max-content').value) || 1500,
+                max_title_length: parseInt(document.getElementById('ai-max-title').value) || 200,
+                thinking_enabled: document.getElementById('ai-thinking-enabled').checked,
+                concurrent_enabled: document.getElementById('ai-concurrent-enabled').checked,
+            };
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/ai/config`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+                if (res.ok) alert('设置已保存');
+                else alert('保存失败');
+            } catch (e) {
+                alert('保存失败');
+            }
+        }
+
+        async function saveAIOllama() {
+            const token = localStorage.getItem('access_token');
+            const config = {
+                ollama_base_url: document.getElementById('ai-ollama-url').value,
+                ollama_model: document.getElementById('ai-ollama-model').value,
+                ollama_model_light: document.getElementById('ai-ollama-model-light').value,
+                ollama_timeout: parseInt(document.getElementById('ai-ollama-timeout').value) || 120,
+            };
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/ai/config`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+                if (res.ok) alert('Ollama 配置已保存');
+                else alert('保存失败');
+            } catch (e) {
+                alert('保存失败');
+            }
+        }
+
+        async function saveAIOpenAI() {
+            const token = localStorage.getItem('access_token');
+            const config = {
+                openai_model: document.getElementById('ai-openai-model').value,
+                openai_model_light: document.getElementById('ai-openai-model-light').value,
+                openai_timeout: parseInt(document.getElementById('ai-openai-timeout').value) || 60,
+            };
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/ai/config`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+                if (res.ok) alert('OpenAI 配置已保存');
+                else alert('保存失败');
+            } catch (e) {
+                alert('保存失败');
+            }
+        }
+
+        async function saveAIClaude() {
+            const token = localStorage.getItem('access_token');
+            const config = {
+                claude_model: document.getElementById('ai-claude-model').value,
+                claude_model_light: document.getElementById('ai-claude-model-light').value,
+                claude_timeout: parseInt(document.getElementById('ai-claude-timeout').value) || 60,
+            };
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/ai/config`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+                if (res.ok) alert('Claude 配置已保存');
+                else alert('保存失败');
+            } catch (e) {
+                alert('保存失败');
+            }
+        }
+
+        async function testAIConnection() {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/ai/test`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (res.ok) alert(data.message || '测试成功');
+                else alert(data.detail || '测试失败');
+            } catch (e) {
+                alert('测试失败');
+            }
+        }
+
+        // Embedding Management
+        let embeddingConfig = {};
+
+        async function loadEmbeddingConfig() {
+            const token = localStorage.getItem('access_token');
+            try {
+                // Load config
+                const res = await fetch(`${ADMIN_BASE}/config/groups`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const embedding = data.groups?.embedding || {};
+
+                document.getElementById('embedding-provider').value = embedding['embedding.provider'] || 'sentence-transformers';
+                document.getElementById('embedding-model').value = embedding['embedding.model'] || 'all-MiniLM-L6-v2';
+                document.getElementById('embedding-threshold').value = embedding['embedding.similarity_threshold'] || '0.85';
+                document.getElementById('milvus-host').value = embedding['embedding.milvus_host'] || 'localhost';
+                document.getElementById('milvus-port').value = embedding['embedding.milvus_port'] || '19530';
+                document.getElementById('milvus-collection').value = embedding['embedding.milvus_collection'] || 'article_embeddings';
+
+                // Load stats
+                const statsRes = await fetch(`${ADMIN_BASE}/embeddings/stats`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const statsData = await statsRes.json();
+                const stats = statsData.stats || {};
+
+                document.getElementById('stat-embedding-total').textContent = stats.total_articles || '-';
+                document.getElementById('stat-embedding-computed').textContent = stats.embedded_count || '-';
+                document.getElementById('stat-embedding-missing').textContent = stats.missing_count || '-';
+                document.getElementById('stat-embedding-provider').textContent = embedding['embedding.provider'] || '-';
+            } catch (e) {
+                console.error('Failed to load embedding config:', e);
+            }
+        }
+
+        async function saveEmbeddingConfig() {
+            const token = localStorage.getItem('access_token');
+            const configs = {
+                'embedding.provider': document.getElementById('embedding-provider').value,
+                'embedding.model': document.getElementById('embedding-model').value,
+                'embedding.similarity_threshold': document.getElementById('embedding-threshold').value,
+            };
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/config/batch`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ configs })
+                });
+                if (res.ok) alert('嵌入配置已保存');
+                else alert('保存失败');
+            } catch (e) {
+                alert('保存失败');
+            }
+        }
+
+        async function saveMilvusConfig() {
+            const token = localStorage.getItem('access_token');
+            const configs = {
+                'embedding.milvus_host': document.getElementById('milvus-host').value,
+                'embedding.milvus_port': document.getElementById('milvus-port').value,
+                'embedding.milvus_collection': document.getElementById('milvus-collection').value,
+            };
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/config/batch`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ configs })
+                });
+                if (res.ok) alert('Milvus 配置已保存');
+                else alert('保存失败');
+            } catch (e) {
+                alert('保存失败');
+            }
+        }
+
+        async function testMilvusConnection() {
+            alert('Milvus 连接测试功能开发中');
+        }
+
+        async function recomputeMissingEmbeddings() {
+            if (!confirm('确定要计算缺失的嵌入向量吗？这可能需要一些时间。')) return;
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/embeddings/recompute?all=false`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (res.ok) alert(data.message || '任务已提交');
+                else alert(data.detail || '提交失败');
+            } catch (e) {
+                alert('提交失败');
+            }
+        }
+
+        async function recomputeAllEmbeddings() {
+            if (!confirm('确定要重新计算所有嵌入向量吗？这将消耗大量时间和资源！')) return;
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/embeddings/recompute?all=true`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (res.ok) alert(data.message || '任务已提交');
+                else alert(data.detail || '提交失败');
+            } catch (e) {
+                alert('提交失败');
+            }
+        }
+
+        // Events Management
+        let currentEventTab = 'list';
+        let currentEventPage = 1;
+        let selectedEvents = new Set();
+
+        function switchEventTab(tab) {
+            currentEventTab = tab;
+            document.querySelectorAll('#section-events .tabs .tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            document.querySelectorAll('.event-panel').forEach(p => p.style.display = 'none');
+            document.getElementById(`event-${tab}-panel`).style.display = 'block';
+        }
+
+        async function loadEvents() {
+            const token = localStorage.getItem('access_token');
+            const tbody = document.getElementById('event-list');
+            const search = document.getElementById('event-search').value;
+            const isActive = document.getElementById('event-active-filter').value;
+
+            let url = `${ADMIN_BASE}/events?page=${currentEventPage}&page_size=15`;
+            if (search) url += `&search=${encodeURIComponent(search)}`;
+            if (isActive) url += `&is_active=${isActive}`;
+
+            try {
+                const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+
+                document.getElementById('event-total').textContent = `共 ${data.total || 0} 个事件`;
+
+                const events = data.events || [];
+                if (events.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #888;">暂无事件</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = events.map(e => `
+                    <tr>
+                        <td><input type="checkbox" class="event-checkbox" data-id="${e.id}" ${selectedEvents.has(e.id) ? 'checked' : ''}></td>
+                        <td><a href="#" onclick="viewEventDetail(${e.id})">${escapeHtml(e.title)}</a></td>
+                        <td>${e.category || '-'}</td>
+                        <td>${e.article_count}</td>
+                        <td>${formatDate(e.last_updated_at)}</td>
+                        <td><span class="badge ${e.is_active ? 'badge-success' : 'badge-warning'}">${e.is_active ? '活跃' : '不活跃'}</span></td>
+                        <td>
+                            <button class="btn btn-sm" onclick="viewEventDetail(${e.id})">查看</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteEvent(${e.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="7">加载失败</td></tr>';
+            }
+        }
+
+        function toggleEventSelectAll() {
+            const selectAll = document.getElementById('event-select-all').checked;
+            document.querySelectorAll('.event-checkbox').forEach(cb => {
+                cb.checked = selectAll;
+                if (selectAll) selectedEvents.add(parseInt(cb.dataset.id));
+                else selectedEvents.delete(parseInt(cb.dataset.id));
+            });
+        }
+
+        async function mergeSelectedEvents() {
+            if (selectedEvents.size < 2) {
+                alert('请选择至少 2 个事件进行合并');
+                return;
+            }
+            if (!confirm(`确定要合并选中的 ${selectedEvents.size} 个事件吗？`)) return;
+
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/events/merge`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ source_event_ids: Array.from(selectedEvents) })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(data.message);
+                    selectedEvents.clear();
+                    loadEvents();
+                } else {
+                    alert(data.detail || '合并失败');
+                }
+            } catch (e) {
+                alert('合并失败');
+            }
+        }
+
+        async function viewEventDetail(eventId) {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/events/${eventId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const event = data.event;
+
+                let details = `事件: ${event.title}\n\n`;
+                details += `文章数: ${event.article_count}\n`;
+                details += `分类: ${event.category || '-'}\n\n`;
+                details += `关联文章:\n`;
+                event.articles.forEach((a, i) => {
+                    details += `${i + 1}. ${a.title}\n`;
+                });
+
+                alert(details);
+            } catch (e) {
+                alert('获取事件详情失败');
+            }
+        }
+
+        async function deleteEvent(eventId) {
+            if (!confirm('确定要删除此事件吗？关联的文章不会被删除。')) return;
+
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/events/${eventId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                loadEvents();
+            } catch (e) {
+                alert('删除失败');
+            }
+        }
+
+        async function loadEventConfig() {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/events/config`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const config = data.config || {};
+
+                document.getElementById('event-rule-weight').value = config.rule_weight || 0.4;
+                document.getElementById('event-semantic-weight').value = config.semantic_weight || 0.6;
+                document.getElementById('event-min-similarity').value = config.min_similarity || 0.7;
+            } catch (e) {
+                console.error('Failed to load event config:', e);
+            }
+        }
+
+        async function saveEventConfig() {
+            const token = localStorage.getItem('access_token');
+            const ruleWeight = document.getElementById('event-rule-weight').value;
+            const semanticWeight = document.getElementById('event-semantic-weight').value;
+            const minSimilarity = document.getElementById('event-min-similarity').value;
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/events/config?rule_weight=${ruleWeight}&semantic_weight=${semanticWeight}&min_similarity=${minSimilarity}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) alert('配置已保存');
+                else alert('保存失败');
+            } catch (e) {
+                alert('保存失败');
+            }
+        }
+
+        // Topics Management
+        async function loadTopics() {
+            const token = localStorage.getItem('access_token');
+            const tbody = document.getElementById('topic-list');
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/topics`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const topics = data.topics || [];
+
+                if (topics.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #888;">暂无主题</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = topics.map(t => `
+                    <tr>
+                        <td>${escapeHtml(t.name)}</td>
+                        <td><span class="badge ${t.is_manual ? 'badge-info' : 'badge-success'}">${t.is_manual ? '手动' : '自动'}</span></td>
+                        <td>${(t.keywords || []).slice(0, 5).join(', ')}</td>
+                        <td>${t.article_count || 0}</td>
+                        <td>${formatDate(t.created_at)}</td>
+                        <td>
+                            <button class="btn btn-sm" onclick="editTopic(${t.id})">编辑</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteTopic(${t.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="6">加载失败</td></tr>';
+            }
+        }
+
+        function showAddTopicModal() {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>创建主题</h3>
+                        <span class="modal-close" onclick="this.closest('.modal').remove()">×</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="form-label">主题名称</label>
+                            <input type="text" class="form-input" id="new-topic-name" placeholder="例如：大语言模型">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">关键词（逗号分隔）</label>
+                            <input type="text" class="form-input" id="new-topic-keywords" placeholder="例如：LLM, GPT, 大模型">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">描述（可选）</label>
+                            <textarea class="form-input" id="new-topic-description" rows="3"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn" onclick="this.closest('.modal').remove()">取消</button>
+                        <button class="btn btn-primary" onclick="createTopic()">创建</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function createTopic() {
+            const token = localStorage.getItem('access_token');
+            const name = document.getElementById('new-topic-name').value;
+            const keywords = document.getElementById('new-topic-keywords').value.split(',').map(k => k.trim()).filter(k => k);
+            const description = document.getElementById('new-topic-description').value;
+
+            if (!name) {
+                alert('请输入主题名称');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/topics`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name, keywords, description, is_manual: true })
+                });
+                if (res.ok) {
+                    document.querySelector('.modal').remove();
+                    loadTopics();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '创建失败');
+                }
+            } catch (e) {
+                alert('创建失败');
+            }
+        }
+
+        async function deleteTopic(topicId) {
+            if (!confirm('确定要删除此主题吗？')) return;
+
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/topics/${topicId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                loadTopics();
+            } catch (e) {
+                alert('删除失败');
+            }
+        }
+
+        function editTopic(topicId) {
+            alert('主题编辑功能开发中');
+        }
+
+        // Reports Management
+        async function loadReports() {
+            const token = localStorage.getItem('access_token');
+            const tbody = document.getElementById('report-list');
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/reports`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const reports = data.reports || [];
+
+                if (reports.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #888;">暂无报告</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = reports.map(r => `
+                    <tr>
+                        <td>${escapeHtml(r.title)}</td>
+                        <td><span class="badge badge-info">${r.report_type || '周报'}</span></td>
+                        <td>${r.date_range || '-'}</td>
+                        <td>${formatDate(r.created_at)}</td>
+                        <td>
+                            <button class="btn btn-sm" onclick="viewReport(${r.id})">查看</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteReport(${r.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="5">加载失败</td></tr>';
+            }
+        }
+
+        async function generateReport() {
+            const token = localStorage.getItem('access_token');
+            const reportType = document.getElementById('report-type').value;
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/reports/generate?report_type=${reportType}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    alert('报告已生成');
+                    loadReports();
+                } else {
+                    alert(data.detail || '生成失败');
+                }
+            } catch (e) {
+                alert('生成失败');
+            }
+        }
+
+        async function viewReport(reportId) {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/reports/${reportId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                alert(JSON.stringify(data.report, null, 2));
+            } catch (e) {
+                alert('获取报告失败');
+            }
+        }
+
+        async function deleteReport(reportId) {
+            if (!confirm('确定要删除此报告吗？')) return;
+
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/reports/${reportId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                loadReports();
+            } catch (e) {
+                alert('删除失败');
+            }
         }
 
         // Utils

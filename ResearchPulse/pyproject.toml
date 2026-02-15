@@ -1,0 +1,156 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel>=0.41.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "researchpulse"
+version = "2.0.0"
+description = "Research Paper and Article Aggregator with AI Processing"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "ResearchPulse Team"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    # Web Framework
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.6",
+    # Database
+    "sqlalchemy[asyncio]>=2.0.25",
+    "aiomysql>=0.2.0",
+    "alembic>=1.13.0",
+    # Authentication
+    "pyjwt>=2.8.0",
+    "passlib[bcrypt]>=1.7.4",
+    "python-jose[cryptography]>=3.3.0",
+    # Configuration
+    "pydantic[email]>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0.1",
+    # HTTP Client
+    "httpx>=0.26.0",
+    "aiohttp>=3.9.0",
+    # Scheduler
+    "apscheduler>=3.10.0",
+    # Cache (optional at runtime, but keep as dep)
+    "redis>=5.0.0",
+    # RSS Parser
+    "feedparser>=6.0.10",
+    "beautifulsoup4>=4.12.0",
+    # Template
+    "jinja2>=3.1.2",
+    # Utilities
+    "python-dateutil>=2.8.2",
+    "numpy>=1.24.0",
+    # Vector Database
+    "pymilvus>=2.3.0",
+    # Sync MySQL driver (for Alembic / sync operations)
+    "pymysql>=1.1.0",
+    # Requests (used by wechat image downloader)
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+embedding = [
+    "sentence-transformers>=2.2.0",
+]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.2.0",
+    "mypy>=1.8.0",
+    "httpx>=0.26.0",
+]
+
+docs = [
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=2.0.0",
+    "myst-parser>=2.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/researchpulse/researchpulse"
+Documentation = "https://github.com/researchpulse/researchpulse/tree/main/docs"
+Repository = "https://github.com/researchpulse/researchpulse"
+
+[project.scripts]
+researchpulse = "main:run"
+
+# ---------------------------------------------------------------------------
+# Setuptools configuration
+# ---------------------------------------------------------------------------
+# The project uses bare imports (from core.xxx, from apps.xxx, from settings
+# import ...) with the ResearchPulse/ directory as the implicit source root.
+# We tell setuptools that "" (this directory) is the package root so that
+# core/, apps/, common/, scripts/ are all discovered as top-level packages
+# and settings.py / main.py as top-level modules.
+# ---------------------------------------------------------------------------
+
+[tool.setuptools]
+py-modules = ["main", "settings", "__init__"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "core*",
+    "apps*",
+    "common*",
+    "config*",
+    "scripts*",
+    "sql*",
+]
+
+[tool.setuptools.package-data]
+# Include non-Python files that must ship inside the wheel
+"*" = [
+    "*.yaml",
+    "*.yml",
+    "*.html",
+    "*.sql",
+    "*.example",
+    "*.md",
+]
+
+# ---------------------------------------------------------------------------
+# Tool configuration
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

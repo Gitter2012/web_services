@@ -26,6 +26,7 @@ PORT=8000
 DAEMON=false
 FORCE=false
 VERBOSE=false
+[ -x "/root/myenv/bin/python" ] && PYTHON_BIN="/root/myenv/bin/python" || PYTHON_BIN="python"
 
 # =============================================================================
 # 公共函数
@@ -62,28 +63,34 @@ do_start() {
     echo -e "${BLUE}启动服务${NC}"
     echo -e "${BLUE}=============================================================${NC}"
     echo ""
-    
+
     if is_running; then
         echo -e "${YELLOW}服务已在运行中 (PID: $(get_pid))${NC}"
         exit 0
     fi
-    
+
     if [ ! -f ".env" ]; then
         echo -e "${RED}错误: .env 文件不存在${NC}"
         exit 1
     fi
-    
+
+    # 创建必要的目录
     mkdir -p "$PROJECT_DIR/logs"
-    
+    mkdir -p "$PROJECT_DIR/run"
+
     echo "主机: $HOST"
     echo "端口: $PORT"
-    
+
+    # 导出环境变量供 main.py 使用
+    export APP_HOST="$HOST"
+    export APP_PORT="$PORT"
+
     if [ "$DAEMON" = true ]; then
-        nohup python3 main.py > "$LOG_FILE" 2>&1 &
+        nohup $PYTHON_BIN main.py --host "$HOST" --port "$PORT" > "$LOG_FILE" 2>&1 &
         PID=$!
         echo $PID > "$PID_FILE"
         sleep 2
-        
+
         if ps -p "$PID" > /dev/null 2>&1; then
             echo -e "${GREEN}服务启动成功 (PID: $PID)${NC}"
             echo ""
@@ -95,13 +102,14 @@ do_start() {
             echo "日志: $LOG_FILE"
         else
             echo -e "${RED}启动失败，查看日志: $LOG_FILE${NC}"
+            cat "$LOG_FILE" 2>/dev/null | tail -20
             exit 1
         fi
     else
         echo ""
         echo -e "${GREEN}服务启动中... (Ctrl+C 停止)${NC}"
         echo $$ > "$PID_FILE"
-        exec python3 main.py
+        exec $PYTHON_BIN main.py --host "$HOST" --port "$PORT"
     fi
 }
 

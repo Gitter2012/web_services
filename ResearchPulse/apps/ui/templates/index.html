@@ -160,10 +160,9 @@
                 <h1>ResearchPulse</h1>
                 <span class="badge">BETA</span>
             </div>
-            <div class="nav">
+            <div class="nav" id="nav-menu">
                 <a href="/researchpulse/" class="active">首页</a>
-                <a href="#" onclick="goTo('subscriptions')">订阅管理</a>
-                <a href="#" onclick="goTo('admin')">管理后台</a>
+                <!-- 订阅管理和管理后台仅对登录用户显示 -->
             </div>
             <div class="auth-area" id="auth-area">
                 <a href="#" onclick="showModal('login')">登录</a>
@@ -237,8 +236,8 @@
                 </div>
             </div>
 
-            <!-- Export Section -->
-            <div class="sidebar-section">
+            <!-- 导出功能仅对登录用户显示 -->
+            <div class="sidebar-section" id="export-section" style="display: none;">
                 <div class="sidebar-title">导出</div>
                 <div class="filter-group">
                     <button class="export-btn" onclick="exportMarkdown()">
@@ -319,10 +318,12 @@
         let currentUser = null;
         let currentSource = '';
         let userStars = new Set();
+        let categoryNames = {};  // 分类代码到名称的映射
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             checkAuthState();
+            loadCategoryNames();  // 预加载分类名称映射
             loadCategories();
             loadArticles();
             loadStats();
@@ -352,16 +353,37 @@
 
         function updateAuthUI() {
             const area = document.getElementById('auth-area');
+            const navMenu = document.getElementById('nav-menu');
+            const exportSection = document.getElementById('export-section');
+            
             if (currentUser) {
+                // 已登录用户显示用户名和退出按钮
                 area.innerHTML = `
                     <span class="user-info">👤 ${currentUser.username}</span>
                     <a href="#" onclick="doLogout()">退出</a>
                 `;
+                
+                // 显示导出功能
+                exportSection.style.display = 'block';
+                
+                // 显示订阅管理
+                let navHtml = '<a href="/researchpulse/" class="active">首页</a>';
+                navHtml += '<a href="#" onclick="goTo(\'subscriptions\')">订阅管理</a>';
+                // 仅超级管理员显示管理后台
+                if (currentUser.is_superuser) {
+                    navHtml += '<a href="#" onclick="goTo(\'admin\')">管理后台</a>';
+                }
+                navMenu.innerHTML = navHtml;
             } else {
+                // 未登录用户显示登录/注册按钮
                 area.innerHTML = `
                     <a href="#" onclick="showModal('login')">登录</a>
                     <a href="#" onclick="showModal('register')">注册</a>
                 `;
+                
+                // 隐藏导出功能、订阅管理和管理后台
+                exportSection.style.display = 'none';
+                navMenu.innerHTML = '<a href="/researchpulse/" class="active">首页</a>';
             }
         }
 
@@ -451,6 +473,11 @@
                 showModal('login');
                 return;
             }
+            // 管理后台仅超级管理员可访问
+            if (page === 'admin' && !currentUser.is_superuser) {
+                alert('您没有权限访问管理后台');
+                return;
+            }
             // Navigate to page
             if (page === 'subscriptions') {
                 location.href = '/researchpulse/subscriptions';
@@ -478,6 +505,21 @@
         }
 
         // Data Loading
+        async function loadCategoryNames() {
+            // 加载 ArXiv 分类名称映射，用于显示主类目全称
+            try {
+                const res = await fetch(`${API_BASE}/categories?source_type=arxiv`);
+                const data = await res.json();
+                if (data.categories) {
+                    data.categories.forEach(cat => {
+                        categoryNames[cat.code] = cat.name || cat.code;
+                    });
+                }
+            } catch (e) {
+                console.error('Failed to load category names:', e);
+            }
+        }
+
         async function loadCategories(sourceType = '') {
             try {
                 const params = new URLSearchParams();
@@ -634,7 +676,7 @@
                     <div class="arxiv-details">
                         <div class="row">
                             <span><span class="label">arXiv ID:</span> <span class="value">${escapeHtml(article.arxiv_id || '')}</span></span>
-                            ${article.arxiv_primary_category ? `<span><span class="label">主类目:</span> <span class="value">${escapeHtml(article.arxiv_primary_category)}</span></span>` : ''}
+                            ${article.arxiv_primary_category ? `<span><span class="label">主类目:</span> <span class="value">${escapeHtml(article.arxiv_primary_category)}${categoryNames[article.arxiv_primary_category] ? ' - ' + escapeHtml(categoryNames[article.arxiv_primary_category]) : ''}</span></span>` : ''}
                         </div>
                     </div>
                 `;

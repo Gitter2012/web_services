@@ -43,10 +43,17 @@ show_help() {
     echo -e "  ${CYAN}logs${NC}      查看日志"
     echo "              --follow, -f   实时跟踪"
     echo ""
+    echo -e "  ${CYAN}test${NC}      运行测试"
+    echo "              unit           单元测试 (默认)"
+    echo "              coverage       覆盖率报告"
+    echo "              integration    集成测试"
+    echo "              --html         HTML 报告"
+    echo ""
     echo "示例:"
     echo "  ./scripts/control.sh deploy"
     echo "  ./scripts/control.sh start -d"
     echo "  ./scripts/control.sh status -v"
+    echo "  ./scripts/control.sh test coverage --html"
     echo ""
 }
 
@@ -68,6 +75,7 @@ shift || true
 case "$COMMAND" in
     deploy|init)   "$SCRIPT_DIR/${COMMAND}.sh" "$@" ;;
     start|stop|restart|status) "$SCRIPT_DIR/service.sh" "$COMMAND" "$@" ;;
+    test)          "$SCRIPT_DIR/test.sh" "$@" ;;
     logs)          show_logs "$@" ;;
     help|--help|-h) show_help ;;
     *) echo -e "${RED}未知命令: $COMMAND${NC}"; show_help; exit 1 ;;
