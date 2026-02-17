@@ -529,7 +529,9 @@ CREATE TABLE `email_configs` (
   `smtp_port` INT NOT NULL DEFAULT 587 COMMENT 'SMTP服务器端口',
   `smtp_user` VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'SMTP用户名',
   `smtp_password` VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'SMTP密码（加密存储）',
-  `smtp_use_tls` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否使用TLS',
+  `smtp_use_tls` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否使用TLS (STARTTLS)',
+  `smtp_use_ssl` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否使用SSL直连',
+  `smtp_ssl_ports` VARCHAR(50) NOT NULL DEFAULT '465' COMMENT 'SSL端口列表(逗号分隔)',
   -- SendGrid 配置
   `sendgrid_api_key` VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'SendGrid API密钥',
   -- Mailgun 配置
