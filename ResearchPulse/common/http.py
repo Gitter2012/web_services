@@ -414,3 +414,230 @@ def _parse_retry_after(value: Optional[str]) -> float:
         return max(1.0, float(value))
     except (ValueError, TypeError):
         return 5.0
+
+
+# =============================================================================
+# 异步 HTTP 客户端
+# 用于爬虫模块的异步 HTTP 请求，避免阻塞事件循环
+# =============================================================================
+
+import asyncio
+
+# 全局共享的异步 httpx 客户端实例（惰性创建）
+_async_client: Optional[httpx.AsyncClient] = None
+_async_request_count: int = 0
+
+
+def get_async_client(timeout: float = 10.0) -> httpx.AsyncClient:
+    """Return (and lazily create) a shared async httpx.AsyncClient.
+
+    获取（并惰性创建）全局共享的异步 httpx 客户端。
+    用于爬虫模块的异步 HTTP 请求。
+
+    Args:
+        timeout: Request timeout in seconds.
+
+    Returns:
+        httpx.AsyncClient: Shared async HTTP client instance.
+    """
+    global _async_client
+    if _async_client is None or _async_client.is_closed:
+        _async_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                connect=min(timeout, 10.0),
+                read=timeout,
+                write=timeout,
+                pool=min(timeout, 5.0),
+            ),
+            follow_redirects=True,
+            http2=False,  # 使用 HTTP/1.1
+            limits=httpx.Limits(
+                max_connections=10,
+                max_keepalive_connections=5,
+                keepalive_expiry=30.0,
+            ),
+        )
+    return _async_client
+
+
+async def rotate_async_client() -> None:
+    """Close and discard the current async client.
+
+    关闭并丢弃当前异步客户端，下次调用时会创建新客户端。
+    """
+    global _async_client, _async_request_count
+    if _async_client and not _async_client.is_closed:
+        await _async_client.aclose()
+    _async_client = None
+    _async_request_count = 0
+
+
+async def close_async_client() -> None:
+    """Close the global async HTTP client.
+
+    通常在应用关闭时调用，释放所有连接资源。
+    """
+    global _async_client
+    if _async_client and not _async_client.is_closed:
+        await _async_client.aclose()
+    _async_client = None
+
+
+async def get_text_async(
+    url: str,
+    params: Optional[Dict[str, Any]] = None,
+    timeout: float = 10.0,
+    retries: int = 2,
+    backoff: float = 0.5,
+    delay: float = 0.0,
+    jitter: float = 0.0,
+    cache_ttl: int = 0,
+    referer: Optional[str] = None,
+) -> str:
+    """Fetch text from a URL asynchronously with retries and rate limiting.
+
+    异步获取 URL 文本内容，具备完善的重试、频率控制和缓存机制。
+    这是爬虫模块的核心异步 HTTP 请求函数，避免阻塞事件循环。
+
+    Args:
+        url: URL to fetch.
+        params: Query parameters.
+        timeout: Request timeout in seconds.
+        retries: Number of retries on failure.
+        backoff: Base backoff in seconds for exponential retry.
+        delay: Base delay in seconds before each request attempt.
+        jitter: Random jitter (+-) added to delay.
+        cache_ttl: Cache TTL in seconds (0 disables caching).
+        referer: Optional Referer header to include.
+
+    Returns:
+        str: Response text body.
+
+    Raises:
+        RuntimeError: If all retries are exhausted.
+    """
+    global _async_request_count
+
+    # 如果启用了缓存，先尝试从缓存获取
+    if cache_ttl > 0:
+        cached = get_cached_response(url, params, cache_ttl)
+        if cached is not None:
+            return cached
+
+    global _consecutive_errors
+    last_error: Optional[Exception] = None
+    client = get_async_client(timeout=timeout)
+
+    # 为每个请求构建独立的超时配置
+    req_timeout = httpx.Timeout(
+        connect=min(timeout, 10.0),
+        read=timeout,
+        write=timeout,
+        pool=min(timeout, 5.0),
+    )
+
+    # 重试循环
+    for attempt in range(retries + 1):
+        try:
+            # 请求前的频率控制延迟（使用 asyncio.sleep 替代 time.sleep）
+            if delay > 0 or jitter > 0:
+                actual_delay = delay
+                if jitter > 0:
+                    actual_delay += random.uniform(-jitter, jitter)
+                    actual_delay = max(0.1, actual_delay)
+                if actual_delay > 0:
+                    await asyncio.sleep(actual_delay)
+
+            # 每次请求都轮换 User-Agent 并重建请求头
+            ua = _get_user_agent()
+            req_headers = _build_headers(ua, referer=referer)
+
+            # 对 API/Feed 类端点使用 XML Accept 头
+            if "api/query" in url or "/rss/" in url:
+                req_headers["Accept"] = _ACCEPT_XML
+
+            response = await client.get(
+                url, params=params, timeout=req_timeout, headers=req_headers
+            )
+
+            # 速率限制处理
+            if response.status_code in (429, 503):
+                retry_after = _parse_retry_after(response.headers.get("Retry-After"))
+                wait = max(retry_after, backoff * (2 ** attempt))
+                logger.warning(
+                    "Rate limited (%s) by %s – waiting %.1fs (attempt %d/%d)",
+                    response.status_code,
+                    url,
+                    wait,
+                    attempt + 1,
+                    retries + 1,
+                )
+                await asyncio.sleep(wait)
+                await rotate_async_client()
+                client = get_async_client(timeout=timeout)
+                continue
+
+            response.raise_for_status()
+
+            # 请求成功，缓存响应
+            if cache_ttl > 0:
+                cache_response(url, response.text, params)
+
+            # 重置连续错误计数器
+            _consecutive_errors = 0
+
+            # 客户端轮换记账
+            _async_request_count += 1
+            if _async_request_count >= _SESSION_ROTATE_EVERY:
+                await rotate_async_client()
+
+            return response.text
+
+        except httpx.HTTPStatusError as exc:
+            last_error = exc
+            status_code = exc.response.status_code
+            if 400 <= status_code < 500:
+                logger.warning(
+                    "HTTP %d from %s – not retrying", status_code, url
+                )
+                break
+            if attempt < retries:
+                wait = backoff * (2 ** attempt)
+                logger.debug(
+                    "HTTP %d from %s – retry in %.1fs (attempt %d/%d)",
+                    status_code, url, wait, attempt + 1, retries + 1,
+                )
+                await asyncio.sleep(wait)
+            else:
+                break
+
+        except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError) as exc:
+            last_error = exc
+            _consecutive_errors += 1
+            if _consecutive_errors >= _CONSECUTIVE_ERRORS_BEFORE_ROTATE:
+                logger.debug(
+                    "Rotating async HTTP client after %d consecutive errors",
+                    _consecutive_errors,
+                )
+                await rotate_async_client()
+                client = get_async_client(timeout=timeout)
+                _consecutive_errors = 0
+            if attempt < retries:
+                wait = backoff * (2 ** attempt)
+                logger.debug(
+                    "Network error (%s) fetching %s – retry in %.1fs (attempt %d/%d)",
+                    type(exc).__name__, url, wait, attempt + 1, retries + 1,
+                )
+                await asyncio.sleep(wait)
+            else:
+                break
+
+        except Exception as exc:  # pragma: no cover
+            last_error = exc
+            if attempt < retries:
+                await asyncio.sleep(backoff * (2 ** attempt))
+            else:
+                break
+
+    error_type = type(last_error).__name__ if last_error else "UnknownError"
+    raise RuntimeError(f"Async HTTP request failed ({error_type}): {last_error}") from last_error

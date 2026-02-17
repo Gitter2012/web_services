@@ -144,11 +144,19 @@ class BaseCrawler(ABC):
                     existing = result.scalar_one_or_none()
 
                 if existing:
-                    # 文章已存在：更新已有记录中的非空字段
-                    # 仅更新有值的字段，避免用空值覆盖已有数据
+                    # 文章已存在：更新已有记录，优先使用更完整的数据
+                    # 仅在新值非空且比旧值更完整时才更新
                     for key, value in article_data.items():
                         if hasattr(existing, key) and value is not None:
-                            setattr(existing, key, value)
+                            existing_value = getattr(existing, key, None)
+                            # 对于字符串类型，只有新值更长或旧值为空时才更新
+                            if isinstance(value, str):
+                                if value and (not existing_value or len(value) >= len(str(existing_value))):
+                                    setattr(existing, key, value)
+                            else:
+                                # 非字符串类型，仅当旧值为空时更新
+                                if value is not None and existing_value is None:
+                                    setattr(existing, key, value)
                     # 更新修改时间，用于追踪数据变化
                     existing.updated_at = datetime.now(timezone.utc)
                 else:
@@ -165,7 +173,14 @@ class BaseCrawler(ABC):
 
             except Exception as e:
                 # 单篇文章保存失败不影响其他文章的处理
-                self.logger.error(f"Failed to save article: {e}")
+                # 增强错误日志，记录文章关键信息便于排查
+                article_title = article_data.get('title', 'N/A')
+                article_url = article_data.get('url', 'N/A')
+                article_external_id = article_data.get('external_id', 'N/A')
+                self.logger.error(
+                    f"Failed to save article: title='{article_title[:50] if len(article_title) > 50 else article_title}', "
+                    f"external_id='{article_external_id}', url='{article_url}': {e}"
+                )
                 continue
 
         # flush() 将挂起的操作发送到数据库，但不提交事务

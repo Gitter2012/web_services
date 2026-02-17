@@ -843,7 +843,7 @@
                     <div class="article-meta">
                         <span>👤 ${escapeHtml(article.author || '未知作者')}</span>
                         ${timeDisplay}
-                        ${article.category ? `<span>📁 ${escapeHtml(article.category)}</span>` : ''}
+                        ${article.category ? `<span>📁 ${escapeHtml(article.category)}${categoryNames[article.category] ? ' - ' + escapeHtml(categoryNames[article.category]) : ''}</span>` : ''}
                     </div>
                     <div class="${contentClass}" data-full="${escapeHtml(cleanSummary)}">${escapeHtml(cleanSummary)}</div>
                     ${expandBtn}

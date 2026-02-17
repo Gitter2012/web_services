@@ -84,7 +84,7 @@ class Article(Base, TimestampMixin):
         default="",
     )
     author: Mapped[str] = mapped_column(
-        String(200),
+        String(1000),  # 扩展到 1000 字符以支持多作者论文
         nullable=False,
         default="",
     )

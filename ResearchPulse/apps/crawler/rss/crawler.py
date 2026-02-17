@@ -22,7 +22,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 import feedparser
 
 from apps.crawler.base import BaseCrawler
-from common.http import get_text
+from common.http import get_text_async
 
 # 模块级日志器
 logger = logging.getLogger(__name__)
@@ -161,7 +161,7 @@ class RssCrawler(BaseCrawler):
             Exception: Propagates fetch failures.
         """
         try:
-            feed_text = get_text(
+            feed_text = await get_text_async(
                 self.feed_url,
                 timeout=self.timeout,
                 retries=3,       # 最多重试 3 次

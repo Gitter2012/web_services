@@ -25,7 +25,7 @@ from typing import Any, Dict, List
 import feedparser
 
 from apps.crawler.base import BaseCrawler
-from common.http import get_text
+from common.http import get_text_async
 
 # 模块级日志器
 logger = logging.getLogger(__name__)
@@ -107,11 +107,26 @@ class Paper:
         # Abstract page URL
         abs_url = f"https://arxiv.org/abs/{self.arxiv_id}"
 
+        # 构建作者列表字符串，限制最大长度为 1000 字符
+        # Build author list string with max length limit
+        author_str = ""
+        if self.authors:
+            author_str = ", ".join(self.authors)
+            # 如果超过 950 字符，截断并添加 "et al." 后缀
+            if len(author_str) > 950:
+                # 尝试在完整的作者处截断
+                truncated = author_str[:950]
+                last_comma = truncated.rfind(",")
+                if last_comma > 0:
+                    author_str = truncated[:last_comma] + ", et al."
+                else:
+                    author_str = truncated + " et al."
+
         return {
             "external_id": self.arxiv_id,
             "title": self.title,
             "url": abs_url,  # Main URL goes to abstract page
-            "author": ", ".join(self.authors) if self.authors else "",
+            "author": author_str,  # 使用已截断的作者字符串
             "summary": self.abstract,
             "content": self.abstract,  # arXiv 论文的 content 也使用摘要（正文需单独下载 PDF）
             "category": self.primary_category,
@@ -476,8 +491,8 @@ class ArxivCrawler(BaseCrawler):
         }
 
         try:
-            # 使用通用 HTTP 工具函数获取 XML 文本，带超时和重试
-            feed_text = get_text(
+            # 使用异步 HTTP 工具函数获取 XML 文本，带超时和重试
+            feed_text = await get_text_async(
                 self.atom_url,
                 params=params,
                 timeout=20.0,
@@ -506,7 +521,7 @@ class ArxivCrawler(BaseCrawler):
         url = self.rss_url.format(category=self.category)
 
         try:
-            feed_text = get_text(
+            feed_text = await get_text_async(
                 url,
                 timeout=20.0,
                 retries=3,
@@ -535,7 +550,7 @@ class ArxivCrawler(BaseCrawler):
         url = url_template.format(category=self.category)
 
         try:
-            html_text = get_text(
+            html_text = await get_text_async(
                 url,
                 timeout=15.0,
                 retries=3,
@@ -573,17 +588,17 @@ class ArxivCrawler(BaseCrawler):
                 merged[key] = paper
                 continue
 
-            # 合并数据：当已有记录的字段为空时，用新数据补充
-            # Merge data: prefer non-empty values
-            if paper.title and not existing.title:
+            # 合并数据：优先使用更完整的数据，而非仅补充空值
+            # Merge data: prefer more complete values
+            if paper.title and len(paper.title) > len(existing.title):
                 existing.title = paper.title
-            if paper.authors and not existing.authors:
+            if paper.authors and (not existing.authors or len(paper.authors) > len(existing.authors)):
                 existing.authors = paper.authors
-            if paper.abstract and not existing.abstract:
+            if paper.abstract and (not existing.abstract or len(paper.abstract) > len(existing.abstract)):
                 existing.abstract = paper.abstract
             if paper.primary_category and not existing.primary_category:
                 existing.primary_category = paper.primary_category
-            if paper.categories and not existing.categories:
+            if paper.categories and (not existing.categories or len(paper.categories) > len(existing.categories)):
                 existing.categories = paper.categories
             if paper.pdf_url and not existing.pdf_url:
                 existing.pdf_url = paper.pdf_url

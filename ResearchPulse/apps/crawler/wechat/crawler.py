@@ -36,7 +36,7 @@ from urllib.parse import urlparse
 import feedparser
 
 from apps.crawler.base import BaseCrawler
-from common.http import get_text, _get_user_agent, _build_headers
+from common.http import get_text_async, _get_user_agent, _build_headers
 
 # 模块级日志器
 logger = logging.getLogger(__name__)
@@ -355,7 +355,7 @@ class WechatCrawler(BaseCrawler):
 
         try:
             self.logger.info(f"Fetching WeChat RSS: {self.rss_url}")
-            feed_text = get_text(
+            feed_text = await get_text_async(
                 self.rss_url,
                 timeout=self.timeout,
                 retries=3,       # 最多重试 3 次
