@@ -469,6 +469,7 @@
                         currentUser = await res.json();
                         updateAuthUI();
                         loadUserStars();
+                        return;  // 成功获取用户信息后直接返回
                     } else {
                         localStorage.removeItem('access_token');
                     }
@@ -476,6 +477,8 @@
                     localStorage.removeItem('access_token');
                 }
             }
+            // 只有在未登录或 token 无效时才设置 currentUser 为 null 并更新 UI
+            currentUser = null;
             updateAuthUI();
         }
 
@@ -549,10 +552,9 @@
                 const data = await res.json();
                 if (res.ok) {
                     localStorage.setItem('access_token', data.access_token);
-                    currentUser = { username };
-                    updateAuthUI();
+                    // 登录成功后获取完整用户信息（包括 is_superuser）
+                    await checkAuthState();
                     hideModal('login');
-                    loadUserStars();
                 } else {
                     errorEl.textContent = data.detail || '登录失败';
                 }
