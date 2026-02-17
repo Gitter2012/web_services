@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_session
-from core.dependencies import get_current_user
+from core.dependencies import get_current_user, require_permissions
 from common.feature_config import require_feature
 from .schemas import (
     ActionItemCreateRequest,
@@ -51,7 +51,8 @@ async def list_actions(
     status: str | None = None,
     limit: int = 50,
     offset: int = 0,
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("action:read")),
+
     db: AsyncSession = Depends(get_session),
 ):
     service = ActionService()
@@ -76,7 +77,8 @@ async def list_actions(
 @router.post("", response_model=ActionItemSchema, status_code=201)
 async def create_action(
     request: ActionItemCreateRequest,
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("action:manage")),
+
     db: AsyncSession = Depends(get_session),
 ):
     service = ActionService()
@@ -103,7 +105,8 @@ async def create_action(
 @router.get("/{action_id}", response_model=ActionItemSchema)
 async def get_action(
     action_id: int,
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("action:read")),
+
     db: AsyncSession = Depends(get_session),
 ):
     service = ActionService()
@@ -127,7 +130,8 @@ async def get_action(
 async def update_action(
     action_id: int,
     request: ActionItemUpdateRequest,
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("action:manage")),
+
     db: AsyncSession = Depends(get_session),
 ):
     service = ActionService()
@@ -152,7 +156,8 @@ async def update_action(
 @router.post("/{action_id}/complete", response_model=ActionItemSchema)
 async def complete_action(
     action_id: int,
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("action:manage")),
+
     db: AsyncSession = Depends(get_session),
 ):
     service = ActionService()
@@ -176,7 +181,8 @@ async def complete_action(
 @router.post("/{action_id}/dismiss", response_model=ActionItemSchema)
 async def dismiss_action(
     action_id: int,
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("action:manage")),
+
     db: AsyncSession = Depends(get_session),
 ):
     service = ActionService()

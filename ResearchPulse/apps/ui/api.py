@@ -53,7 +53,7 @@ from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_session
-from core.dependencies import CurrentUser, OptionalUserId
+from core.dependencies import CurrentUser, OptionalUserId, get_current_user
 from apps.crawler.models import (
     Article,
     ArxivCategory,
@@ -1399,6 +1399,7 @@ async def export_markdown(
     to_date: Optional[str] = None,        # 筛选条件：结束日期
     page: int = 1,                        # 页码
     page_size: int = 100,                 # 每页条数（导出时默认 100 条）
+    user=Depends(get_current_user),       # L2 修复：导出需要认证
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     """Export articles as Markdown.

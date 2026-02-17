@@ -9,10 +9,10 @@
 """Topic API endpoints."""
 from __future__ import annotations
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_session
-from core.dependencies import get_current_user
+from core.dependencies import get_current_user, require_permissions
 from common.feature_config import require_feature
 from .schemas import (DiscoverResponse, TopicArticleSchema, TopicCreateRequest, TopicListResponse, TopicSchema, TopicSuggestionSchema, TopicTrendSchema, TopicUpdateRequest)
 from .service import TopicService
@@ -47,7 +47,7 @@ async def list_topics(active_only: bool = True, db: AsyncSession = Depends(get_s
 # 返回: 新创建的话题数据 (TopicSchema), HTTP 状态码 201
 # --------------------------------------------------------------------------
 @router.post("", response_model=TopicSchema, status_code=201)
-async def create_topic(request: TopicCreateRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+async def create_topic(request: TopicCreateRequest, user=Depends(require_permissions("topic:manage")), db: AsyncSession = Depends(get_session)):
     service = TopicService()
     topic = await service.create_topic(request.name, request.description, request.keywords, user.id, db)
     return TopicSchema.model_validate(topic)
@@ -81,12 +81,21 @@ async def get_topic(topic_id: int, db: AsyncSession = Depends(get_session)):
 #           只传递用户明确设置的字段, 避免将未传的字段置为 None
 # --------------------------------------------------------------------------
 @router.put("/{topic_id}", response_model=TopicSchema)
-async def update_topic(topic_id: int, request: TopicUpdateRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+async def update_topic(topic_id: int, request: TopicUpdateRequest, user=Depends(require_permissions("topic:manage")), db: AsyncSession = Depends(get_session)):
     service = TopicService()
-    topic = await service.update_topic(topic_id, db, **request.model_dump(exclude_unset=True))
+    topic = await service.get_topic(topic_id, db)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
-    return TopicSchema.model_validate(topic)
+    # 所有权校验：创建者 or admin/superuser
+    if (topic.created_by_user_id != user.id
+            and not user.is_superuser
+            and not user.has_role("admin")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not allowed to update this topic",
+        )
+    updated = await service.update_topic(topic_id, db, **request.model_dump(exclude_unset=True))
+    return TopicSchema.model_validate(updated)
 
 # --------------------------------------------------------------------------
 # DELETE /topics/{topic_id} - 删除话题
@@ -98,10 +107,20 @@ async def update_topic(topic_id: int, request: TopicUpdateRequest, user=Depends(
 # 返回: 成功时返回 {"status": "ok"}, 若不存在则返回 404 错误
 # --------------------------------------------------------------------------
 @router.delete("/{topic_id}")
-async def delete_topic(topic_id: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+async def delete_topic(topic_id: int, user=Depends(require_permissions("topic:manage")), db: AsyncSession = Depends(get_session)):
     service = TopicService()
-    if not await service.delete_topic(topic_id, db):
+    topic = await service.get_topic(topic_id, db)
+    if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
+    # 所有权校验：创建者 or admin/superuser
+    if (topic.created_by_user_id != user.id
+            and not user.is_superuser
+            and not user.has_role("admin")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not allowed to delete this topic",
+        )
+    await service.delete_topic(topic_id, db)
     return {"status": "ok"}
 
 # --------------------------------------------------------------------------
@@ -130,7 +149,7 @@ async def get_topic_articles(topic_id: int, limit: int = 50, db: AsyncSession = 
 #           帮助用户发现值得跟踪的新趋势
 # --------------------------------------------------------------------------
 @router.post("/discover", response_model=DiscoverResponse)
-async def discover(user=Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+async def discover(user=Depends(require_permissions("topic:discover")), db: AsyncSession = Depends(get_session)):
     service = TopicService()
     suggestions = await service.discover(db)
     return DiscoverResponse(suggestions=[TopicSuggestionSchema(**s) for s in suggestions])

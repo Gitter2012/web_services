@@ -21,7 +21,7 @@ from sqlalchemy import Integer, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_session
-from core.dependencies import CurrentUser, get_current_user
+from core.dependencies import CurrentUser, get_current_user, require_permissions
 
 from common.feature_config import require_feature
 
@@ -49,7 +49,7 @@ router = APIRouter(tags=["AI Processing"], dependencies=[require_feature("featur
 @router.post("/process", response_model=ProcessingResultSchema)
 async def process_article(
     request: ProcessArticleRequest,
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("ai:process")),
     db: AsyncSession = Depends(get_session),
 ):
     """Trigger AI processing for a single article."""
@@ -69,7 +69,7 @@ async def process_article(
 @router.post("/batch-process", response_model=BatchProcessResponse)
 async def batch_process(
     request: BatchProcessRequest,
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("ai:process")),
     db: AsyncSession = Depends(get_session),
 ):
     """Batch process multiple articles."""
@@ -92,6 +92,7 @@ async def batch_process(
 @router.get("/status/{article_id}", response_model=ProcessingStatusResponse)
 async def get_processing_status(
     article_id: int,
+    user=Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
     """Check AI processing status for an article."""
@@ -121,7 +122,7 @@ async def get_processing_status(
 @router.get("/token-stats", response_model=list[TokenStatsResponse])
 async def get_token_stats(
     days: int = 7,
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("ai:view_stats")),
     db: AsyncSession = Depends(get_session),
 ):
     """Get token usage statistics."""

@@ -187,3 +187,34 @@ class TestArticleToDict:
 
         assert result["content"] == abstract
         assert result["arxiv_id"] == "2401.12345"
+
+
+class TestExportAuth:
+    """Test export endpoint authentication (L2 fix).
+
+    验证 Markdown 导出端点需要认证。
+    """
+
+    def test_export_markdown_unauthenticated(self, client):
+        """GET /api/export/markdown requires authentication (L2 fix).
+
+        未认证访问导出端点应返回 401。
+        """
+        from fastapi.testclient import TestClient
+
+        response = client.get("/researchpulse/api/export/markdown")
+        assert response.status_code == 401
+
+    def test_export_markdown_authenticated(self, client, auth_headers):
+        """GET /api/export/markdown allowed for authenticated user.
+
+        已认证用户可访问导出端点。
+        """
+        from fastapi.testclient import TestClient
+
+        response = client.get(
+            "/researchpulse/api/export/markdown",
+            headers=auth_headers,
+        )
+        # Should not be 401/403 -- permission passed
+        assert response.status_code not in [401, 403]

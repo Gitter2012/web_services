@@ -243,7 +243,7 @@ def require_permissions(*required_permissions: str):
         ...     return {"status": "ok"}
     """
     # 这是一个高阶函数（闭包），接收所需权限列表作为参数，
-    # 返回一个 Depends() 对象供 FastAPI 路由使用。
+    # 返回一个可被 Depends() 包装的异步函数。
     # 通过闭包捕获 required_permissions 参数，实现动态权限检查。
 
     async def permission_checker(
@@ -257,27 +257,17 @@ def require_permissions(*required_permissions: str):
 
         # ---- 查询用户通过角色关联获得的所有权限 ----
         # Get user's permissions through roles
-        from core.models.permission import RolePermission
+        from core.models.permission import RolePermission, Permission
+        from core.models.user import UserRole
 
-        # 通过关联表（user_roles -> roles -> role_permissions）
-        # 查询当前用户所拥有的所有权限 ID
-        # Build permission query
+        # 通过关联表链 user_roles -> role_permissions -> permissions
+        # 查询当前用户拥有的所有权限名称
         result = await session.execute(
-            select(RolePermission.permission_id)
-            .join(RolePermission.role)
-            .join(RolePermission.role.users)
-            .where(RolePermission.role.users.any(id=user.id))
+            select(Permission.name)
+            .join(RolePermission, RolePermission.permission_id == Permission.id)
+            .join(UserRole, UserRole.role_id == RolePermission.role_id)
+            .where(UserRole.user_id == user.id)
         )
-        user_permission_ids = [row[0] for row in result.all()]
-
-        # 根据权限 ID 查询权限名称
-        # Get permission names
-        from core.models.permission import Permission
-
-        result = await session.execute(
-            select(Permission.name).where(Permission.id.in_(user_permission_ids))
-        )
-        # 将查询结果转换为集合，便于后续进行集合运算
         user_permissions = {row[0] for row in result.all()}
 
         # ---- 检查是否缺少必需的权限 ----
@@ -292,8 +282,8 @@ def require_permissions(*required_permissions: str):
 
         return user
 
-    # 返回 Depends 包装的权限检查函数，供 FastAPI 路由使用
-    return Depends(permission_checker)
+    # 返回原始函数，由调用方通过 Depends() 包装使用
+    return permission_checker
 
 
 # =============================================================================

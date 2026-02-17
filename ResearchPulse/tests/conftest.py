@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from typing import AsyncGenerator, Generator
-from contextlib import asynccontextmanager
 
 import pytest
 import pytest_asyncio
@@ -33,6 +33,14 @@ from sqlalchemy.ext.compiler import compiles as _compiles  # noqa: E402
 @_compiles(BigInteger, "sqlite")
 def _compile_big_int_sqlite(type_, compiler, **kw):
     return "INTEGER"
+
+
+# ---------------------------------------------------------------------------
+# Module-level variable to share the test engine between the ``client``
+# fixture and helper fixtures (admin_headers, superuser_headers).
+# With StaticPool, all connections share the same in-memory SQLite database.
+# ---------------------------------------------------------------------------
+_test_engine = None
 
 
 @pytest.fixture(scope="session")
@@ -223,7 +231,9 @@ def client(test_user_data: dict) -> Generator[TestClient, None, None]:
     Returns:
         Generator[TestClient, None, None]: Synchronous test client.
     """
-    from fastapi import FastAPI
+    global _test_engine
+
+    from fastapi import Depends, FastAPI
     from main import app
     from core.database import get_session
     from core.models.base import Base
@@ -245,47 +255,56 @@ def client(test_user_data: dict) -> Generator[TestClient, None, None]:
         expire_on_commit=False,
     )
 
+    # Expose engine for helper fixtures
+    _test_engine = engine
+
+    # Track whether the DB has been seeded
+    _seeded = False
+
     # Override the database session dependency
     async def override_get_session():
-        # Create tables for this test
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        nonlocal _seeded
+
+        if not _seeded:
+            # Create tables and seed default data (first request triggers this)
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+
+            async with session_factory() as seed_session:
+                from core.models.permission import Permission, Role
+                from core.models.user import User  # noqa: F401 — registers user_roles
+
+                perm_objs = {}
+                for perm_data in DEFAULT_PERMISSIONS:
+                    perm = Permission(
+                        name=perm_data["name"],
+                        resource=perm_data["resource"],
+                        action=perm_data["action"],
+                        description=perm_data["description"],
+                    )
+                    seed_session.add(perm)
+                    perm_objs[perm_data["name"]] = perm
+                await seed_session.flush()
+
+                for role_name, role_data in DEFAULT_ROLES.items():
+                    role = Role(
+                        name=role_name,
+                        description=role_data["description"],
+                    )
+                    for perm_name in role_data["permissions"]:
+                        if perm_name in perm_objs:
+                            role.permissions.append(perm_objs[perm_name])
+                    seed_session.add(role)
+
+                await seed_session.commit()
+                _seeded = True
 
         async with session_factory() as session:
-            # Seed default data
-            try:
-                for perm_data in DEFAULT_PERMISSIONS:
-                    await session.execute(
-                        text("INSERT INTO permissions (name, resource, action, description) VALUES (:name, :resource, :action, :description)"),
-                        perm_data
-                    )
-                await session.flush()
-
-                for role_name, role_data in DEFAULT_ROLES.items():
-                    await session.execute(
-                        text("INSERT INTO roles (name, description) VALUES (:name, :description)"),
-                        {"name": role_name, "description": role_data["description"]}
-                    )
-                await session.flush()
-
-                for role_name, role_data in DEFAULT_ROLES.items():
-                    for perm_name in role_data["permissions"]:
-                        await session.execute(
-                            text("""
-                                INSERT INTO role_permissions (role_id, permission_id)
-                                SELECT r.id, p.id FROM roles r, permissions p
-                                WHERE r.name = :role_name AND p.name = :perm_name
-                            """),
-                            {"role_name": role_name, "perm_name": perm_name}
-                        )
-
-                await session.commit()
-            except Exception:
-                await session.rollback()
-
             yield session
-
-    # Create a minimal test app with the same routes but no lifespan
+            # Auto-commit after each request so that changes (e.g. user
+            # registration) are persisted across requests in the same
+            # in-memory SQLite database.
+            await session.commit()
     test_app = FastAPI(title=app.title)
 
     # Copy middleware
@@ -300,20 +319,69 @@ def client(test_user_data: dict) -> Generator[TestClient, None, None]:
     for route in app.routes:
         test_app.routes.append(route)
 
-    # Override the database session dependency
+    # ----- Test-only utility endpoint for modifying user roles/flags -----
+    # This runs within the same session pipeline as regular endpoints,
+    # so it shares the in-memory SQLite connection.
+    @test_app.post("/_test/modify-user")
+    async def _test_modify_user(
+        payload: dict,
+        session: AsyncSession = Depends(get_session),
+    ):
+        username = payload["username"]
+        action = payload["action"]
+
+        if action == "add_role":
+            role_name = payload["role"]
+            await session.execute(
+                text(
+                    "INSERT INTO user_roles (user_id, role_id, created_at) "
+                    "SELECT u.id, r.id, CURRENT_TIMESTAMP FROM users u, roles r "
+                    "WHERE u.username = :username AND r.name = :role"
+                ),
+                {"username": username, "role": role_name},
+            )
+        elif action == "remove_role":
+            role_name = payload["role"]
+            await session.execute(
+                text(
+                    "DELETE FROM user_roles WHERE user_id = "
+                    "(SELECT id FROM users WHERE username = :username) "
+                    "AND role_id = (SELECT id FROM roles WHERE name = :role)"
+                ),
+                {"username": username, "role": role_name},
+            )
+        elif action == "set_superuser":
+            await session.execute(
+                text("UPDATE users SET is_superuser = 1 WHERE username = :username"),
+                {"username": username},
+            )
+
+        await session.commit()
+        return {"ok": True}
+
+    # Override on BOTH the original app and test_app to ensure the override
+    # is found regardless of which dependency resolution path is used.
+    app.dependency_overrides[get_session] = override_get_session
     test_app.dependency_overrides[get_session] = override_get_session
 
     with TestClient(test_app, raise_server_exceptions=False) as test_client:
+        # Trigger DB initialization with a dummy request before yielding.
+        # This ensures tables and seed data exist when helper fixtures
+        # (e.g. _register_and_login) run.
+        test_client.get("/api/v1/auth/me")
         yield test_client
 
+    app.dependency_overrides.clear()
     test_app.dependency_overrides.clear()
+    _test_engine = None
 
 
 @pytest.fixture
 def auth_headers(client: TestClient, test_user_data: dict) -> dict:
     """Build authorization headers for authenticated requests.
 
-    注册并登录测试用户后返回带 Bearer 令牌的请求头。
+    在测试数据库中直接创建用户并登录，返回带 Bearer 令牌的请求头。
+    注册用户默认分配 "user" 角色。
 
     Args:
         client: TestClient instance.
@@ -322,23 +390,13 @@ def auth_headers(client: TestClient, test_user_data: dict) -> dict:
     Returns:
         dict: Authorization header dictionary.
     """
-    # Register user
-    client.post(
-        "/api/v1/auth/register",
-        json=test_user_data,
+    token = _register_and_login(
+        client,
+        test_user_data["username"],
+        test_user_data["email"],
+        test_user_data["password"],
     )
-
-    # Login
-    response = client.post(
-        "/api/v1/auth/login",
-        json={
-            "username": test_user_data["username"],
-            "password": test_user_data["password"],
-        },
-    )
-
-    access_token = response.json()["access_token"]
-    return {"Authorization": f"Bearer {access_token}"}
+    return {"Authorization": f"Bearer {token}"}
 
 
 # Async client for async tests
@@ -377,3 +435,180 @@ async def async_client(setup_test_db) -> AsyncGenerator[AsyncClient, None]:
         yield ac
 
     app.dependency_overrides.clear()
+
+
+# =========================================================================
+# Feature toggle and role-based fixtures (RBAC testing support)
+# =========================================================================
+
+@pytest.fixture(autouse=True)
+def enable_features():
+    """Enable all feature toggles for tests.
+
+    在测试期间启用所有功能开关，避免端点因功能未开启返回 503。
+    通过直接写入内存缓存绕过数据库查询。
+    """
+    from common.feature_config import feature_config
+
+    original_cache = feature_config._cache.copy()
+    original_ts = feature_config._cache_ts
+
+    feature_config._cache.update({
+        "feature.ai_processor": "true",
+        "feature.embedding": "true",
+        "feature.event_clustering": "true",
+        "feature.topic_radar": "true",
+        "feature.action_items": "true",
+        "feature.report_generation": "true",
+        "feature.crawler": "true",
+        "feature.backup": "true",
+        "feature.cleanup": "true",
+        "feature.email_notification": "true",
+    })
+    feature_config._cache_ts = time.monotonic()
+
+    yield
+
+    feature_config._cache = original_cache
+    feature_config._cache_ts = original_ts
+
+
+@pytest.fixture(autouse=True)
+def mock_verification_service():
+    """Mock email verification service for all tests.
+
+    在测试期间 mock 邮箱验证服务，使注册端点不需要真实的验证令牌。
+    """
+    from unittest.mock import patch
+
+    with patch(
+        "apps.auth.verification_service.VerificationService.validate_verification_token",
+        return_value=True,
+    ), patch(
+        "apps.auth.verification_service.VerificationService.cleanup_verification_data",
+        return_value=None,
+    ):
+        yield
+
+
+def _register_and_login(
+    client: TestClient, username: str, email: str, password: str
+) -> str:
+    """Register a user via the API and return an access token.
+
+    通过 API 注册用户（VerificationService 已被 mock），然后登录获取 JWT。
+
+    Args:
+        client: TestClient instance.
+        username: Username for registration.
+        email: Email for registration.
+        password: Password for registration.
+
+    Returns:
+        str: JWT access token.
+    """
+    reg_resp = client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": username,
+            "email": email,
+            "password": password,
+            "verification_token": "test-token",
+        },
+    )
+    if reg_resp.status_code not in (200, 201):
+        raise RuntimeError(
+            f"Registration failed for {username}: "
+            f"status={reg_resp.status_code} {reg_resp.text}"
+        )
+
+    login_resp = client.post(
+        "/api/v1/auth/login",
+        json={"username": username, "password": password},
+    )
+    data = login_resp.json()
+    if "access_token" not in data:
+        raise RuntimeError(
+            f"Login failed for {username}: "
+            f"login={login_resp.status_code} {login_resp.text}"
+        )
+    return data["access_token"]
+
+
+
+@pytest.fixture
+def admin_headers(client: TestClient) -> dict:
+    """Build authorization headers for an admin user.
+
+    注册用户并在数据库中分配 admin 角色，然后返回 Bearer 令牌请求头。
+    admin 角色拥有 22 个权限，包含所有扩展功能权限。
+
+    Args:
+        client: TestClient instance.
+
+    Returns:
+        dict: Authorization header dictionary.
+    """
+    token = _register_and_login(
+        client, "adminuser", "admin@example.com", "password123"
+    )
+
+    # Assign admin role to the user via test utility endpoint
+    client.post("/_test/modify-user", json={
+        "username": "adminuser", "action": "add_role", "role": "admin"
+    })
+
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def guest_headers(client: TestClient) -> dict:
+    """Build authorization headers for a guest-only user.
+
+    注册用户后将其角色从 user 替换为 guest（仅 article:read/list），
+    用于验证“已认证但缺少特定权限”的 403 场景。
+
+    Args:
+        client: TestClient instance.
+
+    Returns:
+        dict: Authorization header dictionary.
+    """
+    token = _register_and_login(
+        client, "guestuser", "guest@example.com", "password123"
+    )
+
+    # Remove default "user" role, assign "guest" only
+    client.post("/_test/modify-user", json={
+        "username": "guestuser", "action": "remove_role", "role": "user"
+    })
+    client.post("/_test/modify-user", json={
+        "username": "guestuser", "action": "add_role", "role": "guest"
+    })
+
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def superuser_headers(client: TestClient) -> dict:
+    """Build authorization headers for a superuser.
+
+    注册用户并设置 is_superuser=True，返回 Bearer 令牌请求头。
+    superuser 拥有所有权限（require_permissions 直接放行）。
+
+    Args:
+        client: TestClient instance.
+
+    Returns:
+        dict: Authorization header dictionary.
+    """
+    token = _register_and_login(
+        client, "superadmin", "super@example.com", "password123"
+    )
+
+    # Set is_superuser flag via test utility endpoint
+    client.post("/_test/modify-user", json={
+        "username": "superadmin", "action": "set_superuser"
+    })
+
+    return {"Authorization": f"Bearer {token}"}

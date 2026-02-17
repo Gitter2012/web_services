@@ -5,7 +5,235 @@
 - **Base URL**: `http://localhost:8000`
 - **Content-Type**: `application/json`
 - **认证方式**: Bearer Token (JWT)
-- **文档说明**: 具体字段与模型以代码与 Sphinx 自动化文档为准
+- **API 前缀**: 认证相关使用 `/api/v1`，业务相关使用 `/researchpulse/api`
+- **交互式文档**: 启动服务后访问 `/docs`（Swagger UI）或 `/redoc`（ReDoc）
+- **详细模型定义**: 以代码与 Sphinx 自动化文档为准
+
+---
+
+## 目录
+
+- [用户认证 API](#用户认证-api)
+- [文章 API](#文章-api)
+- [导出 API](#导出-api)
+- [订阅 API](#订阅-api)
+- [文章状态 API](#文章状态-api)
+- [AI 处理 API](#ai-处理-api)
+- [向量嵌入 API](#向量嵌入-api)
+- [事件聚类 API](#事件聚类-api)
+- [话题雷达 API](#话题雷达-api)
+- [行动项 API](#行动项-api)
+- [报告 API](#报告-api)
+- [管理员 API](#管理员-api)
+- [健康检查 API](#健康检查-api)
+- [错误响应](#错误响应)
+
+---
+
+## 用户认证 API
+
+### 用户注册
+
+```
+POST /api/v1/auth/register
+```
+
+**Body:**
+
+```json
+{
+  "username": "testuser",
+  "email": "test@example.com",
+  "password": "password123"
+}
+```
+
+**字段约束:**
+
+| 字段 | 约束 |
+|------|------|
+| username | 3-50 字符，仅允许字母数字 |
+| email | 有效邮箱格式 |
+| password | 6-100 字符 |
+
+**Response (201):**
+
+```json
+{
+  "id": 1,
+  "username": "testuser",
+  "email": "test@example.com",
+  "is_active": true,
+  "is_superuser": false,
+  "roles": ["viewer"],
+  "created_at": "2026-01-01T00:00:00",
+  "last_login_at": null
+}
+```
+
+**错误情况:**
+
+| 状态码 | 说明 |
+|--------|------|
+| 400 | 用户名或邮箱已存在 |
+| 422 | 参数验证失败 |
+
+---
+
+### 用户登录
+
+```
+POST /api/v1/auth/login
+```
+
+**Body:**
+
+```json
+{
+  "username": "testuser",
+  "password": "password123"
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "access_token": "eyJ0eXAi...",
+  "refresh_token": "eyJ0eXAi...",
+  "token_type": "bearer",
+  "expires_in": 86400
+}
+```
+
+**Token 说明:**
+
+| Token 类型 | 有效期 | 用途 |
+|-----------|--------|------|
+| access_token | 24 小时（可配置） | API 请求认证 |
+| refresh_token | 7 天（可配置） | 刷新 access_token |
+
+**JWT Payload 结构:**
+
+```json
+{
+  "sub": "12345",
+  "username": "testuser",
+  "email": "test@example.com",
+  "type": "access",
+  "exp": 1700000000,
+  "roles": ["viewer"]
+}
+```
+
+**错误情况:**
+
+| 状态码 | 说明 |
+|--------|------|
+| 401 | 用户名或密码错误 |
+| 403 | 账号已被禁用 |
+
+---
+
+### 刷新 Token
+
+```
+POST /api/v1/auth/refresh
+```
+
+**Body:**
+
+```json
+{
+  "refresh_token": "eyJ0eXAi..."
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "access_token": "eyJ0eXAi...",
+  "refresh_token": "eyJ0eXAi...",
+  "token_type": "bearer",
+  "expires_in": 86400
+}
+```
+
+---
+
+### 获取当前用户
+
+```
+GET /api/v1/auth/me
+Authorization: Bearer <token>
+```
+
+**Response (200):**
+
+```json
+{
+  "id": 1,
+  "username": "testuser",
+  "email": "test@example.com",
+  "is_active": true,
+  "is_superuser": false,
+  "roles": ["viewer"],
+  "created_at": "2026-01-01T00:00:00",
+  "last_login_at": "2026-01-02T10:00:00"
+}
+```
+
+---
+
+### 修改密码
+
+```
+POST /api/v1/auth/change-password
+Authorization: Bearer <token>
+```
+
+**Body:**
+
+```json
+{
+  "current_password": "old_password",
+  "new_password": "new_password123"
+}
+```
+
+**字段约束:**
+
+| 字段 | 约束 |
+|------|------|
+| new_password | 6-100 字符 |
+
+**Response (200):**
+
+```json
+{
+  "detail": "密码修改成功"
+}
+```
+
+---
+
+### 登出
+
+```
+POST /api/v1/auth/logout
+Authorization: Bearer <token>
+```
+
+**Response (200):**
+
+```json
+{
+  "detail": "登出成功"
+}
+```
+
+> 注意: JWT 为无状态认证，登出操作在客户端清除 Token。
 
 ---
 
@@ -21,16 +249,16 @@ GET /researchpulse/api/articles
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| source_type | string | 否 | 来源类型: arxiv, rss, wechat |
-| category | string | 否 | 分类代码 |
-| keyword | string | 否 | 搜索关键词 |
+| source_type | string | 否 | 来源类型: arxiv, rss, wechat, weibo, twitter, hackernews, reddit |
+| category | string | 否 | 分类代码（如 cs.LG） |
+| keyword | string | 否 | 搜索关键词（匹配标题和摘要） |
 | from_date | string | 否 | 起始日期 (YYYY-MM-DD) |
 | to_date | string | 否 | 结束日期 (YYYY-MM-DD) |
-| sort | string | 否 | 排序字段: publish_time, crawl_time |
+| sort | string | 否 | 排序字段: publish_time, crawl_time（默认 crawl_time DESC） |
 | page | int | 否 | 页码，默认 1 |
-| page_size | int | 否 | 每页数量，默认 20 |
+| page_size | int | 否 | 每页数量，默认 20，最大 100 |
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -47,7 +275,10 @@ GET /researchpulse/api/articles
       "publish_time": "2026-01-01T00:00:00",
       "crawl_time": "2026-01-01T00:00:00",
       "arxiv_id": "2301.00001",
-      "arxiv_primary_category": "cs.LG"
+      "arxiv_primary_category": "cs.LG",
+      "ai_summary": "AI 生成的摘要（如已处理）",
+      "importance_score": 8,
+      "is_starred": false
     }
   ],
   "total": 100,
@@ -70,7 +301,7 @@ GET /researchpulse/api/categories
 |------|------|------|------|
 | source_type | string | 否 | 来源类型: arxiv, rss |
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -80,7 +311,7 @@ GET /researchpulse/api/categories
       "id": 1,
       "code": "cs.LG",
       "name": "Machine Learning",
-      "description": "..."
+      "description": "机器学习相关研究"
     }
   ]
 }
@@ -94,7 +325,7 @@ GET /researchpulse/api/categories
 GET /researchpulse/api/feeds
 ```
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -104,7 +335,8 @@ GET /researchpulse/api/feeds
       "title": "Hacker News",
       "feed_url": "https://news.ycombinator.com/rss",
       "category": "IT/软件开发",
-      "is_active": true
+      "is_active": true,
+      "last_fetched_at": "2026-01-01T12:00:00"
     }
   ]
 }
@@ -118,12 +350,13 @@ GET /researchpulse/api/feeds
 GET /researchpulse/api/sources
 ```
 
-**Response:**
+**Response (200):**
 
 ```json
 {
   "arxiv_categories": [...],
-  "rss_feeds": [...]
+  "rss_feeds": [...],
+  "wechat_accounts": [...]
 }
 ```
 
@@ -163,9 +396,8 @@ Content-Disposition: attachment; filename="researchpulse_2026-01-01.md"
 
 ```
 GET /researchpulse/api/export/user-markdown
+Authorization: Bearer <token>
 ```
-
-**认证:** 需要 Bearer Token
 
 **Query Parameters:**
 
@@ -184,7 +416,7 @@ GET /researchpulse/api/subscriptions
 Authorization: Bearer <token>
 ```
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -193,7 +425,9 @@ Authorization: Bearer <token>
       "id": 1,
       "source_type": "arxiv_category",
       "source_id": 1,
-      "is_active": true
+      "source_name": "cs.LG - Machine Learning",
+      "is_active": true,
+      "created_at": "2026-01-01T00:00:00"
     }
   ]
 }
@@ -217,6 +451,14 @@ Authorization: Bearer <token>
 }
 ```
 
+**支持的订阅类型:**
+
+| source_type | 说明 |
+|------------|------|
+| arxiv_category | arXiv 分类 |
+| rss_feed | RSS 源 |
+| wechat_account | 微信公众号 |
+
 ---
 
 ### 删除订阅
@@ -237,183 +479,12 @@ POST /researchpulse/api/articles/{article_id}/star
 Authorization: Bearer <token>
 ```
 
-**Response:**
+**Response (200):**
 
 ```json
 {
   "status": "ok",
   "is_starred": true
-}
-```
-
----
-
-## 用户认证 API
-
-### 用户注册
-
-```
-POST /api/v1/auth/register
-```
-
-**Body:**
-
-```json
-{
-  "username": "testuser",
-  "email": "test@example.com",
-  "password": "password123"
-}
-```
-
-**字段约束:**
-
-| 字段 | 约束 |
-|------|------|
-| username | 3-50 字符，仅允许字母数字 |
-| email | 有效邮箱格式 |
-| password | 6-100 字符 |
-
-**Response:**
-
-```json
-{
-  "id": 1,
-  "username": "testuser",
-  "email": "test@example.com",
-  "is_active": true,
-  "is_superuser": false,
-  "roles": ["user"],
-  "created_at": "2026-01-01T00:00:00",
-  "last_login_at": null
-}
-```
-
----
-
-### 用户登录
-
-```
-POST /api/v1/auth/login
-```
-
-**Body:**
-
-```json
-{
-  "username": "testuser",
-  "password": "password123"
-}
-```
-
-**Response:**
-
-```json
-{
-  "access_token": "eyJ0eXAi...",
-  "refresh_token": "eyJ0eXAi...",
-  "token_type": "bearer",
-  "expires_in": 1800
-}
-```
-
----
-
-### 刷新 Token
-
-```
-POST /api/v1/auth/refresh
-```
-
-**Body:**
-
-```json
-{
-  "refresh_token": "eyJ0eXAi..."
-}
-```
-
-**Response:**
-
-```json
-{
-  "access_token": "eyJ0eXAi...",
-  "refresh_token": "eyJ0eXAi...",
-  "token_type": "bearer",
-  "expires_in": 1800
-}
-```
-
----
-
-### 获取当前用户
-
-```
-GET /api/v1/auth/me
-Authorization: Bearer <token>
-```
-
-**Response:**
-
-```json
-{
-  "id": 1,
-  "username": "testuser",
-  "email": "test@example.com",
-  "is_active": true,
-  "is_superuser": false,
-  "roles": ["user"],
-  "created_at": "2026-01-01T00:00:00",
-  "last_login_at": "2026-01-02T10:00:00"
-}
-```
-
----
-
-### 修改密码
-
-```
-POST /api/v1/auth/change-password
-Authorization: Bearer <token>
-```
-
-**Body:**
-
-```json
-{
-  "current_password": "old_password",
-  "new_password": "new_password123"
-}
-```
-
-**字段约束:**
-
-| 字段 | 约束 |
-|------|------|
-| new_password | 6-100 字符 |
-
-**Response:**
-
-```json
-{
-  "detail": "密码修改成功"
-}
-```
-
----
-
-### 登出
-
-```
-POST /api/v1/auth/logout
-Authorization: Bearer <token>
-```
-
-**Response:**
-
-```json
-{
-  "detail": "登出成功"
 }
 ```
 
@@ -438,7 +509,7 @@ Authorization: Bearer <token>
 }
 ```
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -474,6 +545,16 @@ Authorization: Bearer <token>
 }
 ```
 
+**处理方式 (processing_method):**
+
+| 方式 | 说明 |
+|------|------|
+| full | 完整 AI 分析 |
+| minimal | 精简提示词（短内容优化） |
+| rule_based | 基于规则的快速分类（跳过 AI） |
+| domain_fast | 基于域名的快速分类 |
+| cached | 命中缓存，无需重新处理 |
+
 ---
 
 ### 批量处理文章
@@ -499,7 +580,7 @@ Authorization: Bearer <token>
 | article_ids | 最多 100 个 |
 | force | 为 true 时忽略缓存重新处理 |
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -520,7 +601,7 @@ GET /researchpulse/api/ai/status/{article_id}
 Authorization: Bearer <token>
 ```
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -542,7 +623,13 @@ GET /researchpulse/api/ai/token-stats
 Authorization: Bearer <token>
 ```
 
-**Response:**
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| days | int | 否 | 统计天数，默认 7 |
+
+**Response (200):**
 
 ```json
 [
@@ -565,6 +652,8 @@ Authorization: Bearer <token>
 ## 向量嵌入 API
 
 > **功能开关:** `feature.embedding`（需启用后方可使用）
+>
+> **前置依赖:** 需要运行 Milvus 向量数据库
 
 ### 计算单篇嵌入
 
@@ -581,7 +670,7 @@ Authorization: Bearer <token>
 }
 ```
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -617,7 +706,7 @@ Authorization: Bearer <token>
 |------|------|
 | article_ids | 最多 1000 个 |
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -637,7 +726,14 @@ GET /researchpulse/api/embedding/similar/{article_id}
 Authorization: Bearer <token>
 ```
 
-**Response:**
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| top_k | int | 否 | 返回最相似文章数量，默认 10 |
+| threshold | float | 否 | 最低相似度阈值，默认 0.85 |
+
+**Response (200):**
 
 ```json
 {
@@ -661,7 +757,7 @@ GET /researchpulse/api/embedding/stats
 Authorization: Bearer <token>
 ```
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -685,7 +781,7 @@ Authorization: Bearer <token>
 
 **需要权限:** admin 或 superuser
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -698,6 +794,8 @@ Authorization: Bearer <token>
 ## 事件聚类 API
 
 > **功能开关:** `feature.event_clustering`（需启用后方可使用）
+>
+> **前置依赖:** 建议同时启用 `feature.embedding` 以获得语义聚类能力
 
 ### 获取事件列表
 
@@ -706,7 +804,16 @@ GET /researchpulse/api/events
 Authorization: Bearer <token>
 ```
 
-**Response:**
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| is_active | bool | 否 | 筛选活跃/关闭事件 |
+| category | string | 否 | 分类过滤 |
+| page | int | 否 | 页码 |
+| page_size | int | 否 | 每页数量 |
+
+**Response (200):**
 
 ```json
 {
@@ -735,7 +842,7 @@ GET /researchpulse/api/events/{event_id}
 Authorization: Bearer <token>
 ```
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -751,6 +858,7 @@ Authorization: Bearer <token>
     {
       "id": 1,
       "article_id": 42,
+      "title": "文章标题",
       "similarity_score": 0.88,
       "detection_method": "semantic",
       "added_at": "2026-01-01T10:00:00"
@@ -758,6 +866,14 @@ Authorization: Bearer <token>
   ]
 }
 ```
+
+**detection_method 取值:**
+
+| 值 | 说明 |
+|----|------|
+| rule | 基于规则匹配 |
+| semantic | 基于语义相似度 |
+| hybrid | 混合匹配 |
 
 ---
 
@@ -784,7 +900,7 @@ Authorization: Bearer <token>
 | limit | 最大 500，默认 100 |
 | min_importance | 1-10，默认 5 |
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -792,6 +908,13 @@ Authorization: Bearer <token>
   "clustered": 45,
   "new_clusters": 3
 }
+```
+
+**聚类算法:**
+
+```
+混合相似度 = 规则权重(0.4) x 规则相似度 + 语义权重(0.6) x 语义相似度
+聚类阈值 = 0.7（可配置）
 ```
 
 ---
@@ -803,7 +926,7 @@ GET /researchpulse/api/events/{event_id}/timeline
 Authorization: Bearer <token>
 ```
 
-**Response:**
+**Response (200):**
 
 ```json
 [
@@ -833,7 +956,14 @@ GET /researchpulse/api/topics
 Authorization: Bearer <token>
 ```
 
-**Response:**
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| is_active | bool | 否 | 筛选活跃话题 |
+| is_auto_discovered | bool | 否 | 筛选自动/手动创建 |
+
+**Response (200):**
 
 ```json
 {
@@ -846,6 +976,8 @@ Authorization: Bearer <token>
       "keywords": ["LLM", "GPT", "大模型"],
       "is_auto_discovered": true,
       "is_active": true,
+      "article_count": 25,
+      "trend_direction": "up",
       "created_at": "2026-01-01T00:00:00"
     }
   ]
@@ -876,6 +1008,7 @@ Authorization: Bearer <token>
 | 字段 | 约束 |
 |------|------|
 | name | 最长 100 字符 |
+| keywords | 至少 1 个关键词 |
 
 ---
 
@@ -926,7 +1059,7 @@ GET /researchpulse/api/topics/{topic_id}/articles
 Authorization: Bearer <token>
 ```
 
-**Response:**
+**Response (200):**
 
 ```json
 [
@@ -950,7 +1083,7 @@ Authorization: Bearer <token>
 
 **需要权限:** admin 或 superuser
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -967,6 +1100,14 @@ Authorization: Bearer <token>
 }
 ```
 
+**发现参数（可通过管理 API 调整）:**
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| min_frequency | 5 | 最小关键词出现次数 |
+| lookback_days | 14 | 回溯天数 |
+| min_confidence | 0.6 | 最小置信度 |
+
 ---
 
 ### 获取话题趋势
@@ -976,7 +1117,7 @@ GET /researchpulse/api/topics/{topic_id}/trend
 Authorization: Bearer <token>
 ```
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -986,6 +1127,14 @@ Authorization: Bearer <token>
   "previous_count": 12
 }
 ```
+
+**趋势方向 (direction):**
+
+| 值 | 说明 |
+|----|------|
+| up | 上升趋势 |
+| down | 下降趋势 |
+| stable | 趋势稳定 |
 
 ---
 
@@ -1000,9 +1149,16 @@ GET /researchpulse/api/actions
 Authorization: Bearer <token>
 ```
 
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| status | string | 否 | 状态过滤: pending, completed, dismissed |
+| priority | string | 否 | 优先级过滤: 高, 中, 低 |
+
 返回当前用户的行动项。
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -1090,14 +1246,13 @@ POST /researchpulse/api/actions/{action_id}/complete
 Authorization: Bearer <token>
 ```
 
-**Response:**
+**Response (200):**
 
 ```json
 {
   "id": 1,
   "status": "completed",
-  "completed_at": "2026-01-02T15:00:00",
-  ...
+  "completed_at": "2026-01-02T15:00:00"
 }
 ```
 
@@ -1110,15 +1265,21 @@ POST /researchpulse/api/actions/{action_id}/dismiss
 Authorization: Bearer <token>
 ```
 
-**Response:**
+**Response (200):**
 
 ```json
 {
   "id": 1,
   "status": "dismissed",
-  "dismissed_at": "2026-01-02T15:00:00",
-  ...
+  "dismissed_at": "2026-01-02T15:00:00"
 }
+```
+
+**状态流转:**
+
+```
+pending → completed   (用户标记完成)
+pending → dismissed   (用户忽略)
 ```
 
 ---
@@ -1136,7 +1297,7 @@ Authorization: Bearer <token>
 
 返回当前用户的报告。
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -1152,6 +1313,8 @@ Authorization: Bearer <token>
       "content": "报告正文内容...",
       "stats": {
         "total_articles": 120,
+        "total_events": 5,
+        "total_topics": 3,
         "top_categories": ["cs.LG", "cs.CV"]
       },
       "generated_at": "2026-01-13T00:00:00",
@@ -1193,6 +1356,14 @@ POST /researchpulse/api/reports/monthly
 Authorization: Bearer <token>
 ```
 
+**Body:**
+
+```json
+{
+  "months_ago": 0
+}
+```
+
 ---
 
 ### 获取报告详情
@@ -1215,6 +1386,8 @@ Authorization: Bearer <token>
 
 ## 管理员 API
 
+> **权限要求:** 以下 API 均需要 admin 或 superuser 权限
+
 ### 获取统计数据
 
 ```
@@ -1222,9 +1395,7 @@ GET /api/v1/admin/stats
 Authorization: Bearer <token>
 ```
 
-**需要权限:** admin 或 superuser
-
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -1239,17 +1410,25 @@ Authorization: Bearer <token>
 
 ### 用户管理
 
+#### 获取用户列表
+
 ```
-GET    /api/v1/admin/users
-PATCH  /api/v1/admin/users/{user_id}
-PUT    /api/v1/admin/users/{user_id}/role
-PUT    /api/v1/admin/users/{user_id}/toggle-active
+GET /api/v1/admin/users
+Authorization: Bearer <token>
+```
+
+#### 更新用户信息
+
+```
+PATCH /api/v1/admin/users/{user_id}
+Authorization: Bearer <token>
 ```
 
 #### 更新用户角色
 
 ```
 PUT /api/v1/admin/users/{user_id}/role
+Authorization: Bearer <token>
 ```
 
 **Body:**
@@ -1260,47 +1439,70 @@ PUT /api/v1/admin/users/{user_id}/role
 }
 ```
 
+**可用角色:**
+
+| 角色 | 说明 |
+|------|------|
+| viewer | 只读访问 |
+| editor | 内容管理 |
+| admin | 完全管理 |
+| superuser | 超级管理员 |
+
 #### 切换用户激活状态
 
 ```
 PUT /api/v1/admin/users/{user_id}/toggle-active
+Authorization: Bearer <token>
 ```
 
 ---
 
 ### 爬虫管理
 
-```
-GET  /api/v1/admin/crawler/status
-POST /api/v1/admin/crawler/trigger
-```
-
 #### 获取爬虫状态
 
-**Response:**
+```
+GET /api/v1/admin/crawler/status
+Authorization: Bearer <token>
+```
+
+**Response (200):**
 
 ```json
 {
   "sources": {
-    "arxiv": {"active": true, "last_crawl": "..."},
-    "rss": {"active": true, "last_crawl": "..."}
+    "arxiv": {"active": true, "last_crawl": "2026-01-01T12:00:00", "article_count": 1500},
+    "rss": {"active": true, "last_crawl": "2026-01-01T12:00:00", "article_count": 800},
+    "wechat": {"active": true, "last_crawl": "2026-01-01T12:00:00", "article_count": 200},
+    "weibo": {"active": true, "last_crawl": "2026-01-01T12:00:00", "article_count": 100},
+    "twitter": {"active": false, "last_crawl": null, "article_count": 0},
+    "hackernews": {"active": true, "last_crawl": "2026-01-01T12:00:00", "article_count": 300},
+    "reddit": {"active": true, "last_crawl": "2026-01-01T12:00:00", "article_count": 250}
   },
-  "recent_articles": 150
+  "recent_articles": 150,
+  "next_crawl": "2026-01-01T18:00:00"
 }
+```
+
+#### 手动触发爬取
+
+```
+POST /api/v1/admin/crawler/trigger
+Authorization: Bearer <token>
 ```
 
 ---
 
 ### 功能开关管理
 
-```
-GET /api/v1/admin/features
-PUT /api/v1/admin/features/{feature_key}
-```
-
 #### 获取所有功能开关
 
-**Response:**
+```
+GET /api/v1/admin/features
+Authorization: Bearer <token>
+```
+
+**Response (200):**
 
 ```json
 {
@@ -1321,6 +1523,7 @@ PUT /api/v1/admin/features/{feature_key}
 
 ```
 PUT /api/v1/admin/features/{feature_key}
+Authorization: Bearer <token>
 ```
 
 **Body:**
@@ -1331,35 +1534,33 @@ PUT /api/v1/admin/features/{feature_key}
 }
 ```
 
+> 注意: 功能开关有 60 秒内存缓存，修改后最多等待 60 秒生效。
+
 ---
 
 ### 系统配置管理
-
-```
-GET  /api/v1/admin/config
-GET  /api/v1/admin/config/groups
-PUT  /api/v1/admin/config/{key}
-PUT  /api/v1/admin/config/batch
-```
 
 #### 获取配置列表
 
 ```
 GET /api/v1/admin/config
+Authorization: Bearer <token>
 ```
 
 #### 获取分组配置
 
 ```
 GET /api/v1/admin/config/groups
+Authorization: Bearer <token>
 ```
 
-按前缀分组返回所有配置项。
+按前缀分组返回所有配置项（如 `ai.*`、`embedding.*`、`scheduler.*`）。
 
 #### 更新单项配置
 
 ```
 PUT /api/v1/admin/config/{key}
+Authorization: Bearer <token>
 ```
 
 **Body:**
@@ -1375,6 +1576,7 @@ PUT /api/v1/admin/config/{key}
 
 ```
 PUT /api/v1/admin/config/batch
+Authorization: Bearer <token>
 ```
 
 **Body:**
@@ -1383,7 +1585,8 @@ PUT /api/v1/admin/config/batch
 {
   "configs": {
     "ai.provider": "ollama",
-    "ai.ollama_model": "qwen3:32b"
+    "ai.ollama_model": "qwen3:32b",
+    "scheduler.crawl_interval_hours": "4"
   }
 }
 ```
@@ -1392,15 +1595,14 @@ PUT /api/v1/admin/config/batch
 
 ### 调度任务管理
 
-```
-GET  /api/v1/admin/scheduler/jobs
-PUT  /api/v1/admin/scheduler/jobs/{job_id}
-POST /api/v1/admin/scheduler/jobs/{job_id}/trigger
-```
-
 #### 获取任务列表
 
-**Response:**
+```
+GET /api/v1/admin/scheduler/jobs
+Authorization: Bearer <token>
+```
+
+**Response (200):**
 
 ```json
 [
@@ -1408,7 +1610,17 @@ POST /api/v1/admin/scheduler/jobs/{job_id}/trigger
     "id": "crawl_job",
     "name": "Crawl articles from all sources",
     "trigger": "interval",
-    "next_run": "2026-01-01T06:00:00"
+    "interval_hours": 6,
+    "next_run": "2026-01-01T06:00:00",
+    "is_active": true
+  },
+  {
+    "id": "cleanup_job",
+    "name": "Clean up expired articles",
+    "trigger": "cron",
+    "cron_hour": 3,
+    "next_run": "2026-01-02T03:00:00",
+    "is_active": true
   }
 ]
 ```
@@ -1417,6 +1629,7 @@ POST /api/v1/admin/scheduler/jobs/{job_id}/trigger
 
 ```
 PUT /api/v1/admin/scheduler/jobs/{job_id}
+Authorization: Bearer <token>
 ```
 
 **Body:**
@@ -1433,16 +1646,117 @@ PUT /api/v1/admin/scheduler/jobs/{job_id}
 
 ```
 POST /api/v1/admin/scheduler/jobs/{job_id}/trigger
+Authorization: Bearer <token>
 ```
+
+**可触发的任务:**
+
+| job_id | 说明 |
+|--------|------|
+| crawl_job | 文章爬取 |
+| cleanup_job | 数据清理 |
+| backup_job | 数据备份 |
+| ai_process_job | AI 分析 |
+| embedding_job | 向量嵌入 |
+| event_cluster_job | 事件聚类 |
+| topic_discovery_job | 话题发现 |
 
 ---
 
 ### 备份管理
 
+#### 获取备份列表
+
 ```
-GET  /api/v1/admin/backups
+GET /api/v1/admin/backups
+Authorization: Bearer <token>
+```
+
+#### 创建备份
+
+```
 POST /api/v1/admin/backups/create
+Authorization: Bearer <token>
 ```
+
+---
+
+## 健康检查 API
+
+### 完整健康检查
+
+```
+GET /health
+```
+
+无需认证。
+
+**Response (200):**
+
+```json
+{
+  "status": "healthy",
+  "components": {
+    "database": "connected",
+    "redis": "connected",
+    "milvus": "connected",
+    "ollama": "connected"
+  }
+}
+```
+
+**status 取值:**
+
+| 值 | 说明 |
+|----|------|
+| healthy | 所有必须组件正常 |
+| unhealthy | 数据库连接异常 |
+
+> 注意: Redis、Milvus、Ollama 未配置时返回 "connected"（视为非必须组件）
+
+---
+
+### 存活探针
+
+```
+GET /health/live
+```
+
+**Response (200):**
+
+```json
+{
+  "status": "alive"
+}
+```
+
+用于 Kubernetes 存活探针，仅检查应用进程是否运行。
+
+---
+
+### 就绪探针
+
+```
+GET /health/ready
+```
+
+**Response (200):**
+
+```json
+{
+  "status": "ready"
+}
+```
+
+**Response (503):**
+
+```json
+{
+  "detail": "Database not ready"
+}
+```
+
+用于 Kubernetes 就绪探针，检查数据库是否可连接。
 
 ---
 
@@ -1456,25 +1770,60 @@ POST /api/v1/admin/backups/create
 }
 ```
 
-**HTTP 状态码：**
+**HTTP 状态码:**
 
-| 状态码 | 说明 |
-|--------|------|
-| 200 | 成功 |
-| 201 | 创建成功 |
-| 400 | 请求参数错误 |
-| 401 | 未认证 |
-| 403 | 无权限 |
-| 404 | 资源不存在 |
-| 422 | 参数验证失败 |
-| 500 | 服务器错误 |
+| 状态码 | 说明 | 常见场景 |
+|--------|------|---------|
+| 200 | 成功 | 查询、更新操作 |
+| 201 | 创建成功 | 注册、创建资源 |
+| 400 | 请求参数错误 | 用户名已存在、参数不合法 |
+| 401 | 未认证 | Token 缺失或过期 |
+| 403 | 无权限 | 非 admin 访问管理 API |
+| 404 | 资源不存在 | 文章/用户 ID 不存在 |
+| 422 | 参数验证失败 | Pydantic 模型验证错误 |
+| 500 | 服务器错误 | 内部异常（不泄露细节） |
+| 503 | 服务不可用 | 数据库未就绪（就绪探针） |
+
+---
+
+## 认证说明
+
+### Token 使用方式
+
+在请求头中携带 Bearer Token：
+
+```
+Authorization: Bearer eyJ0eXAi...
+```
+
+### Token 刷新流程
+
+```
+1. access_token 过期 → 客户端收到 401
+2. 使用 refresh_token 调用 POST /api/v1/auth/refresh
+3. 获取新的 access_token + refresh_token
+4. 使用新 token 重新发起请求
+```
+
+### 权限层级
+
+```
+superuser > admin > editor > viewer
+```
+
+| 角色 | 权限范围 |
+|------|---------|
+| viewer | 只读访问文章、订阅、导出 |
+| editor | viewer + 管理内容（文章、订阅） |
+| admin | editor + 管理用户、系统配置、功能开关 |
+| superuser | 全部权限，首次启动时自动创建 |
 
 ---
 
 ## 速率限制
 
 - 默认: 无限制
-- 建议生产环境配置: 100 req/min per IP
+- 建议生产环境配置: 100 req/min per IP（通过 Nginx 或中间件实现）
 
 ---
 
@@ -1484,4 +1833,4 @@ POST /api/v1/admin/backups/create
 POST /webhook/article/new
 ```
 
-当有新文章时触发通知。
+当有新文章时触发通知（该功能尚未实现）。

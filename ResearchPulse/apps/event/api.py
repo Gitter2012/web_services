@@ -16,7 +16,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_session
-from core.dependencies import get_current_user
+from core.dependencies import get_current_user, require_permissions
 from common.feature_config import require_feature
 from .schemas import (EventClusterDetailSchema, EventClusterSchema, EventListResponse, EventTimelineEntry, TriggerClusterRequest, TriggerClusterResponse)
 from .service import EventService
@@ -32,7 +32,7 @@ router = APIRouter(tags=["Events"], dependencies=[require_feature("feature.event
 # 支持按活跃状态筛选和分页
 # -----------------------------------------------------------------------------
 @router.get("", response_model=EventListResponse)
-async def list_events(active_only: bool = True, limit: int = 50, offset: int = 0, db: AsyncSession = Depends(get_session)):
+async def list_events(active_only: bool = True, limit: int = 50, offset: int = 0, user=Depends(require_permissions("event:read")), db: AsyncSession = Depends(get_session)):
     """List event clusters."""
     service = EventService()
     # active_only: 默认只返回活跃的事件聚类
@@ -45,7 +45,7 @@ async def list_events(active_only: bool = True, limit: int = 50, offset: int = 0
 # 返回事件聚类的完整信息，包括关联的成员文章列表
 # -----------------------------------------------------------------------------
 @router.get("/{event_id}", response_model=EventClusterDetailSchema)
-async def get_event(event_id: int, db: AsyncSession = Depends(get_session)):
+async def get_event(event_id: int, user=Depends(require_permissions("event:read")), db: AsyncSession = Depends(get_session)):
     """Get event detail."""
     service = EventService()
     event = await service.get_event(event_id, db)
@@ -59,7 +59,7 @@ async def get_event(event_id: int, db: AsyncSession = Depends(get_session)):
 # 需要用户认证（管理员操作）
 # -----------------------------------------------------------------------------
 @router.post("/cluster", response_model=TriggerClusterResponse)
-async def trigger_clustering(request: TriggerClusterRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+async def trigger_clustering(request: TriggerClusterRequest, user=Depends(require_permissions("event:cluster")), db: AsyncSession = Depends(get_session)):
     """Trigger event clustering."""
     service = EventService()
     # limit: 本次处理的文章上限
@@ -72,7 +72,7 @@ async def trigger_clustering(request: TriggerClusterRequest, user=Depends(get_cu
 # 按时间倒序返回事件关联的文章列表，形成事件发展的时间线
 # -----------------------------------------------------------------------------
 @router.get("/{event_id}/timeline", response_model=list[EventTimelineEntry])
-async def get_timeline(event_id: int, db: AsyncSession = Depends(get_session)):
+async def get_timeline(event_id: int, user=Depends(require_permissions("event:read")), db: AsyncSession = Depends(get_session)):
     """Get event timeline."""
     service = EventService()
     event = await service.get_event(event_id, db)

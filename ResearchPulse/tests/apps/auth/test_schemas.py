@@ -29,8 +29,8 @@ class TestUserRegisterRequest:
             username="testuser",
             email="test@example.com",
             password="password123",
+            verification_token="test-token",
         )
-        assert req.username == "testuser"
         assert req.email == "test@example.com"
 
     def test_username_lowered(self):
@@ -47,6 +47,7 @@ class TestUserRegisterRequest:
             username="TestUser",
             email="test@example.com",
             password="password123",
+            verification_token="test-token",
         )
         assert req.username == "testuser"
 

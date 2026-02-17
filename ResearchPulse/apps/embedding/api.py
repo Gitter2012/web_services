@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_session
-from core.dependencies import get_current_user
+from core.dependencies import get_current_user, require_permissions
 
 from common.feature_config import require_feature
 
@@ -49,7 +49,7 @@ router = APIRouter(tags=["Embedding"], dependencies=[require_feature("feature.em
 @router.post("/compute", response_model=ComputeEmbeddingResponse)
 async def compute_embedding(
     request: ComputeEmbeddingRequest,
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("embedding:compute")),
     db: AsyncSession = Depends(get_session),
 ):
     """Compute embedding for a single article.
@@ -89,7 +89,7 @@ async def compute_embedding(
 @router.post("/batch", response_model=BatchComputeResponse)
 async def batch_compute(
     request: BatchComputeRequest,
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("embedding:compute")),
     db: AsyncSession = Depends(get_session),
 ):
     """Batch compute embeddings.
@@ -145,7 +145,7 @@ async def find_similar(
 # -----------------------------------------------------------------------------
 @router.get("/stats", response_model=EmbeddingStatsResponse)
 async def get_stats(
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("embedding:compute")),
     db: AsyncSession = Depends(get_session),
 ):
     """Get embedding statistics.
@@ -171,7 +171,7 @@ async def get_stats(
 # -----------------------------------------------------------------------------
 @router.post("/rebuild")
 async def rebuild_index(
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("embedding:rebuild")),
 ):
     """Rebuild Milvus index.
 

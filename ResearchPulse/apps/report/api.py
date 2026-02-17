@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_session
-from core.dependencies import get_current_user
+from core.dependencies import get_current_user, require_permissions
 from common.feature_config import require_feature
 from .schemas import GenerateReportRequest, ReportListResponse, ReportSchema
 from .service import ReportService
@@ -42,7 +42,8 @@ router = APIRouter(tags=["Reports"], dependencies=[require_feature("feature.repo
 @router.get("", response_model=ReportListResponse)
 async def list_reports(
     limit: int = 20,
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("report:read")),
+
     db: AsyncSession = Depends(get_session),
 ):
     service = ReportService()
@@ -66,7 +67,8 @@ async def list_reports(
 @router.post("/weekly", response_model=ReportSchema)
 async def generate_weekly(
     request: GenerateReportRequest = GenerateReportRequest(),
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("report:generate")),
+
     db: AsyncSession = Depends(get_session),
 ):
     service = ReportService()
@@ -89,7 +91,8 @@ async def generate_weekly(
 @router.post("/monthly", response_model=ReportSchema)
 async def generate_monthly(
     months_ago: int = 0,
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("report:generate")),
+
     db: AsyncSession = Depends(get_session),
 ):
     service = ReportService()
@@ -112,12 +115,19 @@ async def generate_monthly(
 @router.get("/{report_id}", response_model=ReportSchema)
 async def get_report(
     report_id: int,
+    user=Depends(require_permissions("report:read")),
     db: AsyncSession = Depends(get_session),
 ):
     service = ReportService()
     report = await service.get_report(report_id, db)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    # 所有权校验：报告所有者 or superuser
+    if report.user_id != user.id and not user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not allowed to view this report",
+        )
     return ReportSchema.model_validate(report)
 
 
@@ -133,10 +143,18 @@ async def get_report(
 @router.delete("/{report_id}")
 async def delete_report(
     report_id: int,
-    user=Depends(get_current_user),
+    user=Depends(require_permissions("report:read")),
     db: AsyncSession = Depends(get_session),
 ):
     service = ReportService()
-    if not await service.delete_report(report_id, db):
+    report = await service.get_report(report_id, db)
+    if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    # 所有权校验：报告所有者 or superuser (H4)
+    if report.user_id != user.id and not user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not allowed to delete this report",
+        )
+    await service.delete_report(report_id, db)
     return {"status": "ok"}
