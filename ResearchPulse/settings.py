@@ -256,6 +256,22 @@ class Settings(BaseSettings):
         default=_crawler_config.get("arxiv", {}).get("delay_base", 3.0),
         validation_alias="ARXIV_DELAY_BASE",
     )
+    # arXiv 爬取排序模式列表（逗号分隔）
+    # submittedDate: 新发表论文, lastUpdatedDate: 更新论文
+    arxiv_sort_modes: str = Field(
+        default=",".join(_crawler_config.get("arxiv", {}).get("sort_modes", ["lastUpdatedDate"])),
+        validation_alias="ARXIV_SORT_MODES",
+    )
+    # 是否标记论文类型（new/updated）
+    arxiv_mark_paper_type: bool = Field(
+        default=_crawler_config.get("arxiv", {}).get("mark_paper_type", False),
+        validation_alias="ARXIV_MARK_PAPER_TYPE",
+    )
+    # RSS 格式: "rss" 或 "atom"
+    arxiv_rss_format: str = Field(
+        default=_crawler_config.get("arxiv", {}).get("rss_format", "rss"),
+        validation_alias="ARXIV_RSS_FORMAT",
+    )
 
     # ======================== 微博热搜爬虫配置 ========================
     # 微博爬取请求超时时间（秒）
@@ -689,6 +705,18 @@ class Settings(BaseSettings):
             List[str]: arXiv 分类列表
         """
         return [c.strip() for c in self.arxiv_categories.split(",") if c.strip()]
+
+    @property
+    def arxiv_sort_modes_list(self) -> List[str]:
+        """Return arxiv sort modes as a list.
+
+        将逗号分隔的排序模式字符串转换为列表。
+        例如 "submittedDate,lastUpdatedDate" -> ["submittedDate", "lastUpdatedDate"]
+
+        返回值:
+            List[str]: arXiv 排序模式列表
+        """
+        return [m.strip() for m in self.arxiv_sort_modes.split(",") if m.strip()]
 
     @property
     def is_configured(self) -> bool:

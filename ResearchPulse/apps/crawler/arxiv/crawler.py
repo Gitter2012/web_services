@@ -54,6 +54,7 @@ class Paper:
     published: str                  # 首次发布时间（ISO 8601 格式字符串）
     updated: str = ""               # 最后更新时间（论文可能会有多个版本）
     announced_date: str = ""        # 公告日期（在 arXiv 列表页上展示的日期）
+    paper_type: str = ""            # 论文类型: "new" 或 "updated"
 
     def to_article_dict(self) -> Dict[str, Any]:
         """Convert to an Article-compatible dictionary.
@@ -135,6 +136,7 @@ class Paper:
             "arxiv_id": self.arxiv_id,
             "arxiv_primary_category": self.primary_category,
             "arxiv_updated_time": updated_time,
+            "arxiv_paper_type": self.paper_type,  # 论文类型: new/updated
             "cover_image_url": pdf_url,  # Store PDF URL for download link
         }
 
@@ -337,7 +339,7 @@ def _parse_html_list(html_text: str, run_date: str | None = None) -> List[Paper]
     published = f"{header_date}T00:00:00Z" if header_date else ""
 
     # 遍历所有 <dt>...<dd>... 标签对，每对代表一篇论文
-    for match in re.finditer(r"<dt>(.*?)</dt>\s*<dd>(.*?)</dd>", html_text, re.S):
+    for match in re.finditer(r"<dt[^>]*>(.*?)</dt>\s*<dd[^>]*>(.*?)</dd>", html_text, re.S):
         dt = match.group(1)  # <dt> 内容，包含论文 ID 链接
         dd = match.group(2)  # <dd> 内容，包含论文详情
 
@@ -346,20 +348,48 @@ def _parse_html_list(html_text: str, run_date: str | None = None) -> List[Paper]
         arxiv_id = id_match.group(1) if id_match else ""
 
         # 从 <dd> 中提取标题
-        title_match = re.search(r"Title:</span>\s*(.*?)</div>", dd, re.S)
+        # 支持新旧两种格式：
+        # 新格式: <div class='list-title mathjax'><span class='descriptor'>Title:</span>...</div>
+        # 旧格式: <span>Title:</span>...</div>
+        title_match = re.search(r"<div\s+class=['\"]list-title[^'\"]*['\"][^>]*>.*?</span>\s*(.*?)</div>", dd, re.S)
+        if not title_match:
+            # 回退到旧格式
+            title_match = re.search(r"Title:</span>\s*(.*?)</div>", dd, re.S)
         title = _clean_text(title_match.group(1)) if title_match else ""
 
-        # 从 <dd> 中提取作者列表（作者名在 <a> 标签内）
-        authors_match = re.search(r"Authors:</span>\s*(.*?)</div>", dd, re.S)
+        # 从 <dd> 中提取作者列表
+        # 支持新旧两种格式：
+        # 新格式: <div class='list-authors'>...</div>
+        # 旧格式: <span>Authors:</span>...</div>
+        authors_match = re.search(r"<div\s+class=['\"]list-authors['\"][^>]*>(.*?)</div>", dd, re.S)
+        if not authors_match:
+            # 回退到旧格式
+            authors_match = re.search(r"Authors:</span>\s*(.*?)</div>", dd, re.S)
         authors_block = authors_match.group(1) if authors_match else ""
         authors = [_clean_text(a) for a in re.findall(r">\s*([^<]+)\s*</a>", authors_block)]
 
         # 从 <dd> 中提取摘要
-        abstract_match = re.search(r"Abstract:</span>\s*(.*?)</p>", dd, re.S)
+        # 支持新旧两种格式：
+        # 新格式: <p class='mathjax'>...</p> (无 Abstract: 前缀)
+        # 旧格式: <span>Abstract:</span>...</p>
+        # 注意: 新版 arXiv 列表页可能不显示摘要，这里尝试多种匹配方式
+        abstract_match = re.search(r"<p\s+class=['\"]mathjax['\"][^>]*>(.*?)</p>", dd, re.S)
+        if not abstract_match:
+            # 尝试匹配任意 p 标签（排除空的）
+            abstract_match = re.search(r"<p[^>]*>(\s*[^<].*?)</p>", dd, re.S)
+        if not abstract_match:
+            # 回退到旧格式
+            abstract_match = re.search(r"Abstract:</span>\s*(.*?)</p>", dd, re.S)
         abstract = _clean_text(abstract_match.group(1)) if abstract_match else ""
 
         # 从 <dd> 中提取分类信息（以分号或逗号分隔）
-        category_match = re.search(r"Subjects:</span>\s*(.*?)</div>", dd, re.S)
+        # 支持新旧两种格式：
+        # 新格式: <div class='list-subjects'><span class='descriptor'>Subjects:</span>...</div>
+        # 旧格式: <span>Subjects:</span>...</div>
+        category_match = re.search(r"<div\s+class=['\"]list-subjects['\"][^>]*>.*?</span>\s*(.*?)</div>", dd, re.S)
+        if not category_match:
+            # 回退到旧格式
+            category_match = re.search(r"Subjects:</span>\s*(.*?)</div>", dd, re.S)
         categories_block = category_match.group(1) if category_match else ""
         categories = [_clean_text(cat) for cat in re.split(r";|,", categories_block) if _clean_text(cat)]
         primary_category = categories[0] if categories else ""
@@ -406,6 +436,9 @@ class ArxivCrawler(BaseCrawler):
         max_results: int = 50,
         delay_base: float = 3.0,
         delay_jitter: float = 1.5,
+        sort_modes: List[str] | None = None,
+        mark_paper_type: bool = False,
+        rss_format: str = "rss",
     ):
         """Initialize arXiv crawler.
 
@@ -413,31 +446,40 @@ class ArxivCrawler(BaseCrawler):
 
         Args:
             category: arXiv category code (e.g. "cs.AI").
-            max_results: Max results for Atom API.
+            max_results: Max results for Atom API (per sort mode).
             delay_base: Base delay between requests (seconds).
             delay_jitter: Jitter upper bound for delay (seconds).
+            sort_modes: List of sortBy modes, e.g. ["submittedDate", "lastUpdatedDate"].
+            mark_paper_type: Whether to mark papers as "new" or "updated".
+            rss_format: RSS format, "rss" or "atom".
         """
         super().__init__(category)
         self.category = category
         self.max_results = max_results
         self.delay_base = delay_base
         self.delay_jitter = delay_jitter
+        self.sort_modes = sort_modes or ["lastUpdatedDate"]
+        self.mark_paper_type = mark_paper_type
+        self.rss_format = rss_format
 
         # 三个数据源的 URL 模板
         # URLs
         self.atom_url = "https://export.arxiv.org/api/query"          # Atom API 端点
-        self.rss_url = "https://export.arxiv.org/rss/{category}"      # RSS Feed 模板
+        # RSS Feed 模板（旧域名，作为备用）
+        self.rss_url_legacy = "https://export.arxiv.org/rss/{category}"
+        # RSS Feed 模板（新域名，支持 rss/atom 格式选择）
+        self.rss_url = f"https://rss.arxiv.org/{rss_format}/{{category}}"
         self.list_new_url = "https://arxiv.org/list/{category}/new"   # 最新论文列表页模板
         self.list_recent_url = "https://arxiv.org/list/{category}/recent"  # 近期论文列表页模板
 
     async def fetch(self) -> Dict[str, Any]:
-        """Fetch papers from multiple arXiv sources.
+        """Fetch papers from multiple arXiv sources with multiple sort modes.
 
         执行策略:
-            1. Atom API 获取论文
-            2. 不足时补充 RSS
-            3. 始终抓取 HTML 列表页
-            4. 合并去重
+            1. 遍历每个排序模式调用 Atom API
+            2. 获取 RSS Feed
+            3. 抓取 HTML 列表页
+            4. 合并去重，标记论文类型
 
         Returns:
             Dict[str, Any]: Dict with 'papers' list and 'run_date'.
@@ -445,24 +487,40 @@ class ArxivCrawler(BaseCrawler):
         all_papers: List[Paper] = []
         run_date = datetime.now(timezone.utc).date().isoformat()
 
-        # 数据源 1：Atom API（arXiv 官方结构化查询接口，数据质量最高）
-        # Source 1: Atom API
-        atom_papers = await self._fetch_atom()
-        all_papers.extend(atom_papers)
-        self.logger.info(f"Atom API: {len(atom_papers)} papers")
+        # 数据源 1：Atom API（遍历每个排序模式）
+        # Source 1: Atom API with multiple sort modes
+        for sort_mode in self.sort_modes:
+            mode_papers = await self._fetch_atom(sort_by=sort_mode)
 
-        # 数据源 2：RSS Feed（仅在 Atom API 结果不足时启用，避免重复请求）
-        # Source 2: RSS (if Atom gave too few results)
-        if len(all_papers) < self.max_results:
-            await self.delay(self.delay_base, self.delay_jitter)
-            rss_papers = await self._fetch_rss()
-            all_papers.extend(rss_papers)
-            self.logger.info(f"RSS: {len(rss_papers)} papers")
+            # 标记论文类型
+            if self.mark_paper_type:
+                for paper in mode_papers:
+                    paper.paper_type = "new" if sort_mode == "submittedDate" else "updated"
+
+            all_papers.extend(mode_papers)
+            self.logger.info(f"Atom API ({sort_mode}): {len(mode_papers)} papers")
+
+            # 排序模式之间添加延迟
+            if len(self.sort_modes) > 1:
+                await self.delay(self.delay_base, self.delay_jitter)
+
+        # 数据源 2：RSS Feed
+        # Source 2: RSS Feed
+        await self.delay(self.delay_base, self.delay_jitter)
+        rss_papers = await self._fetch_rss()
+        if self.mark_paper_type:
+            for paper in rss_papers:
+                paper.paper_type = "new"  # RSS 通常包含最新论文
+        all_papers.extend(rss_papers)
+        self.logger.info(f"RSS ({self.rss_format}): {len(rss_papers)} papers")
 
         # 数据源 3：HTML 列表页（始终执行，确保获取当天最新发布的论文）
         # Source 3: HTML list (new)
         await self.delay(self.delay_base, self.delay_jitter)
         html_papers = await self._fetch_html_list(self.list_new_url, run_date)
+        if self.mark_paper_type:
+            for paper in html_papers:
+                paper.paper_type = "new"  # HTML 列表页是新发表论文
         all_papers.extend(html_papers)
         self.logger.info(f"HTML list: {len(html_papers)} papers")
 
@@ -473,10 +531,13 @@ class ArxivCrawler(BaseCrawler):
 
         return {"papers": merged, "run_date": run_date}
 
-    async def _fetch_atom(self) -> List[Paper]:
+    async def _fetch_atom(self, sort_by: str = "lastUpdatedDate") -> List[Paper]:
         """Fetch papers from the Atom API.
 
-        Atom API 是 arXiv 标准数据接口，按更新时间降序返回。
+        Atom API 是 arXiv 标准数据接口，支持按更新时间或提交时间排序。
+
+        Args:
+            sort_by: Sort mode - "submittedDate" or "lastUpdatedDate".
 
         Returns:
             List[Paper]: Paper list (empty on failure).
@@ -486,7 +547,7 @@ class ArxivCrawler(BaseCrawler):
             "search_query": f"cat:{self.category}",  # 按分类查询
             "start": 0,                               # 起始位置
             "max_results": self.max_results,          # 最大返回数
-            "sortBy": "lastUpdatedDate",              # 按更新时间排序
+            "sortBy": sort_by,                        # 排序方式（参数化）
             "sortOrder": "descending",                # 降序排列（最新的在前）
         }
 
@@ -506,13 +567,14 @@ class ArxivCrawler(BaseCrawler):
             return [_parse_rss_entry(entry) for entry in feed.entries]
         except Exception as e:
             # Atom API 失败不中断整个爬取流程，记录警告后返回空列表
-            self.logger.warning(f"Atom API fetch failed: {e}")
+            self.logger.warning(f"Atom API fetch failed (sortBy={sort_by}): {e}")
             return []
 
     async def _fetch_rss(self) -> List[Paper]:
         """Fetch papers from RSS feed.
 
         RSS 作为 Atom API 的补充，通常包含最近发布论文。
+        优先使用新域名 rss.arxiv.org，失败时回退到旧域名 export.arxiv.org。
 
         Returns:
             List[Paper]: Paper list (empty on failure).
@@ -530,9 +592,29 @@ class ArxivCrawler(BaseCrawler):
                 jitter=self.delay_jitter,
             )
             feed = feedparser.parse(feed_text)
+            papers = [_parse_rss_entry(entry) for entry in feed.entries]
+            if papers:
+                return papers
+            # 新域名返回空结果，尝试旧域名
+            self.logger.warning(f"New RSS domain returned empty, trying legacy domain")
+        except Exception as e:
+            self.logger.warning(f"RSS fetch failed (new domain): {e}")
+
+        # 回退到旧域名
+        legacy_url = self.rss_url_legacy.format(category=self.category)
+        try:
+            feed_text = await get_text_async(
+                legacy_url,
+                timeout=20.0,
+                retries=3,
+                backoff=1.0,
+                delay=self.delay_base,
+                jitter=self.delay_jitter,
+            )
+            feed = feedparser.parse(feed_text)
             return [_parse_rss_entry(entry) for entry in feed.entries]
         except Exception as e:
-            self.logger.warning(f"RSS fetch failed: {e}")
+            self.logger.warning(f"RSS fetch failed (legacy domain): {e}")
             return []
 
     async def _fetch_html_list(self, url_template: str, run_date: str) -> List[Paper]:
@@ -566,7 +648,8 @@ class ArxivCrawler(BaseCrawler):
     def _merge_papers(self, papers: List[Paper]) -> List[Paper]:
         """Merge and deduplicate papers by arXiv ID.
 
-        当同一论文来自多个数据源时，保留最完整字段信息。
+        当同一论文来自多个数据源或排序模式时，保留最完整字段信息。
+        论文类型标记保留首次出现的类型（new 优先于 updated）。
 
         Args:
             papers: Paper list from multiple sources.
@@ -602,6 +685,11 @@ class ArxivCrawler(BaseCrawler):
                 existing.categories = paper.categories
             if paper.pdf_url and not existing.pdf_url:
                 existing.pdf_url = paper.pdf_url
+
+            # 论文类型合并策略：new 优先于 updated
+            # 如果新数据标记为 new，则更新为 new
+            if self.mark_paper_type and paper.paper_type == "new":
+                existing.paper_type = "new"
 
         # 按发布时间降序排列，最新的论文排在前面
         # Sort by published date

@@ -93,10 +93,16 @@ async def run_crawl_job() -> dict:
                 # 为每个分类创建 ArXiv 爬虫实例
                 # max_results: 每次爬取的最大论文数量，控制请求量
                 # delay_base: 请求间的基础延迟时间，避免触发 ArXiv 的频率限制
+                # sort_modes: 排序模式列表（新发表论文 + 更新论文）
+                # mark_paper_type: 是否标记论文类型
+                # rss_format: RSS 格式
                 crawler = ArxivCrawler(
                     category=category.code,
                     max_results=50,
                     delay_base=settings.arxiv_delay_base,
+                    sort_modes=settings.arxiv_sort_modes_list,
+                    mark_paper_type=settings.arxiv_mark_paper_type,
+                    rss_format=settings.arxiv_rss_format,
                 )
                 result = await crawler.run()
                 results["arxiv"].append(result)

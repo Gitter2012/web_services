@@ -125,6 +125,7 @@ CREATE TABLE `articles` (
   `arxiv_primary_category` VARCHAR(200) DEFAULT NULL COMMENT 'arXiv 主分类',
   `arxiv_comment` TEXT DEFAULT NULL COMMENT 'arXiv 注释',
   `arxiv_updated_time` DATETIME DEFAULT NULL COMMENT 'arXiv 更新时间',
+  `arxiv_paper_type` VARCHAR(20) DEFAULT '' COMMENT 'arXiv 论文类型: new/updated',
   -- 微信专用字段
   `wechat_account_name` VARCHAR(200) DEFAULT NULL COMMENT '微信公众号名称',
   `wechat_digest` TEXT DEFAULT NULL COMMENT '微信摘要',

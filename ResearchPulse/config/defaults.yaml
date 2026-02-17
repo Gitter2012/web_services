@@ -30,6 +30,14 @@ crawler:
     delay_base: 3.0
     delay_jitter: 1.5
     batch_delay: 10.0
+    # 排序模式列表: submittedDate(新发表论文), lastUpdatedDate(更新论文)
+    sort_modes:
+      - submittedDate
+      - lastUpdatedDate
+    # 是否标记论文类型（new/updated）
+    mark_paper_type: true
+    # RSS 格式: "rss" 或 "atom"
+    rss_format: "rss"
   rss:
     timeout: 30
     max_concurrent: 5

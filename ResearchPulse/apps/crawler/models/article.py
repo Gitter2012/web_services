@@ -172,6 +172,12 @@ class Article(Base, TimestampMixin):
         nullable=True,
         comment="arXiv updated time",
     )
+    arxiv_paper_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=True,
+        default="",
+        comment="arXiv paper type: new/updated",
+    )
 
     # ---- 微信公众号专用字段 ----
     # 这些字段仅在 source_type='wechat' 时有值
