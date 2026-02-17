@@ -19,7 +19,7 @@ This module handles sending email notifications to users after crawling.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set
 
 from sqlalchemy import select, and_
@@ -542,3 +542,45 @@ async def send_all_user_notifications(
 
     logger.info(f"Notifications sent: {results['sent']}/{results['total']}")
     return results
+
+
+async def run_notification_job() -> dict:
+    """Run the daily email notification job.
+
+    独立的定时任务，每天定时向订阅用户发送个性化的文章摘要邮件。
+    收集过去24小时内的文章，并尊重每个用户的通知偏好设置。
+
+    Returns:
+        dict: Notification delivery summary.
+    """
+    logger.info("Starting notification job")
+    start_time = datetime.now(timezone.utc)
+
+    # 收集过去24小时内的文章（而非从午夜开始），确保不遗漏任何文章
+    since = start_time - timedelta(hours=24)
+
+    try:
+        results = await send_all_user_notifications(since=since)
+    except Exception as e:
+        logger.error(f"Notification job failed: {e}")
+        return {
+            "status": "failed",
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    end_time = datetime.now(timezone.utc)
+    duration = (end_time - start_time).total_seconds()
+
+    summary = {
+        "status": "completed",
+        "duration_seconds": duration,
+        "sent": results.get("sent", 0),
+        "failed": results.get("failed", 0),
+        "total_users": results.get("total", 0),
+        "skipped": results.get("skipped", 0),
+        "timestamp": end_time.isoformat(),
+    }
+
+    logger.info(f"Notification job completed: {summary}")
+    return summary

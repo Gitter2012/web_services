@@ -126,6 +126,39 @@ async def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # ---- 邮件通知任务 ----
+    # 功能: 每天定时向订阅用户发送个性化的文章摘要邮件
+    # 前置条件: 需要启用 feature.email_notification 功能开关
+    # 触发方式: 每天定时执行（Cron 触发），默认每天 09:00
+    # 设计原因: 将用户通知从爬虫任务中解耦，实现真正的"每天一封"定时推送
+    # Email notification job
+    if feature_config.get_bool("feature.email_notification", False):
+        from apps.scheduler.jobs.notification_job import run_notification_job
+
+        # 解析通知时间: 优先使用 feature_config 数据库配置，
+        # 回退到 settings.email_notification_time 环境变量（"HH:MM" 格式）
+        _default_hour, _default_minute = 9, 0
+        try:
+            _parts = settings.email_notification_time.split(":")
+            _default_hour = int(_parts[0])
+            _default_minute = int(_parts[1]) if len(_parts) > 1 else 0
+        except (ValueError, IndexError, AttributeError):
+            pass
+
+        scheduler.add_job(
+            run_notification_job,
+            CronTrigger(
+                hour=feature_config.get_int("scheduler.notification_hour", _default_hour),
+                minute=feature_config.get_int("scheduler.notification_minute", _default_minute),
+            ),
+            id="notification_job",
+            name="Send daily email notifications",
+            replace_existing=True,
+        )
+        logger.info("Email notification job registered")
+    else:
+        logger.info("Email notification job skipped (feature.email_notification disabled)")
+
     # === 扩展功能任务区域（按功能开关条件注册） ===
     # 以下任务属于高级分析功能，需要额外的基础设施支持
     # （如 AI 模型、向量数据库等），通过功能开关控制是否注册

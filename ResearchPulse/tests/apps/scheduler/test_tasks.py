@@ -121,6 +121,9 @@ class TestSchedulerLifecycle:
         assert "backup_job" in job_ids
         assert "dedup_job" in job_ids
 
+        # notification_job should not be registered when feature.email_notification is False
+        assert "notification_job" not in job_ids
+
         # Stop scheduler
         await tasks_module.stop_scheduler()
 
@@ -154,6 +157,7 @@ class TestSchedulerLifecycle:
         assert "embedding_job" not in job_ids
         assert "event_cluster_job" not in job_ids
         assert "topic_discovery_job" not in job_ids
+        assert "notification_job" not in job_ids
 
         await tasks_module.stop_scheduler()
 
@@ -187,6 +191,7 @@ class TestSchedulerLifecycle:
         assert "embedding_job" in job_ids
         assert "event_cluster_job" in job_ids
         assert "topic_discovery_job" in job_ids
+        assert "notification_job" in job_ids
 
         await tasks_module.stop_scheduler()
 
@@ -300,6 +305,35 @@ class TestJobTriggers:
 
         assert cleanup_job is not None
         assert isinstance(cleanup_job.trigger, CronTrigger)
+
+        await tasks_module.stop_scheduler()
+
+    @pytest.mark.asyncio
+    async def test_notification_job_cron_trigger(self):
+        """Verify notification job uses cron trigger when enabled.
+
+        验证邮件通知任务启用时使用 Cron 触发器。
+
+        Returns:
+            None: This test does not return a value.
+        """
+        from apps.scheduler import tasks as tasks_module
+        from apscheduler.triggers.cron import CronTrigger
+
+        _reset_scheduler()
+
+        with patch("common.feature_config.feature_config") as mock_feature:
+            mock_feature.get_bool.return_value = True  # Enable all features
+            mock_feature.get_int.return_value = 9
+            mock_feature.get.return_value = "mon"
+
+            await tasks_module.start_scheduler()
+
+        scheduler = tasks_module.get_scheduler()
+        notification_job = scheduler.get_job("notification_job")
+
+        assert notification_job is not None
+        assert isinstance(notification_job.trigger, CronTrigger)
 
         await tasks_module.stop_scheduler()
 
@@ -454,5 +488,9 @@ class TestJobImports:
         Returns:
             None: This test does not return a value.
         """
-        from apps.scheduler.jobs.notification_job import send_all_user_notifications
+        from apps.scheduler.jobs.notification_job import (
+            send_all_user_notifications,
+            run_notification_job,
+        )
         assert callable(send_all_user_notifications)
+        assert callable(run_notification_job)

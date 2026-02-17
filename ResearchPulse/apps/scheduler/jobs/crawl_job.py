@@ -148,34 +148,20 @@ async def run_crawl_job() -> dict:
 
     logger.info(f"Crawl job completed: {summary}")
 
-    # ---- 第三阶段: 爬取完成后的通知发送 ----
-    # 仅在邮件功能启用且有新文章时才发送通知
-    # 这是爬取流程的后置步骤，确保用户及时获知新内容
-    # Send notifications after successful crawl
+    # ---- 第三阶段: 发送管理员爬取完成报告 ----
+    # 仅在邮件功能启用且有新文章时才发送管理员报告
+    # 用户订阅邮件由独立的 notification_job 定时任务处理
+    # Send admin crawl completion report
     if settings.email_enabled and results["total_articles"] > 0:
         try:
-            # 延迟导入通知模块，仅在需要发送通知时才加载
             from apps.scheduler.jobs.notification_job import (
                 send_crawl_completion_notification,
-                send_all_user_notifications,
             )
 
-            # 发送管理员爬取完成报告（包含统计数据和错误信息）
-            # Send admin notification
             await send_crawl_completion_notification(summary)
 
-            # 向所有订阅用户发送个性化的文章推送邮件
-            # since 参数设为当天零时，确保推送当天所有新文章
-            # Send user notifications (articles from today)
-            notification_results = await send_all_user_notifications(
-                since=start_time.replace(hour=0, minute=0, second=0, microsecond=0)
-            )
-            # 将通知发送结果附加到摘要中
-            summary["notifications"] = notification_results
-
         except Exception as e:
-            # 通知发送失败不应影响爬取任务的整体状态报告
-            logger.error(f"Failed to send notifications: {e}")
+            logger.error(f"Failed to send admin notification: {e}")
             results["errors"].append(f"notification: {str(e)}")
 
     return summary

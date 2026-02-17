@@ -65,6 +65,9 @@ DEFAULT_CONFIGS: Dict[str, tuple[str, str]] = {
     "scheduler.event_cluster_hour": ("2", "Hour of day to run event clustering (0-23)"),
     "scheduler.topic_discovery_day": ("mon", "Day of week for topic discovery"),
     "scheduler.topic_discovery_hour": ("1", "Hour of day for topic discovery (0-23)"),
+    # ---- 邮件通知调度参数 ----
+    "scheduler.notification_hour": ("9", "Hour of day to send notification emails (0-23)"),
+    "scheduler.notification_minute": ("0", "Minute of hour to send notification emails (0-59)"),
     # ---- AI 处理参数 ----
     "ai.provider": ("ollama", "AI provider: ollama, openai, claude"),
     "ai.ollama_base_url": ("http://localhost:11434", "Ollama API base URL"),
