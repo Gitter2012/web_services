@@ -22,10 +22,21 @@ from sqlalchemy import select
 
 from core.database import get_session_factory
 # 导入各数据源的模型类，用于查询已激活的爬取目标
-from apps.crawler.models import ArxivCategory, RssFeed, WechatAccount, WeiboHotSearch
+from apps.crawler.models import (
+    ArxivCategory,
+    HackerNewsSource,
+    RedditSource,
+    RssFeed,
+    TwitterSource,
+    WechatAccount,
+    WeiboHotSearch,
+)
 # 导入具体的爬虫实现类
 from apps.crawler.arxiv import ArxivCrawler
+from apps.crawler.hackernews import HackerNewsCrawler
+from apps.crawler.reddit import RedditCrawler
 from apps.crawler.rss import RssCrawler
+from apps.crawler.twitter import TwitterCrawler
 from apps.crawler.weibo import WeiboCrawler
 from settings import settings
 
@@ -54,11 +65,14 @@ async def run_crawl_job() -> dict:
 
     # 初始化结果字典，分类记录各数据源的爬取结果
     results = {
-        "arxiv": [],      # ArXiv 各分类的爬取结果列表
-        "rss": [],        # RSS 各订阅源的爬取结果列表
-        "wechat": [],     # 微信公众号的爬取结果列表（当前未实现具体爬取逻辑）
-        "weibo": [],      # 微博热搜的爬取结果列表
-        "errors": [],     # 所有爬取过程中产生的错误信息
+        "arxiv": [],       # ArXiv 各分类的爬取结果列表
+        "rss": [],         # RSS 各订阅源的爬取结果列表
+        "wechat": [],      # 微信公众号的爬取结果列表（当前未实现具体爬取逻辑）
+        "weibo": [],       # 微博热搜的爬取结果列表
+        "hackernews": [],  # HackerNews 的爬取结果列表
+        "reddit": [],      # Reddit 的爬取结果列表
+        "twitter": [],     # Twitter 的爬取结果列表
+        "errors": [],      # 所有爬取过程中产生的错误信息
         "total_articles": 0,  # 本次爬取总计保存的文章数量
     }
 
@@ -162,6 +176,97 @@ async def run_crawl_job() -> dict:
                 logger.error(f"Weibo crawl failed for {board.board_type}: {e}")
                 results["errors"].append(f"weibo:{board.board_type}: {str(e)}")
 
+        # ---- 第四阶段: 爬取 HackerNews 板块 ----
+        # 查询所有已激活的 HackerNews 板块
+        # Crawl HackerNews feeds
+        hn_result = await session.execute(
+            select(HackerNewsSource).where(HackerNewsSource.is_active == True)
+        )
+        hn_sources = hn_result.scalars().all()
+
+        successful_hn_ids = set()
+        for hn_source in hn_sources:
+            try:
+                # 为每个板块创建 HackerNews 爬虫实例
+                crawler = HackerNewsCrawler(
+                    feed_type=hn_source.feed_type,
+                    timeout=30.0,
+                    fetch_external_content=True,
+                )
+                result = await crawler.run()
+                results["hackernews"].append(result)
+                results["total_articles"] += result.get("saved_count", 0)
+                if result.get("status") == "success":
+                    successful_hn_ids.add(hn_source.id)
+                    # 更新最后抓取时间
+                    hn_source.last_fetched_at = datetime.now(timezone.utc)
+                # 板块之间添加延迟
+                await asyncio.sleep(2)
+            except Exception as e:
+                logger.error(f"HackerNews crawl failed for {hn_source.feed_type}: {e}")
+                results["errors"].append(f"hackernews:{hn_source.feed_type}: {str(e)}")
+
+        # ---- 第五阶段: 爬取 Reddit 订阅源 ----
+        # 查询所有已激活的 Reddit 订阅源
+        # Crawl Reddit sources
+        reddit_result = await session.execute(
+            select(RedditSource).where(RedditSource.is_active == True)
+        )
+        reddit_sources = reddit_result.scalars().all()
+
+        successful_reddit_ids = set()
+        for reddit_source in reddit_sources:
+            try:
+                # 为每个订阅源创建 Reddit 爬虫实例
+                crawler = RedditCrawler(
+                    source_type=reddit_source.source_type,
+                    source_name=reddit_source.source_name,
+                    timeout=30.0,
+                    fetch_external_content=True,
+                )
+                result = await crawler.run()
+                results["reddit"].append(result)
+                results["total_articles"] += result.get("saved_count", 0)
+                if result.get("status") == "success":
+                    successful_reddit_ids.add(reddit_source.id)
+                    # 更新最后抓取时间
+                    reddit_source.last_fetched_at = datetime.now(timezone.utc)
+                # 源之间添加延迟
+                await asyncio.sleep(2)
+            except Exception as e:
+                logger.error(f"Reddit crawl failed for {reddit_source.source_name}: {e}")
+                results["errors"].append(f"reddit:{reddit_source.source_name}: {str(e)}")
+
+        # ---- 第六阶段: 爬取 Twitter 订阅源 ----
+        # 查询所有已激活的 Twitter 订阅源
+        # Crawl Twitter sources
+        twitter_result = await session.execute(
+            select(TwitterSource).where(TwitterSource.is_active == True)
+        )
+        twitter_sources = twitter_result.scalars().all()
+
+        successful_twitter_ids = set()
+        for twitter_source in twitter_sources:
+            try:
+                # 为每个订阅源创建 Twitter 爬虫实例
+                crawler = TwitterCrawler(
+                    username=twitter_source.username,
+                    max_results=20,
+                    timeout=15.0,
+                )
+                result = await crawler.run()
+                results["twitter"].append(result)
+                results["total_articles"] += result.get("saved_count", 0)
+                if result.get("status") == "success":
+                    successful_twitter_ids.add(twitter_source.id)
+                    # 更新最后抓取时间
+                    twitter_source.last_fetched_at = datetime.now(timezone.utc)
+                # 源之间添加延迟
+                await asyncio.sleep(2)
+            except Exception as e:
+                logger.error(f"Twitter crawl failed for @{twitter_source.username}: {e}")
+                results["errors"].append(f"twitter:{twitter_source.username}: {str(e)}")
+
         # 提交数据库事务，持久化所有更改（新文章 + 更新的时间戳）
         await session.commit()
 
@@ -173,9 +278,12 @@ async def run_crawl_job() -> dict:
     summary = {
         "status": "completed",
         "duration_seconds": duration,
-        "arxiv_count": len(results["arxiv"]),    # ArXiv 爬取的分类数
-        "rss_count": len(results["rss"]),          # RSS 爬取的源数
-        "weibo_count": len(results["weibo"]),      # 微博爬取的榜单数
+        "arxiv_count": len(results["arxiv"]),       # ArXiv 爬取的分类数
+        "rss_count": len(results["rss"]),           # RSS 爬取的源数
+        "weibo_count": len(results["weibo"]),       # 微博爬取的榜单数
+        "hackernews_count": len(results["hackernews"]),  # HackerNews 爬取的板块数
+        "reddit_count": len(results["reddit"]),     # Reddit 爬取的源数
+        "twitter_count": len(results["twitter"]),   # Twitter 爬取的源数
         "error_count": len(results["errors"]),     # 发生的错误总数
         "total_articles": results["total_articles"],  # 总计保存的文章数
         "timestamp": end_time.isoformat(),
@@ -183,7 +291,7 @@ async def run_crawl_job() -> dict:
 
     logger.info(f"Crawl job completed: {summary}")
 
-    # ---- 第三阶段: 发送管理员爬取完成报告 ----
+    # ---- 发送管理员爬取完成报告 ----
     # 仅在邮件功能启用且有新文章时才发送管理员报告
     # 用户订阅邮件由独立的 notification_job 定时任务处理
     # Send admin crawl completion report

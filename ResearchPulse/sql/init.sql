@@ -438,6 +438,63 @@ CREATE TABLE `weibo_hot_searches` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='微博热搜榜单配置表';
 
 -- -----------------------------------------------------------------------------
+-- hackernews_sources 表 - HackerNews 板块配置
+-- -----------------------------------------------------------------------------
+DROP TABLE IF EXISTS `hackernews_sources`;
+CREATE TABLE `hackernews_sources` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `feed_type` VARCHAR(50) NOT NULL COMMENT '板块类型: front, new, best, ask, show',
+  `feed_name` VARCHAR(100) NOT NULL COMMENT '板块显示名称',
+  `description` TEXT DEFAULT NULL COMMENT '板块描述',
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否激活',
+  `last_fetched_at` DATETIME DEFAULT NULL COMMENT '最后抓取时间',
+  `error_count` INT NOT NULL DEFAULT 0 COMMENT '连续错误次数',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `feed_type` (`feed_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='HackerNews 板块配置表';
+
+-- -----------------------------------------------------------------------------
+-- reddit_sources 表 - Reddit 订阅源配置
+-- -----------------------------------------------------------------------------
+DROP TABLE IF EXISTS `reddit_sources`;
+CREATE TABLE `reddit_sources` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `source_type` VARCHAR(50) NOT NULL COMMENT '源类型: subreddit, user',
+  `source_name` VARCHAR(100) NOT NULL COMMENT 'Subreddit 名或用户名',
+  `display_name` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '显示名称',
+  `description` TEXT DEFAULT NULL COMMENT '描述',
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否激活',
+  `last_fetched_at` DATETIME DEFAULT NULL COMMENT '最后抓取时间',
+  `error_count` INT NOT NULL DEFAULT 0 COMMENT '连续错误次数',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `ix_reddit_source_unique` (`source_type`, `source_name`),
+  KEY `idx_reddit_sources_type` (`source_type`),
+  KEY `idx_reddit_sources_name` (`source_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Reddit 订阅源配置表';
+
+-- -----------------------------------------------------------------------------
+-- twitter_sources 表 - Twitter 用户订阅配置
+-- -----------------------------------------------------------------------------
+DROP TABLE IF EXISTS `twitter_sources`;
+CREATE TABLE `twitter_sources` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `username` VARCHAR(100) NOT NULL COMMENT 'Twitter 用户名(不含@)',
+  `display_name` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '显示名称',
+  `description` TEXT DEFAULT NULL COMMENT '描述',
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否激活',
+  `last_fetched_at` DATETIME DEFAULT NULL COMMENT '最后抓取时间',
+  `error_count` INT NOT NULL DEFAULT 0 COMMENT '连续错误次数',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Twitter 用户订阅配置表';
+
+-- -----------------------------------------------------------------------------
 -- user_subscriptions 表 - 用户订阅
 -- -----------------------------------------------------------------------------
 DROP TABLE IF EXISTS `user_subscriptions`;
@@ -950,6 +1007,35 @@ INSERT INTO `weibo_hot_searches` (`board_type`, `board_name`, `description`, `is
 ('entrank', '文娱榜', '微博文娱热点榜单（需要登录Cookie）', 0),
 ('sport', '体育榜', '微博体育热点榜单（需要登录Cookie）', 0),
 ('game', '游戏榜', '微博游戏热点榜单（需要登录Cookie）', 0);
+
+-- -----------------------------------------------------------------------------
+-- 插入 HackerNews 板块数据
+-- 注意: 使用 hnrss.org RSS Feed，无需 API Key
+-- -----------------------------------------------------------------------------
+INSERT INTO `hackernews_sources` (`feed_type`, `feed_name`, `description`, `is_active`) VALUES
+('front', 'HackerNews 首页', 'HackerNews 首页热门帖子', 1),
+('new', 'HackerNews 最新', 'HackerNews 最新帖子', 0),
+('best', 'HackerNews 精选', 'HackerNews 历史精选帖子', 0),
+('ask', 'Ask HN', 'Ask HackerNews 问答帖子', 0),
+('show', 'Show HN', 'Show HackerNews 项目展示帖子', 0);
+
+-- -----------------------------------------------------------------------------
+-- 插入 Reddit 示例订阅源数据
+-- 注意: 使用 Reddit 官方 RSS Feed，无需 API Key
+-- -----------------------------------------------------------------------------
+INSERT INTO `reddit_sources` (`source_type`, `source_name`, `display_name`, `description`, `is_active`) VALUES
+-- 示例 Subreddit（默认禁用，管理员可根据需要启用）
+('subreddit', 'programming', 'r/programming', '编程相关讨论', 0),
+('subreddit', 'MachineLearning', 'r/MachineLearning', '机器学习研究', 0),
+('subreddit', 'artificial', 'r/artificial', '人工智能讨论', 0);
+
+-- -----------------------------------------------------------------------------
+-- 插入 Twitter 示例订阅源数据
+-- 注意: 需要配置 TwitterAPI.io API Key (环境变量 TWITTERAPI_IO_KEY)
+-- -----------------------------------------------------------------------------
+-- Twitter 示例源（默认禁用，需要配置 API Key 后启用）
+-- INSERT INTO `twitter_sources` (`username`, `display_name`, `description`, `is_active`) VALUES
+-- ('elonmusk', 'Elon Musk', '特斯拉、SpaceX CEO', 0);
 
 -- -----------------------------------------------------------------------------
 -- 插入系统配置数据

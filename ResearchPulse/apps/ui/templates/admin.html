@@ -302,6 +302,30 @@
                         <div class="stat-value" id="stat-weibo-active">0</div>
                         <div class="stat-label">微博活跃榜单</div>
                     </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-hackernews-total">0</div>
+                        <div class="stat-label">HackerNews 板块总数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-hackernews-active">0</div>
+                        <div class="stat-label">HackerNews 活跃板块</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-reddit-total">0</div>
+                        <div class="stat-label">Reddit 订阅源总数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-reddit-active">0</div>
+                        <div class="stat-label">Reddit 活跃源</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-twitter-total">0</div>
+                        <div class="stat-label">Twitter 用户总数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-twitter-active">0</div>
+                        <div class="stat-label">Twitter 活跃用户</div>
+                    </div>
                 </div>
 
                 <div class="tabs">
@@ -310,6 +334,9 @@
                     <button class="tab" onclick="switchSourceTab('wechat')">微信公众号</button>
                     <button class="tab" onclick="switchSourceTab('weibo')">微博热搜</button>
                     <button class="tab" onclick="switchSourceTab('pending')">待审批 RSS</button>
+                    <button class="tab" onclick="switchSourceTab('hackernews')">HackerNews</button>
+                    <button class="tab" onclick="switchSourceTab('reddit')">Reddit</button>
+                    <button class="tab" onclick="switchSourceTab('twitter')">Twitter</button>
                 </div>
 
                 <!-- ArXiv Categories -->
@@ -414,6 +441,99 @@
                                     </tr>
                                 </thead>
                                 <tbody id="weibo-list"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- HackerNews -->
+                <div id="source-hackernews" class="source-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>HackerNews 板块管理</h3>
+                            <div>
+                                <button class="btn btn-primary btn-sm" onclick="batchToggleHackerNews(true)">批量启用</button>
+                                <button class="btn btn-sm" onclick="batchToggleHackerNews(false)">批量禁用</button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info" style="margin-bottom: 16px; padding: 12px; background: #e3f2fd; border-radius: 4px; font-size: 13px;">
+                                <strong>说明：</strong>HackerNews 提供公开 API，无需认证即可抓取。支持的板块包括 Top Stories、New Stories、Best Stories、Ask HN、Show HN、Jobs 等。
+                            </div>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="hackernews-select-all" onchange="toggleSelectAll('hackernews')"></th>
+                                        <th>板块名称</th>
+                                        <th>板块类型</th>
+                                        <th>状态</th>
+                                        <th>最后抓取</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="hackernews-list"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reddit -->
+                <div id="source-reddit" class="source-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Reddit 订阅源管理</h3>
+                            <button class="btn btn-primary btn-sm" onclick="showAddRedditModal()">添加 Reddit 源</button>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info" style="margin-bottom: 16px; padding: 12px; background: #e3f2fd; border-radius: 4px; font-size: 13px;">
+                                <strong>说明：</strong>Reddit 使用公开 RSS 接口，无需 API 密钥。支持订阅 subreddit，格式如 <code>programming</code> 或 <code>r/programming</code>。
+                            </div>
+                            <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+                                <input type="text" class="form-input" id="reddit-search" placeholder="搜索 subreddit..." style="flex: 1;" oninput="loadRedditSources()">
+                            </div>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="reddit-select-all" onchange="toggleSelectAll('reddit')"></th>
+                                        <th>Subreddit</th>
+                                        <th>描述</th>
+                                        <th>状态</th>
+                                        <th>最后抓取</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="reddit-list"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Twitter -->
+                <div id="source-twitter" class="source-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Twitter 用户订阅管理</h3>
+                            <button class="btn btn-primary btn-sm" onclick="showAddTwitterModal()">添加 Twitter 用户</button>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info" style="margin-bottom: 16px; padding: 12px; background: #e3f2fd; border-radius: 4px; font-size: 13px;">
+                                <strong>说明：</strong>Twitter 数据抓取需要配置 API 凭证。请在系统配置中设置 <code>TWITTER_BEARER_TOKEN</code> 或 <code>TWITTER_API_KEY</code> 等环境变量。
+                            </div>
+                            <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+                                <input type="text" class="form-input" id="twitter-search" placeholder="搜索用户名..." style="flex: 1;" oninput="loadTwitterSources()">
+                            </div>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="twitter-select-all" onchange="toggleSelectAll('twitter')"></th>
+                                        <th>用户名</th>
+                                        <th>显示名称</th>
+                                        <th>状态</th>
+                                        <th>最后抓取</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="twitter-list"></tbody>
                             </table>
                         </div>
                     </div>
@@ -1392,6 +1512,9 @@
             if (tab === 'wechat') loadWechatAccounts();
             if (tab === 'weibo') loadWeiboBoards();
             if (tab === 'pending') loadPendingRss();
+            if (tab === 'hackernews') loadHackerNewsSources();
+            if (tab === 'reddit') loadRedditSources();
+            if (tab === 'twitter') loadTwitterSources();
         }
 
         async function loadSources() {
@@ -1408,6 +1531,12 @@
                 document.getElementById('stat-rss-active').textContent = data.rss?.active || 0;
                 document.getElementById('stat-weibo-total').textContent = data.weibo?.total || 0;
                 document.getElementById('stat-weibo-active').textContent = data.weibo?.active || 0;
+                document.getElementById('stat-hackernews-total').textContent = data.hackernews?.total || 0;
+                document.getElementById('stat-hackernews-active').textContent = data.hackernews?.active || 0;
+                document.getElementById('stat-reddit-total').textContent = data.reddit?.total || 0;
+                document.getElementById('stat-reddit-active').textContent = data.reddit?.active || 0;
+                document.getElementById('stat-twitter-total').textContent = data.twitter?.total || 0;
+                document.getElementById('stat-twitter-active').textContent = data.twitter?.active || 0;
                 
                 loadArxivCategories();
             } catch (e) {
@@ -4083,6 +4212,464 @@
                 alert('角色已删除');
             } catch (e) {
                 alert('删除失败: ' + e.message);
+            }
+        }
+
+        // HackerNews Management
+        async function loadHackerNewsSources() {
+            const token = localStorage.getItem('access_token');
+            const tbody = document.getElementById('hackernews-list');
+            
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/hackernews`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                tbody.innerHTML = data.boards?.length ? data.boards.map(b => `
+                    <tr>
+                        <td><input type="checkbox" data-id="${b.id}" class="hackernews-checkbox"></td>
+                        <td>${escapeHtml(b.board_name)}</td>
+                        <td><code>${escapeHtml(b.board_type)}</code></td>
+                        <td><span class="badge ${b.is_active ? 'badge-success' : 'badge-warning'}">${b.is_active ? '活跃' : '禁用'}</span></td>
+                        <td>${b.last_fetched_at ? formatDate(b.last_fetched_at) : '从未'}</td>
+                        <td>
+                            <button class="btn btn-sm ${b.is_active ? 'btn-danger' : 'btn-success'}" onclick="toggleHackerNewsBoard(${b.id}, ${!b.is_active})">
+                                ${b.is_active ? '禁用' : '启用'}
+                            </button>
+                        </td>
+                    </tr>
+                `).join('') : '<tr><td colspan="6" style="text-align: center; color: #888;">暂无 HackerNews 板块</td></tr>';
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="6">加载失败</td></tr>';
+            }
+        }
+
+        async function toggleHackerNewsBoard(boardId, isActive) {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/hackernews/${boardId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ is_active: isActive })
+                });
+                
+                if (!res.ok) {
+                    const error = await res.json();
+                    alert(error.detail || '操作失败');
+                    return;
+                }
+                
+                loadHackerNewsSources();
+                loadSources();
+            } catch (e) {
+                alert('操作失败');
+            }
+        }
+
+        async function batchToggleHackerNews(isActive) {
+            const token = localStorage.getItem('access_token');
+            const checkboxes = document.querySelectorAll('.hackernews-checkbox:checked');
+            const ids = Array.from(checkboxes).map(cb => parseInt(cb.dataset.id));
+            
+            if (ids.length === 0) {
+                alert('请先选择要操作的板块');
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/hackernews/batch?is_active=${isActive}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(ids)
+                });
+                
+                if (!res.ok) {
+                    const error = await res.json();
+                    alert(error.detail || '操作失败');
+                    return;
+                }
+                
+                loadHackerNewsSources();
+                loadSources();
+            } catch (e) {
+                alert('批量操作失败');
+            }
+        }
+
+        // Reddit Management
+        async function loadRedditSources() {
+            const token = localStorage.getItem('access_token');
+            const search = document.getElementById('reddit-search')?.value || '';
+            const tbody = document.getElementById('reddit-list');
+            
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/reddit?search=${encodeURIComponent(search)}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                tbody.innerHTML = data.sources?.length ? data.sources.map(s => `
+                    <tr>
+                        <td><input type="checkbox" data-id="${s.id}" class="reddit-checkbox"></td>
+                        <td><strong>r/${escapeHtml(s.subreddit)}</strong></td>
+                        <td>${escapeHtml(s.description || '-')}</td>
+                        <td><span class="badge ${s.is_active ? 'badge-success' : 'badge-warning'}">${s.is_active ? '活跃' : '禁用'}</span></td>
+                        <td>${s.last_fetched_at ? formatDate(s.last_fetched_at) : '从未'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="showEditRedditModal(${s.id}, '${escapeHtml(s.subreddit).replace(/'/g, "\\'")}', '${escapeHtml(s.description || '').replace(/'/g, "\\'")}')">编辑</button>
+                            <button class="btn btn-sm ${s.is_active ? 'btn-danger' : 'btn-success'}" onclick="toggleRedditSource(${s.id}, ${!s.is_active})">
+                                ${s.is_active ? '禁用' : '启用'}
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteRedditSource(${s.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('') : '<tr><td colspan="6" style="text-align: center; color: #888;">暂无 Reddit 订阅源</td></tr>';
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="6">加载失败</td></tr>';
+            }
+        }
+
+        function showAddRedditModal() {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>添加 Reddit 订阅源</h3>
+                        <span class="modal-close" onclick="this.closest('.modal').remove()">×</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="form-label">Subreddit 名称 *</label>
+                            <input type="text" class="form-input" id="new-reddit-subreddit" placeholder="例如：programming 或 programming" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">描述</label>
+                            <input type="text" class="form-input" id="new-reddit-description" placeholder="可选描述">
+                        </div>
+                        <p style="font-size: 12px; color: #888;">
+                            提示：输入 subreddit 名称，不需要 r/ 前缀。系统将使用 Reddit 的公开 RSS 接口抓取内容。
+                        </p>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn" onclick="this.closest('.modal').remove()">取消</button>
+                        <button class="btn btn-primary" onclick="addRedditSource()">添加</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function addRedditSource() {
+            const token = localStorage.getItem('access_token');
+            const subreddit = document.getElementById('new-reddit-subreddit').value.replace(/^r\//, '');
+            const description = document.getElementById('new-reddit-description').value;
+            
+            if (!subreddit) {
+                alert('请填写 Subreddit 名称');
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/reddit`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ subreddit, description })
+                });
+                
+                if (res.ok) {
+                    document.querySelector('.modal').remove();
+                    loadRedditSources();
+                    loadSources();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '添加失败');
+                }
+            } catch (e) {
+                alert('添加失败');
+            }
+        }
+
+        function showEditRedditModal(sourceId, subreddit, description) {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>编辑 Reddit 订阅源</h3>
+                        <span class="modal-close" onclick="this.closest('.modal').remove()">×</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="form-label">Subreddit 名称</label>
+                            <input type="text" class="form-input" id="edit-reddit-subreddit" value="${subreddit}" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">描述</label>
+                            <input type="text" class="form-input" id="edit-reddit-description" value="${description}">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn" onclick="this.closest('.modal').remove()">取消</button>
+                        <button class="btn btn-primary" onclick="updateRedditSource(${sourceId})">保存</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function updateRedditSource(sourceId) {
+            const token = localStorage.getItem('access_token');
+            const description = document.getElementById('edit-reddit-description').value;
+            
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/reddit/${sourceId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ description })
+                });
+                
+                if (res.ok) {
+                    document.querySelector('.modal').remove();
+                    loadRedditSources();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '更新失败');
+                }
+            } catch (e) {
+                alert('更新失败');
+            }
+        }
+
+        async function toggleRedditSource(sourceId, isActive) {
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/sources/reddit/${sourceId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ is_active: isActive })
+                });
+                loadRedditSources();
+                loadSources();
+            } catch (e) {
+                alert('操作失败');
+            }
+        }
+
+        async function deleteRedditSource(sourceId) {
+            if (!confirm('确定要删除此 Reddit 订阅源吗？')) return;
+            
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/sources/reddit/${sourceId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                loadRedditSources();
+                loadSources();
+            } catch (e) {
+                alert('删除失败');
+            }
+        }
+
+        // Twitter Management
+        async function loadTwitterSources() {
+            const token = localStorage.getItem('access_token');
+            const search = document.getElementById('twitter-search')?.value || '';
+            const tbody = document.getElementById('twitter-list');
+            
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/twitter?search=${encodeURIComponent(search)}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                tbody.innerHTML = data.users?.length ? data.users.map(u => `
+                    <tr>
+                        <td><input type="checkbox" data-id="${u.id}" class="twitter-checkbox"></td>
+                        <td><strong>@${escapeHtml(u.username)}</strong></td>
+                        <td>${escapeHtml(u.display_name || '-')}</td>
+                        <td><span class="badge ${u.is_active ? 'badge-success' : 'badge-warning'}">${u.is_active ? '活跃' : '禁用'}</span></td>
+                        <td>${u.last_fetched_at ? formatDate(u.last_fetched_at) : '从未'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="showEditTwitterModal(${u.id}, '${escapeHtml(u.username).replace(/'/g, "\\'")}', '${escapeHtml(u.display_name || '').replace(/'/g, "\\'")}')">编辑</button>
+                            <button class="btn btn-sm ${u.is_active ? 'btn-danger' : 'btn-success'}" onclick="toggleTwitterSource(${u.id}, ${!u.is_active})">
+                                ${u.is_active ? '禁用' : '启用'}
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteTwitterSource(${u.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('') : '<tr><td colspan="6" style="text-align: center; color: #888;">暂无 Twitter 用户订阅</td></tr>';
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="6">加载失败</td></tr>';
+            }
+        }
+
+        function showAddTwitterModal() {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>添加 Twitter 用户订阅</h3>
+                        <span class="modal-close" onclick="this.closest('.modal').remove()">×</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="form-label">用户名 *</label>
+                            <input type="text" class="form-input" id="new-twitter-username" placeholder="例如：elonmusk" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">显示名称</label>
+                            <input type="text" class="form-input" id="new-twitter-displayname" placeholder="可选">
+                        </div>
+                        <p style="font-size: 12px; color: #888;">
+                            提示：输入 Twitter 用户名，不需要 @ 符号。请确保已配置 Twitter API 凭证。
+                        </p>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn" onclick="this.closest('.modal').remove()">取消</button>
+                        <button class="btn btn-primary" onclick="addTwitterSource()">添加</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function addTwitterSource() {
+            const token = localStorage.getItem('access_token');
+            const username = document.getElementById('new-twitter-username').value.replace(/^@/, '');
+            const display_name = document.getElementById('new-twitter-displayname').value;
+            
+            if (!username) {
+                alert('请填写用户名');
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/twitter`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, display_name })
+                });
+                
+                if (res.ok) {
+                    document.querySelector('.modal').remove();
+                    loadTwitterSources();
+                    loadSources();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '添加失败');
+                }
+            } catch (e) {
+                alert('添加失败');
+            }
+        }
+
+        function showEditTwitterModal(sourceId, username, displayName) {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>编辑 Twitter 用户订阅</h3>
+                        <span class="modal-close" onclick="this.closest('.modal').remove()">×</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="form-label">用户名</label>
+                            <input type="text" class="form-input" id="edit-twitter-username" value="${username}" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">显示名称</label>
+                            <input type="text" class="form-input" id="edit-twitter-displayname" value="${displayName}">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn" onclick="this.closest('.modal').remove()">取消</button>
+                        <button class="btn btn-primary" onclick="updateTwitterSource(${sourceId})">保存</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function updateTwitterSource(sourceId) {
+            const token = localStorage.getItem('access_token');
+            const display_name = document.getElementById('edit-twitter-displayname').value;
+            
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/twitter/${sourceId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ display_name })
+                });
+                
+                if (res.ok) {
+                    document.querySelector('.modal').remove();
+                    loadTwitterSources();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '更新失败');
+                }
+            } catch (e) {
+                alert('更新失败');
+            }
+        }
+
+        async function toggleTwitterSource(sourceId, isActive) {
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/sources/twitter/${sourceId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ is_active: isActive })
+                });
+                loadTwitterSources();
+                loadSources();
+            } catch (e) {
+                alert('操作失败');
+            }
+        }
+
+        async function deleteTwitterSource(sourceId) {
+            if (!confirm('确定要删除此 Twitter 用户订阅吗？')) return;
+            
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/sources/twitter/${sourceId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                loadTwitterSources();
+                loadSources();
+            } catch (e) {
+                alert('删除失败');
             }
         }
 

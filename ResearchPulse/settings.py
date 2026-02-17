@@ -291,6 +291,14 @@ class Settings(BaseSettings):
         validation_alias="WEIBO_COOKIE",
     )
 
+    # ======================== Twitter 爬虫配置 ========================
+    # TwitterAPI.io API 密钥（第三方 API，比官方 API 便宜）
+    # 获取方式: 注册 https://twitterapi.io 账号并获取 API Key
+    twitterapi_io_key: str = Field(
+        default="",
+        validation_alias="TWITTERAPI_IO_KEY",
+    )
+
     # ======================== 定时任务调度配置 ========================
     # 爬取任务执行间隔（小时）
     crawl_interval_hours: int = Field(

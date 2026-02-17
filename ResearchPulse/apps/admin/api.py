@@ -42,7 +42,10 @@ from core.models.user import User, UserRole
 from apps.crawler.models import (
     Article,
     ArxivCategory,
+    HackerNewsSource,
+    RedditSource,
     RssFeed,
+    TwitterSource,
     WechatAccount,
     WeiboHotSearch,
     SystemConfig,
@@ -3753,6 +3756,582 @@ async def batch_update_weibo_boards(
 
 
 # ============================================================================
+# Data Source Management - HackerNews
+# ============================================================================
+# HackerNews 板块管理 —— 查询和更新 HackerNews 板块配置
+
+class HackerNewsSourceUpdate(BaseModel):
+    """Request schema for updating a HackerNews source."""
+    feed_name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+@router.get("/sources/hackernews")
+async def list_hackernews_sources(
+    is_active: Optional[bool] = None,
+    page: int = 1,
+    page_size: int = 20,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """List HackerNews sources with optional filtering.
+
+    Args:
+        is_active: Filter by active status.
+        page: Page number.
+        page_size: Items per page.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Paginated HackerNews source list.
+    """
+    query = select(HackerNewsSource)
+
+    if is_active is not None:
+        query = query.where(HackerNewsSource.is_active == is_active)
+
+    # 统计总数
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await session.execute(count_query)).scalar() or 0
+
+    # 分页查询
+    query = query.order_by(HackerNewsSource.id)
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    result = await session.execute(query)
+    sources = result.scalars().all()
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "sources": [
+            {
+                "id": source.id,
+                "feed_type": source.feed_type,
+                "feed_name": source.feed_name,
+                "description": source.description,
+                "is_active": source.is_active,
+                "last_fetched_at": source.last_fetched_at.isoformat() if source.last_fetched_at else None,
+                "error_count": source.error_count,
+            }
+            for source in sources
+        ]
+    }
+
+
+@router.put("/sources/hackernews/{source_id}")
+async def update_hackernews_source(
+    source_id: int,
+    source_data: HackerNewsSourceUpdate,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Update a HackerNews source.
+
+    Args:
+        source_id: Source ID.
+        source_data: Update payload.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Updated source info.
+
+    Raises:
+        HTTPException: If source not found.
+    """
+    result = await session.execute(
+        select(HackerNewsSource).where(HackerNewsSource.id == source_id)
+    )
+    source = result.scalar_one_or_none()
+
+    if not source:
+        raise HTTPException(status_code=404, detail="HackerNews source not found")
+
+    if source_data.feed_name is not None:
+        source.feed_name = source_data.feed_name
+    if source_data.description is not None:
+        source.description = source_data.description
+    if source_data.is_active is not None:
+        source.is_active = source_data.is_active
+
+    await session.commit()
+
+    return {
+        "status": "ok",
+        "source": {
+            "id": source.id,
+            "feed_type": source.feed_type,
+            "feed_name": source.feed_name,
+            "is_active": source.is_active,
+        }
+    }
+
+
+@router.put("/sources/hackernews/batch")
+async def batch_update_hackernews_sources(
+    source_ids: List[int],
+    is_active: bool,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Batch update HackerNews sources active status.
+
+    Args:
+        source_ids: List of source IDs.
+        is_active: Active status to set.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Update count.
+    """
+    if not source_ids:
+        raise HTTPException(status_code=400, detail="No source IDs provided")
+
+    await session.execute(
+        update(HackerNewsSource)
+        .where(HackerNewsSource.id.in_(source_ids))
+        .values(is_active=is_active)
+    )
+    await session.commit()
+
+    return {"status": "ok", "updated_count": len(source_ids)}
+
+
+# ============================================================================
+# Data Source Management - Reddit
+# ============================================================================
+# Reddit 订阅源管理 —— 查询、创建、更新和删除 Reddit 订阅源
+
+class RedditSourceCreate(BaseModel):
+    """Request schema for creating a Reddit source."""
+    source_type: str  # "subreddit" or "user"
+    source_name: str
+    display_name: Optional[str] = ""
+    description: Optional[str] = ""
+
+
+class RedditSourceUpdate(BaseModel):
+    """Request schema for updating a Reddit source."""
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+@router.get("/sources/reddit")
+async def list_reddit_sources(
+    is_active: Optional[bool] = None,
+    source_type: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """List Reddit sources with optional filtering.
+
+    Args:
+        is_active: Filter by active status.
+        source_type: Filter by source type (subreddit/user).
+        page: Page number.
+        page_size: Items per page.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Paginated Reddit source list.
+    """
+    query = select(RedditSource)
+
+    if is_active is not None:
+        query = query.where(RedditSource.is_active == is_active)
+    if source_type:
+        query = query.where(RedditSource.source_type == source_type)
+
+    # 统计总数
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await session.execute(count_query)).scalar() or 0
+
+    # 分页查询
+    query = query.order_by(RedditSource.id)
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    result = await session.execute(query)
+    sources = result.scalars().all()
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "sources": [
+            {
+                "id": source.id,
+                "source_type": source.source_type,
+                "source_name": source.source_name,
+                "display_name": source.display_name,
+                "description": source.description,
+                "is_active": source.is_active,
+                "last_fetched_at": source.last_fetched_at.isoformat() if source.last_fetched_at else None,
+                "error_count": source.error_count,
+            }
+            for source in sources
+        ]
+    }
+
+
+@router.post("/sources/reddit")
+async def create_reddit_source(
+    source_data: RedditSourceCreate,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Create a new Reddit source.
+
+    Args:
+        source_data: Create payload.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Created source info.
+
+    Raises:
+        HTTPException: If source already exists.
+    """
+    # 检查是否已存在
+    existing = await session.execute(
+        select(RedditSource).where(
+            RedditSource.source_type == source_data.source_type,
+            RedditSource.source_name == source_data.source_name,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Reddit source already exists")
+
+    source = RedditSource(
+        source_type=source_data.source_type,
+        source_name=source_data.source_name,
+        display_name=source_data.display_name or source_data.source_name,
+        description=source_data.description or "",
+        is_active=True,
+    )
+    session.add(source)
+    await session.commit()
+
+    return {
+        "status": "ok",
+        "source": {
+            "id": source.id,
+            "source_type": source.source_type,
+            "source_name": source.source_name,
+            "display_name": source.display_name,
+        }
+    }
+
+
+@router.put("/sources/reddit/{source_id}")
+async def update_reddit_source(
+    source_id: int,
+    source_data: RedditSourceUpdate,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Update a Reddit source.
+
+    Args:
+        source_id: Source ID.
+        source_data: Update payload.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Updated source info.
+
+    Raises:
+        HTTPException: If source not found.
+    """
+    result = await session.execute(
+        select(RedditSource).where(RedditSource.id == source_id)
+    )
+    source = result.scalar_one_or_none()
+
+    if not source:
+        raise HTTPException(status_code=404, detail="Reddit source not found")
+
+    if source_data.display_name is not None:
+        source.display_name = source_data.display_name
+    if source_data.description is not None:
+        source.description = source_data.description
+    if source_data.is_active is not None:
+        source.is_active = source_data.is_active
+
+    await session.commit()
+
+    return {
+        "status": "ok",
+        "source": {
+            "id": source.id,
+            "source_type": source.source_type,
+            "source_name": source.source_name,
+            "is_active": source.is_active,
+        }
+    }
+
+
+@router.delete("/sources/reddit/{source_id}")
+async def delete_reddit_source(
+    source_id: int,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Delete a Reddit source.
+
+    Args:
+        source_id: Source ID.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Status message.
+
+    Raises:
+        HTTPException: If source not found.
+    """
+    result = await session.execute(
+        select(RedditSource).where(RedditSource.id == source_id)
+    )
+    source = result.scalar_one_or_none()
+
+    if not source:
+        raise HTTPException(status_code=404, detail="Reddit source not found")
+
+    await session.execute(
+        delete(RedditSource).where(RedditSource.id == source_id)
+    )
+    await session.commit()
+
+    return {"status": "ok", "message": "Reddit source deleted"}
+
+
+# ============================================================================
+# Data Source Management - Twitter
+# ============================================================================
+# Twitter 用户订阅管理 —— 查询、创建、更新和删除 Twitter 用户订阅
+
+class TwitterSourceCreate(BaseModel):
+    """Request schema for creating a Twitter source."""
+    username: str
+    display_name: Optional[str] = ""
+    description: Optional[str] = ""
+
+
+class TwitterSourceUpdate(BaseModel):
+    """Request schema for updating a Twitter source."""
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+@router.get("/sources/twitter")
+async def list_twitter_sources(
+    is_active: Optional[bool] = None,
+    page: int = 1,
+    page_size: int = 20,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """List Twitter sources with optional filtering.
+
+    Args:
+        is_active: Filter by active status.
+        page: Page number.
+        page_size: Items per page.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Paginated Twitter source list.
+    """
+    query = select(TwitterSource)
+
+    if is_active is not None:
+        query = query.where(TwitterSource.is_active == is_active)
+
+    # 统计总数
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await session.execute(count_query)).scalar() or 0
+
+    # 分页查询
+    query = query.order_by(TwitterSource.id)
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    result = await session.execute(query)
+    sources = result.scalars().all()
+
+    # 检查是否配置了 Twitter API Key
+    from settings import settings
+    has_api_key = bool(settings.twitterapi_io_key)
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "has_api_key": has_api_key,
+        "sources": [
+            {
+                "id": source.id,
+                "username": source.username,
+                "display_name": source.display_name,
+                "description": source.description,
+                "is_active": source.is_active,
+                "last_fetched_at": source.last_fetched_at.isoformat() if source.last_fetched_at else None,
+                "error_count": source.error_count,
+            }
+            for source in sources
+        ]
+    }
+
+
+@router.post("/sources/twitter")
+async def create_twitter_source(
+    source_data: TwitterSourceCreate,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Create a new Twitter source.
+
+    Args:
+        source_data: Create payload.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Created source info.
+
+    Raises:
+        HTTPException: If source already exists or API key not configured.
+    """
+    # 检查是否配置了 API Key
+    from settings import settings
+    if not settings.twitterapi_io_key:
+        raise HTTPException(
+            status_code=400,
+            detail="TwitterAPI.io API Key 未配置。请先在环境变量中设置 TWITTERAPI_IO_KEY"
+        )
+
+    # 移除 @ 前缀
+    username = source_data.username.lstrip("@")
+
+    # 检查是否已存在
+    existing = await session.execute(
+        select(TwitterSource).where(TwitterSource.username == username)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Twitter source already exists")
+
+    source = TwitterSource(
+        username=username,
+        display_name=source_data.display_name or username,
+        description=source_data.description or "",
+        is_active=True,
+    )
+    session.add(source)
+    await session.commit()
+
+    return {
+        "status": "ok",
+        "source": {
+            "id": source.id,
+            "username": source.username,
+            "display_name": source.display_name,
+        }
+    }
+
+
+@router.put("/sources/twitter/{source_id}")
+async def update_twitter_source(
+    source_id: int,
+    source_data: TwitterSourceUpdate,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Update a Twitter source.
+
+    Args:
+        source_id: Source ID.
+        source_data: Update payload.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Updated source info.
+
+    Raises:
+        HTTPException: If source not found.
+    """
+    result = await session.execute(
+        select(TwitterSource).where(TwitterSource.id == source_id)
+    )
+    source = result.scalar_one_or_none()
+
+    if not source:
+        raise HTTPException(status_code=404, detail="Twitter source not found")
+
+    if source_data.display_name is not None:
+        source.display_name = source_data.display_name
+    if source_data.description is not None:
+        source.description = source_data.description
+    if source_data.is_active is not None:
+        source.is_active = source_data.is_active
+
+    await session.commit()
+
+    return {
+        "status": "ok",
+        "source": {
+            "id": source.id,
+            "username": source.username,
+            "is_active": source.is_active,
+        }
+    }
+
+
+@router.delete("/sources/twitter/{source_id}")
+async def delete_twitter_source(
+    source_id: int,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Delete a Twitter source.
+
+    Args:
+        source_id: Source ID.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Status message.
+
+    Raises:
+        HTTPException: If source not found.
+    """
+    result = await session.execute(
+        select(TwitterSource).where(TwitterSource.id == source_id)
+    )
+    source = result.scalar_one_or_none()
+
+    if not source:
+        raise HTTPException(status_code=404, detail="Twitter source not found")
+
+    await session.execute(
+        delete(TwitterSource).where(TwitterSource.id == source_id)
+    )
+    await session.commit()
+
+    return {"status": "ok", "message": "Twitter source deleted"}
+
+
+# ============================================================================
 # Data Source Statistics
 # ============================================================================
 # 数据源统计 —— 汇总各数据源的状态信息
@@ -3791,6 +4370,24 @@ async def get_sources_stats(
         select(func.count(WeiboHotSearch.id)).where(WeiboHotSearch.is_active == True)
     )
 
+    # HackerNews 统计
+    hackernews_total = await session.execute(select(func.count(HackerNewsSource.id)))
+    hackernews_active = await session.execute(
+        select(func.count(HackerNewsSource.id)).where(HackerNewsSource.is_active == True)
+    )
+
+    # Reddit 统计
+    reddit_total = await session.execute(select(func.count(RedditSource.id)))
+    reddit_active = await session.execute(
+        select(func.count(RedditSource.id)).where(RedditSource.is_active == True)
+    )
+
+    # Twitter 统计
+    twitter_total = await session.execute(select(func.count(TwitterSource.id)))
+    twitter_active = await session.execute(
+        select(func.count(TwitterSource.id)).where(TwitterSource.is_active == True)
+    )
+
     return {
         "arxiv": {
             "total": arxiv_total.scalar() or 0,
@@ -3807,6 +4404,18 @@ async def get_sources_stats(
         "weibo": {
             "total": weibo_total.scalar() or 0,
             "active": weibo_active.scalar() or 0,
+        },
+        "hackernews": {
+            "total": hackernews_total.scalar() or 0,
+            "active": hackernews_active.scalar() or 0,
+        },
+        "reddit": {
+            "total": reddit_total.scalar() or 0,
+            "active": reddit_active.scalar() or 0,
+        },
+        "twitter": {
+            "total": twitter_total.scalar() or 0,
+            "active": twitter_active.scalar() or 0,
         },
     }
 

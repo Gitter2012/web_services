@@ -307,3 +307,217 @@ class WeiboHotSearch(Base, TimestampMixin):
         返回微博热搜榜单的字符串表示。
         """
         return f"<WeiboHotSearch(board_type={self.board_type}, board_name={self.board_name})>"
+
+
+# =============================================================================
+# HackerNewsSource 模型
+# 职责: 存储 HackerNews 板块的配置和运行状态
+# 表名: hackernews_sources
+# 使用场景: 配置需要抓取的 HN 板块类型；
+#           爬虫调度时查询所有活跃的板块进行爬取。
+# 设计决策:
+#   1. feed_type 作为板块类型标识（front, new, best, ask, show）
+#   2. feed_name 存储板块的显示名称（首页、最新、精选、Ask HN、Show HN）
+#   3. 与其他数据源类似，包含 error_count 和 last_fetched_at 用于健康监控
+# =============================================================================
+class HackerNewsSource(Base, TimestampMixin):
+    """HackerNews feed source model.
+
+    HackerNews 板块配置模型。
+    """
+
+    __tablename__ = "hackernews_sources"
+
+    # 主键
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 板块类型标识（front, new, best, ask, show）
+    feed_type: Mapped[str] = mapped_column(
+        String(50),
+        unique=True,
+        nullable=False,
+        index=True,
+        comment="Feed type (front, new, best, ask, show)",
+    )
+    # 板块显示名称
+    feed_name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        comment="Feed display name",
+    )
+    # 板块描述信息
+    description: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="",
+    )
+    # 是否活跃：False 表示已停用
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
+    # 最后一次成功抓取的时间
+    last_fetched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    # 连续抓取失败次数
+    error_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    def __repr__(self) -> str:
+        """Return a readable HackerNews source representation.
+
+        返回 HackerNews 板块的字符串表示。
+        """
+        return f"<HackerNewsSource(feed_type={self.feed_type}, feed_name={self.feed_name})>"
+
+
+# =============================================================================
+# RedditSource 模型
+# 职责: 存储 Reddit 订阅源的配置和运行状态
+# 表名: reddit_sources
+# 使用场景: 配置需要抓取的 Subreddit 或 User；
+#           爬虫调度时查询所有活跃的订阅源进行爬取。
+# 设计决策:
+#   1. source_type 区分 "subreddit" 和 "user" 两种订阅类型
+#   2. source_name 存储 Subreddit 名称或 Reddit 用户名
+#   3. 与其他数据源类似，包含 error_count 和 last_fetched_at 用于健康监控
+# =============================================================================
+class RedditSource(Base, TimestampMixin):
+    """Reddit source model.
+
+    Reddit 订阅源配置模型。
+    """
+
+    __tablename__ = "reddit_sources"
+
+    # 主键
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 源类型（subreddit 或 user）
+    source_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        index=True,
+        comment="Source type (subreddit or user)",
+    )
+    # 源名称（Subreddit 名称或 Reddit 用户名）
+    source_name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        index=True,
+        comment="Subreddit name or Reddit username",
+    )
+    # 显示名称
+    display_name: Mapped[str] = mapped_column(
+        String(200),
+        nullable=False,
+        default="",
+        comment="Display name for the source",
+    )
+    # 描述信息
+    description: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="",
+    )
+    # 是否活跃：False 表示已停用
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
+    # 最后一次成功抓取的时间
+    last_fetched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    # 连续抓取失败次数
+    error_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    # 联合唯一约束：同一类型下的名称不能重复
+    __table_args__ = (
+        Index("ix_reddit_source_unique", "source_type", "source_name", unique=True),
+    )
+
+    def __repr__(self) -> str:
+        """Return a readable Reddit source representation.
+
+        返回 Reddit 订阅源的字符串表示。
+        """
+        return f"<RedditSource(type={self.source_type}, name={self.source_name})>"
+
+
+# =============================================================================
+# TwitterSource 模型
+# 职责: 存储 Twitter 用户订阅的配置和运行状态
+# 表名: twitter_sources
+# 使用场景: 配置需要抓取的 Twitter 用户；
+#           爬虫调度时查询所有活跃的用户进行爬取。
+# 设计决策:
+#   1. username 存储 Twitter 用户名（不含 @）
+#   2. last_tweet_id 用于增量抓取，避免重复抓取旧推文
+#   3. 与其他数据源类似，包含 error_count 和 last_fetched_at 用于健康监控
+# =============================================================================
+class TwitterSource(Base, TimestampMixin):
+    """Twitter source model.
+
+    Twitter 用户订阅配置模型。
+    """
+
+    __tablename__ = "twitter_sources"
+
+    # 主键
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # Twitter 用户名（不含 @）
+    username: Mapped[str] = mapped_column(
+        String(100),
+        unique=True,
+        nullable=False,
+        index=True,
+        comment="Twitter username (without @)",
+    )
+    # 显示名称
+    display_name: Mapped[str] = mapped_column(
+        String(200),
+        nullable=False,
+        default="",
+        comment="Display name of the user",
+    )
+    # 描述信息
+    description: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="",
+    )
+    # 是否活跃：False 表示已停用
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
+    # 最后一次成功抓取的时间
+    last_fetched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    # 连续抓取失败次数
+    error_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    def __repr__(self) -> str:
+        """Return a readable Twitter source representation.
+
+        返回 Twitter 订阅源的字符串表示。
+        """
+        return f"<TwitterSource(username={self.username})>"
