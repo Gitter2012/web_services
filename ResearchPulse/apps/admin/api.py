@@ -1391,6 +1391,8 @@ class EmailConfigCreate(BaseModel):
     smtp_user: Optional[str] = None
     smtp_password: Optional[str] = None
     smtp_use_tls: Optional[bool] = None
+    smtp_use_ssl: Optional[bool] = None
+    smtp_ssl_ports: Optional[str] = None
     # SendGrid settings
     sendgrid_api_key: Optional[str] = None
     # Mailgun settings
@@ -1417,6 +1419,8 @@ class EmailConfigUpdate(BaseModel):
     smtp_user: Optional[str] = None
     smtp_password: Optional[str] = None
     smtp_use_tls: Optional[bool] = None
+    smtp_use_ssl: Optional[bool] = None
+    smtp_ssl_ports: Optional[str] = None
     # SendGrid settings
     sendgrid_api_key: Optional[str] = None
     # Mailgun settings
@@ -1494,6 +1498,8 @@ async def list_email_configs(
                 "smtp_user": config.smtp_user,
                 "smtp_password": _mask_sensitive(config.smtp_password) if config.smtp_password else "",
                 "smtp_use_tls": config.smtp_use_tls,
+                "smtp_use_ssl": config.smtp_use_ssl,
+                "smtp_ssl_ports": config.smtp_ssl_ports,
             })
         elif config.backend_type == "sendgrid":
             config_dict["sendgrid_api_key"] = _mask_sensitive(config.sendgrid_api_key) if config.sendgrid_api_key else ""
@@ -1541,6 +1547,8 @@ async def create_email_config(
         config.smtp_user = data.smtp_user or ""
         config.smtp_password = data.smtp_password or ""
         config.smtp_use_tls = data.smtp_use_tls if data.smtp_use_tls is not None else True
+        config.smtp_use_ssl = data.smtp_use_ssl if data.smtp_use_ssl is not None else False
+        config.smtp_ssl_ports = data.smtp_ssl_ports or "465"
     elif data.backend_type == "sendgrid":
         config.sendgrid_api_key = data.sendgrid_api_key or ""
     elif data.backend_type == "mailgun":
@@ -1597,6 +1605,10 @@ async def update_email_config(
             config.smtp_password = data.smtp_password
         if data.smtp_use_tls is not None:
             config.smtp_use_tls = data.smtp_use_tls
+        if data.smtp_use_ssl is not None:
+            config.smtp_use_ssl = data.smtp_use_ssl
+        if data.smtp_ssl_ports is not None:
+            config.smtp_ssl_ports = data.smtp_ssl_ports
     elif config.backend_type == "sendgrid":
         if data.sendgrid_api_key is not None and not data.sendgrid_api_key.startswith("****"):
             config.sendgrid_api_key = data.sendgrid_api_key
@@ -1741,8 +1753,11 @@ async def test_email_config(
             msg["Subject"] = f"ResearchPulse Test Email - {config.name}"
             msg.attach(MIMEText(f"This is a test email from ResearchPulse using {config.name}.", "plain"))
 
-            with smtplib.SMTP(config.smtp_host, config.smtp_port, timeout=10) as server:
-                if config.smtp_use_tls:
+            # Determine SSL connection method
+            use_ssl = config.smtp_use_ssl or config.smtp_port == 465
+            smtp_class = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
+            with smtp_class(config.smtp_host, config.smtp_port, timeout=10) as server:
+                if not use_ssl and config.smtp_use_tls:
                     server.starttls()
                 server.login(config.smtp_user, config.smtp_password)
                 server.send_message(msg)
@@ -1790,6 +1805,8 @@ async def get_email_config_legacy(
             "smtp_user": config.smtp_user,
             "smtp_password": _mask_sensitive(config.smtp_password) if config.smtp_password else "",
             "smtp_use_tls": config.smtp_use_tls,
+            "smtp_use_ssl": config.smtp_use_ssl,
+            "smtp_ssl_ports": config.smtp_ssl_ports,
             "sendgrid_api_key": _mask_sensitive(config.sendgrid_api_key) if config.sendgrid_api_key else "",
             "mailgun_api_key": _mask_sensitive(config.mailgun_api_key) if config.mailgun_api_key else "",
             "mailgun_domain": config.mailgun_domain,

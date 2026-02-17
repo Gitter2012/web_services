@@ -300,7 +300,19 @@ class EmailConfig(Base, TimestampMixin):
         Boolean,
         default=True,
         nullable=False,
-        comment="Use TLS for SMTP",
+        comment="Use TLS for SMTP (STARTTLS)",
+    )
+    smtp_use_ssl: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="Use SSL for SMTP (direct SSL connection)",
+    )
+    smtp_ssl_ports: Mapped[str] = mapped_column(
+        String(50),
+        default="465",
+        nullable=False,
+        comment="SSL ports (comma-separated, e.g., '465,993')",
     )
 
     # ---- SendGrid 配置 ----

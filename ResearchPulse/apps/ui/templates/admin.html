@@ -2270,10 +2270,23 @@
                         <input type="password" class="form-input" id="new-smtp-password">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">
-                            <input type="checkbox" id="new-smtp-use-tls" checked>
-                            使用 TLS
+                        <label class="form-label" style="display: flex; align-items: center; gap: 16px;">
+                            <span style="display: flex; align-items: center; gap: 4px;">
+                                <input type="checkbox" id="new-smtp-use-tls" checked>
+                                使用 TLS (STARTTLS)
+                            </span>
+                            <span style="display: flex; align-items: center; gap: 4px;">
+                                <input type="checkbox" id="new-smtp-use-ssl">
+                                使用 SSL 直连
+                            </span>
                         </label>
+                        <p style="font-size: 12px; color: #666; margin-top: 4px;">
+                            TLS 适用于端口 587，SSL 适用于端口 465。两者互斥，SSL 优先。
+                        </p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">SSL 端口列表 (逗号分隔)</label>
+                        <input type="text" class="form-input" id="new-smtp-ssl-ports" value="465" style="width: 150px;" placeholder="465,993">
                     </div>
                 `;
             } else if (type === 'sendgrid') {
@@ -2327,6 +2340,8 @@
                 config.smtp_user = document.getElementById('new-smtp-user').value;
                 config.smtp_password = document.getElementById('new-smtp-password').value;
                 config.smtp_use_tls = document.getElementById('new-smtp-use-tls').checked;
+                config.smtp_use_ssl = document.getElementById('new-smtp-use-ssl').checked;
+                config.smtp_ssl_ports = document.getElementById('new-smtp-ssl-ports').value || '465';
             } else if (type === 'sendgrid') {
                 config.sendgrid_api_key = document.getElementById('new-sendgrid-api-key').value;
             } else if (type === 'mailgun') {
@@ -2388,10 +2403,23 @@
                         <input type="password" class="form-input" id="edit-smtp-password" placeholder="${config.smtp_password || ''}">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">
-                            <input type="checkbox" id="edit-smtp-use-tls" ${config.smtp_use_tls !== false ? 'checked' : ''}>
-                            使用 TLS
+                        <label class="form-label" style="display: flex; align-items: center; gap: 16px;">
+                            <span style="display: flex; align-items: center; gap: 4px;">
+                                <input type="checkbox" id="edit-smtp-use-tls" ${config.smtp_use_tls !== false ? 'checked' : ''}>
+                                使用 TLS (STARTTLS)
+                            </span>
+                            <span style="display: flex; align-items: center; gap: 4px;">
+                                <input type="checkbox" id="edit-smtp-use-ssl" ${config.smtp_use_ssl === true ? 'checked' : ''}>
+                                使用 SSL 直连
+                            </span>
                         </label>
+                        <p style="font-size: 12px; color: #666; margin-top: 4px;">
+                            TLS 适用于端口 587，SSL 适用于端口 465。两者互斥，SSL 优先。
+                        </p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">SSL 端口列表 (逗号分隔)</label>
+                        <input type="text" class="form-input" id="edit-smtp-ssl-ports" value="${config.smtp_ssl_ports || '465'}" style="width: 150px;" placeholder="465,993">
                     </div>
                 `;
             } else if (config.backend_type === 'sendgrid') {
@@ -2478,6 +2506,8 @@
                 update.smtp_port = parseInt(document.getElementById('edit-smtp-port').value) || 587;
                 update.smtp_user = document.getElementById('edit-smtp-user').value;
                 update.smtp_use_tls = document.getElementById('edit-smtp-use-tls').checked;
+                update.smtp_use_ssl = document.getElementById('edit-smtp-use-ssl').checked;
+                update.smtp_ssl_ports = document.getElementById('edit-smtp-ssl-ports').value;
                 const pwd = document.getElementById('edit-smtp-password').value;
                 if (pwd && !pwd.startsWith('****')) update.smtp_password = pwd;
             } else if (config.backend_type === 'sendgrid') {
