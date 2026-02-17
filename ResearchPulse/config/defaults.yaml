@@ -37,6 +37,38 @@ crawler:
   wechat:
     timeout: 30
     max_concurrent: 3
+  weibo:
+    timeout: 30
+    delay_base: 5.0
+    delay_jitter: 2.0
+    max_retry: 3
+    retry_backoff: 10.0
+    # 登录 Cookie，用于访问需要认证的接口（其他榜单）
+    # 获取方式: 登录微博后，在浏览器开发者工具中复制 Cookie 值
+    # 格式: "SUB=xxx; SUBP=xxx; ..."
+    # 注意: Cookie 为空时，只有热搜榜可以抓取
+    cookie: ""
+    boards:
+      - type: realtimehot
+        name: 热搜榜
+        # 公开接口，无需 Cookie，默认启用
+        enabled: true
+      - type: socialevent
+        name: 要闻榜
+        # 需要 Cookie，默认禁用
+        enabled: false
+      - type: entrank
+        name: 文娱榜
+        # 需要 Cookie，默认禁用
+        enabled: false
+      - type: sport
+        name: 体育榜
+        # 需要 Cookie，默认禁用
+        enabled: false
+      - type: game
+        name: 游戏榜
+        # 需要 Cookie，默认禁用
+        enabled: false
 
 scheduler:
   crawl_interval_hours: 6

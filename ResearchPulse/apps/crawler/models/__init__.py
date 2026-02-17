@@ -5,7 +5,7 @@
 
 from apps.crawler.models.article import Article, UserArticleState
 from apps.crawler.models.config import AuditLog, BackupRecord, SystemConfig, EmailConfig
-from apps.crawler.models.source import ArxivCategory, RssFeed, WechatAccount
+from apps.crawler.models.source import ArxivCategory, RssFeed, WechatAccount, WeiboHotSearch
 from apps.crawler.models.subscription import UserSubscription
 
 __all__ = [
@@ -13,6 +13,7 @@ __all__ = [
     "ArxivCategory",
     "RssFeed",
     "WechatAccount",
+    "WeiboHotSearch",
     "UserSubscription",
     "UserArticleState",
     "SystemConfig",

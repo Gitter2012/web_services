@@ -274,7 +274,7 @@
             <div id="section-sources" class="section" style="display:none;">
                 <div class="page-header">
                     <h1>数据源管理</h1>
-                    <p>管理 ArXiv 分类、RSS 源和微信公众号</p>
+                    <p>管理 ArXiv 分类、RSS 源、微信公众号和微博热搜</p>
                 </div>
 
                 <div class="stats-grid" id="sources-stats">
@@ -294,12 +294,21 @@
                         <div class="stat-value" id="stat-rss-active">0</div>
                         <div class="stat-label">RSS 活跃源</div>
                     </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-weibo-total">0</div>
+                        <div class="stat-label">微博榜单总数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-weibo-active">0</div>
+                        <div class="stat-label">微博活跃榜单</div>
+                    </div>
                 </div>
 
                 <div class="tabs">
                     <button class="tab active" onclick="switchSourceTab('arxiv')">ArXiv 分类</button>
                     <button class="tab" onclick="switchSourceTab('rss')">RSS 源</button>
                     <button class="tab" onclick="switchSourceTab('wechat')">微信公众号</button>
+                    <button class="tab" onclick="switchSourceTab('weibo')">微博热搜</button>
                     <button class="tab" onclick="switchSourceTab('pending')">待审批 RSS</button>
                 </div>
 
@@ -372,6 +381,39 @@
                                     </tr>
                                 </thead>
                                 <tbody id="wechat-list"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Weibo Hot Search -->
+                <div id="source-weibo" class="source-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>微博热搜榜单管理</h3>
+                            <div>
+                                <button class="btn btn-primary btn-sm" onclick="batchToggleWeibo(true)">批量启用</button>
+                                <button class="btn btn-sm" onclick="batchToggleWeibo(false)">批量禁用</button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info" style="margin-bottom: 16px; padding: 12px; background: #e3f2fd; border-radius: 4px; font-size: 13px;">
+                                <strong>说明：</strong>热搜榜为公开接口，无需登录即可抓取。其他榜单（要闻、文娱、体育、游戏）需要配置微博登录 Cookie。
+                                <br>请在系统配置中设置 <code>WEIBO_COOKIE</code> 环境变量，格式为 <code>SUB=xxx; SUBP=xxx; ...</code>
+                            </div>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="weibo-select-all" onchange="toggleSelectAll('weibo')"></th>
+                                        <th>榜单名称</th>
+                                        <th>榜单类型</th>
+                                        <th>认证要求</th>
+                                        <th>状态</th>
+                                        <th>最后抓取</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="weibo-list"></tbody>
                             </table>
                         </div>
                     </div>
@@ -1348,6 +1390,7 @@
             if (tab === 'arxiv') loadArxivCategories();
             if (tab === 'rss') loadRssFeeds();
             if (tab === 'wechat') loadWechatAccounts();
+            if (tab === 'weibo') loadWeiboBoards();
             if (tab === 'pending') loadPendingRss();
         }
 
@@ -1363,6 +1406,8 @@
                 document.getElementById('stat-arxiv-active').textContent = data.arxiv?.active || 0;
                 document.getElementById('stat-rss-total').textContent = data.rss?.total || 0;
                 document.getElementById('stat-rss-active').textContent = data.rss?.active || 0;
+                document.getElementById('stat-weibo-total').textContent = data.weibo?.total || 0;
+                document.getElementById('stat-weibo-active').textContent = data.weibo?.active || 0;
                 
                 loadArxivCategories();
             } catch (e) {
@@ -1650,6 +1695,99 @@
                 }
             } catch (e) {
                 alert('添加失败');
+            }
+        }
+
+        // Weibo Hot Search Management
+        async function loadWeiboBoards() {
+            const token = localStorage.getItem('access_token');
+            const tbody = document.getElementById('weibo-list');
+            
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/weibo`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                tbody.innerHTML = data.boards.length ? data.boards.map(b => `
+                    <tr>
+                        <td><input type="checkbox" data-id="${b.id}" class="weibo-checkbox"></td>
+                        <td>${escapeHtml(b.board_name)}</td>
+                        <td><code>${escapeHtml(b.board_type)}</code></td>
+                        <td>
+                            ${b.requires_cookie 
+                                ? '<span class="badge badge-warning">需要 Cookie</span>' 
+                                : '<span class="badge badge-success">公开接口</span>'}
+                        </td>
+                        <td><span class="badge ${b.is_active ? 'badge-success' : 'badge-warning'}">${b.is_active ? '活跃' : '禁用'}</span></td>
+                        <td>${b.last_fetched_at ? formatDate(b.last_fetched_at) : '从未'}</td>
+                        <td>
+                            <button class="btn btn-sm ${b.is_active ? 'btn-danger' : 'btn-success'}" onclick="toggleWeiboBoard(${b.id}, ${!b.is_active})">
+                                ${b.is_active ? '禁用' : '启用'}
+                            </button>
+                        </td>
+                    </tr>
+                `).join('') : '<tr><td colspan="7" style="text-align: center; color: #888;">暂无微博热搜榜单</td></tr>';
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="7">加载失败</td></tr>';
+            }
+        }
+
+        async function toggleWeiboBoard(boardId, isActive) {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/weibo/${boardId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ is_active: isActive })
+                });
+                
+                if (!res.ok) {
+                    const error = await res.json();
+                    alert(error.detail || '操作失败');
+                    return;
+                }
+                
+                loadWeiboBoards();
+                loadSources();
+            } catch (e) {
+                alert('操作失败');
+            }
+        }
+
+        async function batchToggleWeibo(isActive) {
+            const token = localStorage.getItem('access_token');
+            const checkboxes = document.querySelectorAll('.weibo-checkbox:checked');
+            const ids = Array.from(checkboxes).map(cb => parseInt(cb.dataset.id));
+            
+            if (ids.length === 0) {
+                alert('请先选择要操作的榜单');
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/weibo/batch?is_active=${isActive}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(ids)
+                });
+                
+                if (!res.ok) {
+                    const error = await res.json();
+                    alert(error.detail || '操作失败');
+                    return;
+                }
+                
+                loadWeiboBoards();
+                loadSources();
+            } catch (e) {
+                alert('操作失败');
             }
         }
 

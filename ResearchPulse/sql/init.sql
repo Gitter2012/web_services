@@ -420,6 +420,24 @@ CREATE TABLE `wechat_accounts` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='微信公众号表';
 
 -- -----------------------------------------------------------------------------
+-- weibo_hot_searches 表 - 微博热搜榜单
+-- -----------------------------------------------------------------------------
+DROP TABLE IF EXISTS `weibo_hot_searches`;
+CREATE TABLE `weibo_hot_searches` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `board_type` VARCHAR(50) NOT NULL COMMENT '榜单类型: realtimehot, socialevent, entrank, sport, game',
+  `board_name` VARCHAR(100) NOT NULL COMMENT '榜单中文名称',
+  `description` TEXT DEFAULT NULL COMMENT '榜单描述',
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否激活',
+  `last_fetched_at` DATETIME DEFAULT NULL COMMENT '最后抓取时间',
+  `error_count` INT NOT NULL DEFAULT 0 COMMENT '连续错误次数',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `board_type` (`board_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='微博热搜榜单配置表';
+
+-- -----------------------------------------------------------------------------
 -- user_subscriptions 表 - 用户订阅
 -- -----------------------------------------------------------------------------
 DROP TABLE IF EXISTS `user_subscriptions`;
@@ -921,6 +939,17 @@ INSERT INTO `rss_feeds` (`title`, `feed_url`, `site_url`, `category`, `is_active
 ('月光博客', 'https://www.williamlong.info/rss.xml', '', '互联网', 0),
 -- 技术团队
 ('美团技术团队', 'https://tech.meituan.com/feed', '', '技术团队', 1);
+
+-- -----------------------------------------------------------------------------
+-- 插入微博热搜榜单数据
+-- 注意: 除热搜榜外，其他榜单需要配置登录 Cookie 才能抓取，默认禁用
+-- -----------------------------------------------------------------------------
+INSERT INTO `weibo_hot_searches` (`board_type`, `board_name`, `description`, `is_active`) VALUES
+('realtimehot', '热搜榜', '微博实时热搜榜单（公开接口，无需登录）', 1),
+('socialevent', '要闻榜', '微博社会要闻榜单（需要登录Cookie）', 0),
+('entrank', '文娱榜', '微博文娱热点榜单（需要登录Cookie）', 0),
+('sport', '体育榜', '微博体育热点榜单（需要登录Cookie）', 0),
+('game', '游戏榜', '微博游戏热点榜单（需要登录Cookie）', 0);
 
 -- -----------------------------------------------------------------------------
 -- 插入系统配置数据

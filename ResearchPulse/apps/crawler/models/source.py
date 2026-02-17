@@ -240,3 +240,70 @@ class WechatAccount(Base, TimestampMixin):
         返回微信公众号的字符串表示。
         """
         return f"<WechatAccount(account_name={self.account_name})>"
+
+
+# =============================================================================
+# WeiboHotSearch 模型
+# 职责: 存储微博热搜榜单的配置和运行状态
+# 表名: weibo_hot_searches
+# 使用场景: 配置需要抓取的微博榜单类型；
+#           爬虫调度时查询所有活跃的榜单进行爬取。
+# 设计决策:
+#   1. board_type 作为榜单类型标识（realtimehot, socialevent, entrank, sport, game）
+#   2. board_name 存储榜单的中文名称（热搜榜、要闻榜、文娱榜、体育榜、游戏榜）
+#   3. 与其他数据源类似，包含 error_count 和 last_fetched_at 用于健康监控
+# =============================================================================
+class WeiboHotSearch(Base, TimestampMixin):
+    """Weibo hot search board model.
+
+    微博热搜榜单配置模型。
+    """
+
+    __tablename__ = "weibo_hot_searches"
+
+    # 主键
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 榜单类型标识（realtimehot, socialevent, entrank, sport, game）
+    board_type: Mapped[str] = mapped_column(
+        String(50),
+        unique=True,
+        nullable=False,
+        index=True,
+        comment="Board type (e.g., realtimehot, socialevent)",
+    )
+    # 榜单中文名称
+    board_name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        comment="Board display name in Chinese",
+    )
+    # 榜单描述信息
+    description: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="",
+    )
+    # 是否活跃：False 表示已停用
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
+    # 最后一次成功抓取的时间
+    last_fetched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    # 连续抓取失败次数
+    error_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    def __repr__(self) -> str:
+        """Return a readable Weibo hot search board representation.
+
+        返回微博热搜榜单的字符串表示。
+        """
+        return f"<WeiboHotSearch(board_type={self.board_type}, board_name={self.board_name})>"

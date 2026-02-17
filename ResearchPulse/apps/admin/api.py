@@ -44,6 +44,7 @@ from apps.crawler.models import (
     ArxivCategory,
     RssFeed,
     WechatAccount,
+    WeiboHotSearch,
     SystemConfig,
     BackupRecord,
     UserSubscription,
@@ -3577,6 +3578,181 @@ async def delete_wechat_account(
 
 
 # ============================================================================
+# Weibo Hot Search Board Management
+# ============================================================================
+# 微博热搜榜单管理 API
+
+
+class WeiboBoardUpdate(BaseModel):
+    """Request schema for updating a Weibo hot search board."""
+    board_name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+@router.get("/sources/weibo")
+async def list_weibo_boards(
+    is_active: Optional[bool] = None,
+    page: int = 1,
+    page_size: int = 20,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """List Weibo hot search boards with optional filtering.
+
+    Args:
+        is_active: Filter by active status.
+        page: Page number.
+        page_size: Items per page.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Paginated Weibo board list.
+    """
+    query = select(WeiboHotSearch)
+
+    if is_active is not None:
+        query = query.where(WeiboHotSearch.is_active == is_active)
+
+    # 统计总数
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await session.execute(count_query)).scalar() or 0
+
+    # 分页查询
+    query = query.order_by(WeiboHotSearch.id)
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    result = await session.execute(query)
+    boards = result.scalars().all()
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "boards": [
+            {
+                "id": board.id,
+                "board_type": board.board_type,
+                "board_name": board.board_name,
+                "description": board.description,
+                "is_active": board.is_active,
+                "last_fetched_at": board.last_fetched_at.isoformat() if board.last_fetched_at else None,
+                "error_count": board.error_count,
+                "requires_cookie": board.board_type != "realtimehot",  # 非热搜榜需要 Cookie
+            }
+            for board in boards
+        ]
+    }
+
+
+@router.put("/sources/weibo/{board_id}")
+async def update_weibo_board(
+    board_id: int,
+    board_data: WeiboBoardUpdate,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Update a Weibo hot search board.
+
+    Args:
+        board_id: Board ID.
+        board_data: Update payload.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Updated board info.
+
+    Raises:
+        HTTPException: If board not found.
+    """
+    result = await session.execute(
+        select(WeiboHotSearch).where(WeiboHotSearch.id == board_id)
+    )
+    board = result.scalar_one_or_none()
+
+    if not board:
+        raise HTTPException(status_code=404, detail="Weibo board not found")
+
+    # 检查是否尝试启用需要 Cookie 的榜单
+    if board_data.is_active is True and board.board_type != "realtimehot":
+        # 检查是否配置了 Cookie
+        from settings import settings
+        if not settings.weibo_cookie:
+            raise HTTPException(
+                status_code=400,
+                detail=f"榜单 '{board.board_name}' 需要登录 Cookie 才能抓取。请先在系统配置中设置 WEIBO_COOKIE"
+            )
+
+    if board_data.board_name is not None:
+        board.board_name = board_data.board_name
+    if board_data.description is not None:
+        board.description = board_data.description
+    if board_data.is_active is not None:
+        board.is_active = board_data.is_active
+
+    await session.commit()
+
+    return {
+        "status": "ok",
+        "board": {
+            "id": board.id,
+            "board_type": board.board_type,
+            "board_name": board.board_name,
+            "is_active": board.is_active,
+        }
+    }
+
+
+@router.put("/sources/weibo/batch")
+async def batch_update_weibo_boards(
+    board_ids: List[int],
+    is_active: bool,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Batch update Weibo boards active status.
+
+    Args:
+        board_ids: List of board IDs.
+        is_active: Active status to set.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Update count.
+    """
+    if not board_ids:
+        raise HTTPException(status_code=400, detail="No board IDs provided")
+
+    # 如果要启用，检查是否包含需要 Cookie 的榜单
+    if is_active:
+        result = await session.execute(
+            select(WeiboHotSearch).where(WeiboHotSearch.id.in_(board_ids))
+        )
+        boards = result.scalars().all()
+        needs_cookie = [b for b in boards if b.board_type != "realtimehot"]
+        
+        if needs_cookie:
+            from settings import settings
+            if not settings.weibo_cookie:
+                board_names = [b.board_name for b in needs_cookie]
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"以下榜单需要登录 Cookie: {', '.join(board_names)}。请先在系统配置中设置 WEIBO_COOKIE"
+                )
+
+    await session.execute(
+        update(WeiboHotSearch)
+        .where(WeiboHotSearch.id.in_(board_ids))
+        .values(is_active=is_active)
+    )
+    await session.commit()
+
+    return {"status": "ok", "updated_count": len(board_ids)}
+
+
+# ============================================================================
 # Data Source Statistics
 # ============================================================================
 # 数据源统计 —— 汇总各数据源的状态信息
@@ -3609,6 +3785,12 @@ async def get_sources_stats(
         select(func.count(WechatAccount.id)).where(WechatAccount.is_active == True)
     )
 
+    # 微博热搜统计
+    weibo_total = await session.execute(select(func.count(WeiboHotSearch.id)))
+    weibo_active = await session.execute(
+        select(func.count(WeiboHotSearch.id)).where(WeiboHotSearch.is_active == True)
+    )
+
     return {
         "arxiv": {
             "total": arxiv_total.scalar() or 0,
@@ -3621,6 +3803,10 @@ async def get_sources_stats(
         "wechat": {
             "total": wechat_total.scalar() or 0,
             "active": wechat_active.scalar() or 0,
+        },
+        "weibo": {
+            "total": weibo_total.scalar() or 0,
+            "active": weibo_active.scalar() or 0,
         },
     }
 

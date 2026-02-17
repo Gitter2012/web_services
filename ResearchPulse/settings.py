@@ -74,6 +74,7 @@ _event_config = _yaml_config.get("event", {})             # 事件聚类配置
 _topic_config = _yaml_config.get("topic", {})             # 话题发现配置
 _action_config = _yaml_config.get("action", {})           # 行动项配置
 _report_config = _yaml_config.get("report", {})           # 报告生成配置
+_weibo_config = _crawler_config.get("weibo", {})         # 微博热搜爬虫配置
 
 
 def _get_default_data_dir() -> Path:
@@ -254,6 +255,40 @@ class Settings(BaseSettings):
     arxiv_delay_base: float = Field(
         default=_crawler_config.get("arxiv", {}).get("delay_base", 3.0),
         validation_alias="ARXIV_DELAY_BASE",
+    )
+
+    # ======================== 微博热搜爬虫配置 ========================
+    # 微博爬取请求超时时间（秒）
+    weibo_timeout: int = Field(
+        default=_weibo_config.get("timeout", 30),
+        validation_alias="WEIBO_TIMEOUT",
+    )
+    # 微博爬取请求间的基础延迟（秒），微博反爬较严格，需要更长延迟
+    weibo_delay_base: float = Field(
+        default=_weibo_config.get("delay_base", 5.0),
+        validation_alias="WEIBO_DELAY_BASE",
+    )
+    # 延迟抖动范围（秒），用于随机化请求间隔
+    weibo_delay_jitter: float = Field(
+        default=_weibo_config.get("delay_jitter", 2.0),
+        validation_alias="WEIBO_DELAY_JITTER",
+    )
+    # 微博请求最大重试次数
+    weibo_max_retry: int = Field(
+        default=_weibo_config.get("max_retry", 3),
+        validation_alias="WEIBO_MAX_RETRY",
+    )
+    # 微博重试退避时间（秒）
+    weibo_retry_backoff: float = Field(
+        default=_weibo_config.get("retry_backoff", 10.0),
+        validation_alias="WEIBO_RETRY_BACKOFF",
+    )
+    # 微博登录 Cookie（用于访问需要认证的接口，如其他榜单）
+    # 格式: "SUB=xxx; SUBP=xxx; ..." 或完整 Cookie 字符串
+    # 获取方式: 登录微博后，在浏览器开发者工具中复制 Cookie
+    weibo_cookie: str = Field(
+        default="",
+        validation_alias="WEIBO_COOKIE",
     )
 
     # ======================== 定时任务调度配置 ========================

@@ -22,10 +22,11 @@ from sqlalchemy import select
 
 from core.database import get_session_factory
 # 导入各数据源的模型类，用于查询已激活的爬取目标
-from apps.crawler.models import ArxivCategory, RssFeed, WechatAccount
+from apps.crawler.models import ArxivCategory, RssFeed, WechatAccount, WeiboHotSearch
 # 导入具体的爬虫实现类
 from apps.crawler.arxiv import ArxivCrawler
 from apps.crawler.rss import RssCrawler
+from apps.crawler.weibo import WeiboCrawler
 from settings import settings
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ async def run_crawl_job() -> dict:
         "arxiv": [],      # ArXiv 各分类的爬取结果列表
         "rss": [],        # RSS 各订阅源的爬取结果列表
         "wechat": [],     # 微信公众号的爬取结果列表（当前未实现具体爬取逻辑）
+        "weibo": [],      # 微博热搜的爬取结果列表
         "errors": [],     # 所有爬取过程中产生的错误信息
         "total_articles": 0,  # 本次爬取总计保存的文章数量
     }
@@ -128,6 +130,38 @@ async def run_crawl_job() -> dict:
             if feed.id in successful_feed_ids:
                 feed.last_fetched_at = datetime.now(timezone.utc)
 
+        # ---- 第三阶段: 爬取微博热搜榜单 ----
+        # 查询所有已激活的微博热搜榜单
+        # Crawl Weibo hot search boards
+        weibo_result = await session.execute(
+            select(WeiboHotSearch).where(WeiboHotSearch.is_active == True)
+        )
+        weibo_boards = weibo_result.scalars().all()
+
+        successful_board_ids = set()
+        for board in weibo_boards:
+            try:
+                # 为每个榜单创建微博爬虫实例
+                crawler = WeiboCrawler(
+                    source_id=board.board_type,
+                    timeout=settings.weibo_timeout,
+                    cookie=settings.weibo_cookie,
+                    delay_base=settings.weibo_delay_base,
+                    delay_jitter=settings.weibo_delay_jitter,
+                )
+                result = await crawler.run()
+                results["weibo"].append(result)
+                results["total_articles"] += result.get("saved_count", 0)
+                if result.get("status") == "success":
+                    successful_board_ids.add(board.id)
+                    # 更新最后抓取时间
+                    board.last_fetched_at = datetime.now(timezone.utc)
+                # 榜单之间添加延迟，微博反爬较严格
+                await asyncio.sleep(5)
+            except Exception as e:
+                logger.error(f"Weibo crawl failed for {board.board_type}: {e}")
+                results["errors"].append(f"weibo:{board.board_type}: {str(e)}")
+
         # 提交数据库事务，持久化所有更改（新文章 + 更新的时间戳）
         await session.commit()
 
@@ -141,6 +175,7 @@ async def run_crawl_job() -> dict:
         "duration_seconds": duration,
         "arxiv_count": len(results["arxiv"]),    # ArXiv 爬取的分类数
         "rss_count": len(results["rss"]),          # RSS 爬取的源数
+        "weibo_count": len(results["weibo"]),      # 微博爬取的榜单数
         "error_count": len(results["errors"]),     # 发生的错误总数
         "total_articles": results["total_articles"],  # 总计保存的文章数
         "timestamp": end_time.isoformat(),
