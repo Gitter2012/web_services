@@ -5,12 +5,14 @@
 # HTTP 请求。采用 JWT（JSON Web Token）无状态认证机制。
 #
 # 提供以下端点：
-#   1. POST /auth/register       —— 用户注册
-#   2. POST /auth/login          —— 用户登录，返回 access_token + refresh_token
-#   3. POST /auth/refresh        —— 使用 refresh_token 刷新 access_token
-#   4. GET  /auth/me             —— 获取当前登录用户信息
-#   5. POST /auth/change-password —— 修改当前用户密码
-#   6. POST /auth/logout         —— 用户登出（JWT 模式下为客户端操作）
+#   1. POST /auth/send-verification —— 发送邮箱验证码
+#   2. POST /auth/verify-email     —— 验证邮箱
+#   3. POST /auth/register         —— 用户注册（需验证令牌）
+#   4. POST /auth/login            —— 用户登录，返回 access_token + refresh_token
+#   5. POST /auth/refresh          —— 使用 refresh_token 刷新 access_token
+#   6. GET  /auth/me               —— 获取当前登录用户信息
+#   7. POST /auth/change-password  —— 修改当前用户密码
+#   8. POST /auth/logout           —— 用户登出（JWT 模式下为客户端操作）
 #
 # 架构位置：
 #   本模块位于 apps/auth/api.py，属于"认证应用"(auth app) 的路由层。
@@ -36,15 +38,107 @@ from settings import settings
 from .schemas import (
     ChangePasswordRequest,
     RefreshTokenRequest,
+    ResetPasswordRequest,
+    SendPasswordResetRequest,
+    SendPasswordResetResponse,
+    SendVerificationRequest,
+    SendVerificationResponse,
     TokenResponse,
     UserLoginRequest,
     UserRegisterRequest,
     UserResponse,
+    VerifyEmailRequest,
+    VerifyEmailResponse,
+    VerifyPasswordResetRequest,
+    VerifyPasswordResetResponse,
 )
 from .service import AuthService
+from .verification_service import VerificationService
 
 # 创建认证路由器，所有端点挂载在 /auth 前缀下，标签为 "authentication"
 router = APIRouter(prefix="/auth", tags=["authentication"])
+
+
+# --------------------------------------------------------------------------
+# 发送验证码端点
+# --------------------------------------------------------------------------
+@router.post("/send-verification", response_model=SendVerificationResponse)
+async def send_verification(
+    request: SendVerificationRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Send verification code to email.
+
+    发送邮箱验证码，用于用户注册前的邮箱验证。
+
+    Args:
+        request: Email address to send code to.
+        session: Async database session.
+
+    Returns:
+        dict: Response with status and retry_after if rate limited.
+
+    Raises:
+        HTTPException: If rate limited (429) or other error.
+    """
+    result = await VerificationService.send_verification_code(
+        email=request.email,
+        session=session,
+    )
+
+    if not result["success"]:
+        if result.get("retry_after"):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=result["message"],
+                headers={"Retry-After": str(result["retry_after"])},
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result["message"],
+        )
+
+    return {
+        "message": result["message"],
+        "retry_after": result.get("retry_after"),
+    }
+
+
+# --------------------------------------------------------------------------
+# 验证邮箱端点
+# --------------------------------------------------------------------------
+@router.post("/verify-email", response_model=VerifyEmailResponse)
+async def verify_email(
+    request: VerifyEmailRequest,
+) -> dict:
+    """Verify email with the provided code.
+
+    验证邮箱地址，成功后返回用于注册的验证令牌。
+
+    Args:
+        request: Email and verification code.
+
+    Returns:
+        dict: Response with verification token if successful.
+
+    Raises:
+        HTTPException: If verification fails.
+    """
+    result = await VerificationService.verify_email(
+        email=request.email,
+        code=request.code,
+    )
+
+    if not result["success"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result["message"],
+        )
+
+    return {
+        "message": result["message"],
+        "verification_token": result["verification_token"],
+    }
 
 
 # --------------------------------------------------------------------------
@@ -52,23 +146,33 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 # --------------------------------------------------------------------------
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(
-    request: UserRegisterRequest,  # 请求体：经过 Pydantic 校验的注册信息（用户名、邮箱、密码）
+    request: UserRegisterRequest,  # 请求体：经过 Pydantic 校验的注册信息（用户名、邮箱、密码、验证令牌）
     session: AsyncSession = Depends(get_session),  # 异步数据库会话
 ) -> dict:
     """Register a new user account.
 
-    创建用户账户并返回用户信息。
+    创建用户账户并返回用户信息。需要先通过邮箱验证获取验证令牌。
 
     Args:
-        request: Registration payload.
+        request: Registration payload with verification token.
         session: Async database session.
 
     Returns:
         dict: User response payload.
 
     Raises:
-        HTTPException: If username or email already exists.
+        HTTPException: If verification token is invalid or username/email already exists.
     """
+    # 验证邮箱验证令牌
+    if not VerificationService.validate_verification_token(
+        email=request.email,
+        token=request.verification_token,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="邮箱验证已过期，请重新验证",
+        )
+
     try:
         # 委托 AuthService 执行注册逻辑（用户名/邮箱唯一性检查、密码哈希、角色分配等）
         user = await AuthService.register(
@@ -77,6 +181,10 @@ async def register(
             email=request.email,
             password=request.password,
         )
+
+        # 注册成功，清理验证数据
+        VerificationService.cleanup_verification_data(request.email)
+
         # 将 ORM 用户对象转换为响应字典
         return {
             "id": user.id,
@@ -277,3 +385,139 @@ async def logout(
     # 实际登出由客户端清除本地存储的令牌来完成
     # 此端点保留是为了 API 完整性，未来可扩展支持令牌黑名单机制
     return {"status": "ok", "message": "Logged out successfully"}
+
+
+# --------------------------------------------------------------------------
+# 发送密码重置验证码端点
+# --------------------------------------------------------------------------
+@router.post("/send-password-reset", response_model=SendPasswordResetResponse)
+async def send_password_reset(
+    request: SendPasswordResetRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Send password reset verification code to email.
+
+    发送密码重置验证码到指定邮箱。
+
+    Args:
+        request: Email address to send code to.
+        session: Async database session.
+
+    Returns:
+        dict: Response with status and retry_after if rate limited.
+
+    Raises:
+        HTTPException: If rate limited (429) or other error.
+    """
+    result = await VerificationService.send_password_reset_code(
+        email=request.email,
+        session=session,
+    )
+
+    if not result["success"]:
+        if result.get("retry_after"):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=result["message"],
+                headers={"Retry-After": str(result["retry_after"])},
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result["message"],
+        )
+
+    return {
+        "message": result["message"],
+        "retry_after": result.get("retry_after"),
+    }
+
+
+# --------------------------------------------------------------------------
+# 验证密码重置码端点
+# --------------------------------------------------------------------------
+@router.post("/verify-password-reset", response_model=VerifyPasswordResetResponse)
+async def verify_password_reset(
+    request: VerifyPasswordResetRequest,
+) -> dict:
+    """Verify password reset code.
+
+    验证密码重置验证码，成功后返回重置令牌。
+
+    Args:
+        request: Email and verification code.
+
+    Returns:
+        dict: Response with reset token if successful.
+
+    Raises:
+        HTTPException: If verification fails.
+    """
+    result = await VerificationService.verify_password_reset_code(
+        email=request.email,
+        code=request.code,
+    )
+
+    if not result["success"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result["message"],
+        )
+
+    return {
+        "message": result["message"],
+        "reset_token": result["reset_token"],
+    }
+
+
+# --------------------------------------------------------------------------
+# 重置密码端点
+# --------------------------------------------------------------------------
+@router.post("/reset-password")
+async def reset_password(
+    request: ResetPasswordRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Reset user password.
+
+    重置用户密码。
+
+    Args:
+        request: Email, new password, and reset token.
+        session: Async database session.
+
+    Returns:
+        dict: Status message.
+
+    Raises:
+        HTTPException: If reset token is invalid or user not found.
+    """
+    # 验证重置令牌
+    if not VerificationService.validate_reset_token(
+        email=request.email,
+        token=request.reset_token,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="验证已过期，请重新获取验证码",
+        )
+
+    # 查找用户
+    from sqlalchemy import select
+    result = await session.execute(
+        select(User).where(User.email == request.email.lower())
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="用户不存在",
+        )
+
+    # 更新密码
+    user.set_password(request.new_password)
+
+    # 清理重置数据
+    VerificationService.cleanup_reset_data(request.email)
+
+    return {"status": "ok", "message": "密码重置成功"}

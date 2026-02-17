@@ -14,12 +14,16 @@
 #   遵循关注点分离原则。
 #
 # 包含的 Schema：
-#   - UserRegisterRequest  : 用户注册请求
-#   - UserLoginRequest     : 用户登录请求
-#   - TokenResponse        : 令牌响应（登录/刷新共用）
-#   - UserResponse         : 用户信息响应
-#   - RefreshTokenRequest  : 令牌刷新请求
-#   - ChangePasswordRequest: 密码修改请求
+#   - SendVerificationRequest : 发送验证码请求
+#   - SendVerificationResponse: 发送验证码响应
+#   - VerifyEmailRequest      : 验证邮箱请求
+#   - VerifyEmailResponse     : 验证邮箱响应
+#   - UserRegisterRequest     : 用户注册请求（含验证令牌）
+#   - UserLoginRequest        : 用户登录请求
+#   - TokenResponse           : 令牌响应（登录/刷新共用）
+#   - UserResponse            : 用户信息响应
+#   - RefreshTokenRequest     : 令牌刷新请求
+#   - ChangePasswordRequest   : 密码修改请求
 # ==========================================================================
 
 """Pydantic schemas for authentication API."""
@@ -29,6 +33,73 @@ from __future__ import annotations
 from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
+
+
+# --------------------------------------------------------------------------
+# 发送验证码请求模型
+# --------------------------------------------------------------------------
+class SendVerificationRequest(BaseModel):
+    """Request schema for sending verification code.
+
+    发送邮箱验证码请求模型。
+
+    Attributes:
+        email: Email address to send verification code to.
+    """
+
+    email: EmailStr  # 接收验证码的邮箱地址
+
+
+# --------------------------------------------------------------------------
+# 发送验证码响应模型
+# --------------------------------------------------------------------------
+class SendVerificationResponse(BaseModel):
+    """Response schema for sending verification code.
+
+    发送验证码响应模型。
+
+    Attributes:
+        message: Status message.
+        retry_after: Seconds until next request allowed (if rate limited).
+    """
+
+    message: str  # 结果消息
+    retry_after: int | None = None  # 需要等待的秒数（频率限制时）
+
+
+# --------------------------------------------------------------------------
+# 验证邮箱请求模型
+# --------------------------------------------------------------------------
+class VerifyEmailRequest(BaseModel):
+    """Request schema for verifying email with code.
+
+    邮箱验证请求模型。
+
+    Attributes:
+        email: Email address to verify.
+        code: 6-digit verification code.
+    """
+
+    email: EmailStr  # 要验证的邮箱地址
+    # 验证码：必须是6位数字
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
+# --------------------------------------------------------------------------
+# 验证邮箱响应模型
+# --------------------------------------------------------------------------
+class VerifyEmailResponse(BaseModel):
+    """Response schema for email verification.
+
+    邮箱验证响应模型。
+
+    Attributes:
+        message: Status message.
+        verification_token: Token for registration (if verification successful).
+    """
+
+    message: str  # 结果消息
+    verification_token: str | None = None  # 验证令牌（成功时返回）
 
 
 # --------------------------------------------------------------------------
@@ -43,6 +114,7 @@ class UserRegisterRequest(BaseModel):
         username: Username (alphanumeric, 3-50 chars).
         email: Email address.
         password: Plaintext password (6-100 chars).
+        verification_token: Token from email verification step.
     """
 
     # 用户名：3-50 个字符，仅允许字母和数字（通过 validator 进一步校验）
@@ -51,6 +123,8 @@ class UserRegisterRequest(BaseModel):
     email: EmailStr
     # 密码：6-100 个字符，明文传输后由后端进行哈希处理
     password: str = Field(..., min_length=6, max_length=100)
+    # 验证令牌：从邮箱验证步骤获取，用于验证邮箱已验证
+    verification_token: str
 
     @field_validator("username")
     @classmethod
@@ -182,3 +256,91 @@ class ChangePasswordRequest(BaseModel):
     current_password: str = Field(..., min_length=1)
     # 新密码：6-100 个字符，与注册时的密码要求一致
     new_password: str = Field(..., min_length=6, max_length=100)
+
+
+# --------------------------------------------------------------------------
+# 发送密码重置验证码请求模型
+# --------------------------------------------------------------------------
+class SendPasswordResetRequest(BaseModel):
+    """Request schema for sending password reset verification code.
+
+    发送密码重置验证码请求模型。
+
+    Attributes:
+        email: Email address to send reset code to.
+    """
+
+    email: EmailStr  # 接收重置验证码的邮箱地址
+
+
+# --------------------------------------------------------------------------
+# 发送密码重置验证码响应模型
+# --------------------------------------------------------------------------
+class SendPasswordResetResponse(BaseModel):
+    """Response schema for sending password reset verification code.
+
+    发送密码重置验证码响应模型。
+
+    Attributes:
+        message: Status message.
+        retry_after: Seconds until next request allowed (if rate limited).
+    """
+
+    message: str  # 结果消息
+    retry_after: int | None = None  # 需要等待的秒数（频率限制时）
+
+
+# --------------------------------------------------------------------------
+# 验证密码重置码请求模型
+# --------------------------------------------------------------------------
+class VerifyPasswordResetRequest(BaseModel):
+    """Request schema for verifying password reset code.
+
+    验证密码重置码请求模型。
+
+    Attributes:
+        email: Email address.
+        code: 6-digit verification code.
+    """
+
+    email: EmailStr  # 邮箱地址
+    # 验证码：必须是6位数字
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
+# --------------------------------------------------------------------------
+# 验证密码重置码响应模型
+# --------------------------------------------------------------------------
+class VerifyPasswordResetResponse(BaseModel):
+    """Response schema for password reset code verification.
+
+    验证密码重置码响应模型。
+
+    Attributes:
+        message: Status message.
+        reset_token: Token for password reset (if verification successful).
+    """
+
+    message: str  # 结果消息
+    reset_token: str | None = None  # 重置令牌（成功时返回）
+
+
+# --------------------------------------------------------------------------
+# 重置密码请求模型
+# --------------------------------------------------------------------------
+class ResetPasswordRequest(BaseModel):
+    """Request schema for resetting password.
+
+    重置密码请求模型。
+
+    Attributes:
+        email: Email address.
+        new_password: New password.
+        reset_token: Token from verification step.
+    """
+
+    email: EmailStr  # 邮箱地址
+    # 新密码：6-100 个字符
+    new_password: str = Field(..., min_length=6, max_length=100)
+    # 重置令牌：从验证步骤获取
+    reset_token: str

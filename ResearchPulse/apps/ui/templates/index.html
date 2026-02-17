@@ -366,24 +366,83 @@
                 <input type="text" id="login-username" placeholder="用户名或邮箱">
                 <input type="password" id="login-password" placeholder="密码">
                 <button onclick="doLogin()">登录</button>
-                <div class="switch-link">没有账号？<a onclick="hideModal('login');showModal('register')">立即注册</a></div>
+                <div class="switch-link">
+                    <a onclick="hideModal('login');showModal('reset-password')" style="float: left;">忘记密码？</a>
+                    没有账号？<a onclick="hideModal('login');showModal('register')">立即注册</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reset Password Modal -->
+    <div class="modal" id="reset-password-modal">
+        <div class="modal-content" style="width: 420px;">
+            <div class="modal-header">
+                <h2>重置密码</h2>
+                <span class="modal-close" onclick="hideModal('reset-password')">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="reset-error" class="error-msg"></div>
+                <div id="reset-success" style="color: #059669; font-size: 13px; margin-bottom: 12px; display: none;"></div>
+
+                <!-- Step 1: Send Reset Code -->
+                <div id="reset-step1">
+                    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                        <input type="email" id="reset-email" placeholder="注册邮箱地址" style="flex: 1;">
+                        <button id="send-reset-btn" onclick="sendResetCode()" style="padding: 12px 16px; white-space: nowrap; min-width: 100px;">发送验证码</button>
+                    </div>
+                    <div id="reset-code-row" style="display: none;">
+                        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                            <input type="text" id="reset-code" placeholder="6位验证码" maxlength="6" style="flex: 1; letter-spacing: 4px; text-align: center;">
+                            <button onclick="verifyResetCode()" style="padding: 12px 16px; white-space: nowrap;">验证</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: New Password -->
+                <div id="reset-step2" style="display: none;">
+                    <input type="password" id="reset-new-password" placeholder="新密码 (至少6位)">
+                    <input type="password" id="reset-confirm-password" placeholder="确认新密码">
+                    <button onclick="doResetPassword()">重置密码</button>
+                </div>
+
+                <div class="switch-link">想起密码了？<a onclick="hideModal('reset-password');showModal('login')">返回登录</a></div>
             </div>
         </div>
     </div>
 
     <!-- Register Modal -->
     <div class="modal" id="register-modal">
-        <div class="modal-content">
+        <div class="modal-content" style="width: 420px;">
             <div class="modal-header">
                 <h2>注册</h2>
                 <span class="modal-close" onclick="hideModal('register')">&times;</span>
             </div>
             <div class="modal-body">
                 <div id="register-error" class="error-msg"></div>
-                <input type="text" id="reg-username" placeholder="用户名 (3-50位字母数字)">
-                <input type="email" id="reg-email" placeholder="邮箱地址">
-                <input type="password" id="reg-password" placeholder="密码 (至少6位)">
-                <button onclick="doRegister()">注册</button>
+                <div id="register-success" style="color: #059669; font-size: 13px; margin-bottom: 12px; display: none;"></div>
+
+                <!-- Step 1: Email Verification -->
+                <div id="register-step1">
+                    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                        <input type="email" id="reg-email" placeholder="邮箱地址" style="flex: 1;">
+                        <button id="send-code-btn" onclick="sendVerificationCode()" style="padding: 12px 16px; white-space: nowrap; min-width: 100px;">发送验证码</button>
+                    </div>
+                    <div id="code-input-row" style="display: none;">
+                        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                            <input type="text" id="reg-code" placeholder="6位验证码" maxlength="6" style="flex: 1; letter-spacing: 4px; text-align: center;">
+                            <button onclick="verifyEmail()" style="padding: 12px 16px; white-space: nowrap;">验证</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Registration Form -->
+                <div id="register-step2" style="display: none;">
+                    <input type="text" id="reg-username" placeholder="用户名 (3-50位字母数字)">
+                    <input type="password" id="reg-password" placeholder="密码 (至少6位)">
+                    <button onclick="doRegister()">注册</button>
+                </div>
+
                 <div class="switch-link">已有账号？<a onclick="hideModal('register');showModal('login')">立即登录</a></div>
             </div>
         </div>
@@ -567,14 +626,149 @@
             }
         }
 
+        // 验证码相关变量
+        let verificationToken = null;
+        let countdownTimer = null;
+        let countdownSeconds = 0;
+
+        // 发送验证码
+        async function sendVerificationCode() {
+            const email = document.getElementById('reg-email').value;
+            const errorEl = document.getElementById('register-error');
+            const successEl = document.getElementById('register-success');
+            const btn = document.getElementById('send-code-btn');
+
+            if (!email) {
+                errorEl.textContent = '请输入邮箱地址';
+                return;
+            }
+
+            // 简单的邮箱格式验证
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                errorEl.textContent = '请输入有效的邮箱地址';
+                return;
+            }
+
+            errorEl.textContent = '';
+            successEl.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = '发送中...';
+
+            try {
+                const res = await fetch(`${AUTH_BASE}/auth/send-verification`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    // 显示验证码输入框
+                    document.getElementById('code-input-row').style.display = 'block';
+                    successEl.textContent = '验证码已发送到您的邮箱，请查收';
+                    successEl.style.display = 'block';
+                    // 开始倒计时
+                    startCountdown(120);
+                } else if (res.status === 429) {
+                    // 频率限制
+                    errorEl.textContent = data.detail || '请求过于频繁，请稍后再试';
+                    btn.disabled = false;
+                    btn.textContent = '发送验证码';
+                    // 如果有重试时间，开始倒计时
+                    const retryAfter = data.retry_after || 120;
+                    startCountdown(retryAfter);
+                } else {
+                    errorEl.textContent = data.detail || '发送失败，请重试';
+                    btn.disabled = false;
+                    btn.textContent = '发送验证码';
+                }
+            } catch (e) {
+                errorEl.textContent = '网络错误，请重试';
+                btn.disabled = false;
+                btn.textContent = '发送验证码';
+            }
+        }
+
+        // 倒计时
+        function startCountdown(seconds) {
+            countdownSeconds = seconds;
+            const btn = document.getElementById('send-code-btn');
+            btn.disabled = true;
+
+            if (countdownTimer) {
+                clearInterval(countdownTimer);
+            }
+
+            updateCountdownDisplay();
+            countdownTimer = setInterval(() => {
+                countdownSeconds--;
+                if (countdownSeconds <= 0) {
+                    clearInterval(countdownTimer);
+                    countdownTimer = null;
+                    btn.disabled = false;
+                    btn.textContent = '发送验证码';
+                } else {
+                    updateCountdownDisplay();
+                }
+            }, 1000);
+        }
+
+        function updateCountdownDisplay() {
+            const btn = document.getElementById('send-code-btn');
+            btn.textContent = `${countdownSeconds}秒后重发`;
+        }
+
+        // 验证邮箱
+        async function verifyEmail() {
+            const email = document.getElementById('reg-email').value;
+            const code = document.getElementById('reg-code').value;
+            const errorEl = document.getElementById('register-error');
+            const successEl = document.getElementById('register-success');
+
+            if (!code || code.length !== 6) {
+                errorEl.textContent = '请输入6位验证码';
+                return;
+            }
+
+            errorEl.textContent = '';
+            successEl.style.display = 'none';
+
+            try {
+                const res = await fetch(`${AUTH_BASE}/auth/verify-email`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, code })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    verificationToken = data.verification_token;
+                    successEl.textContent = '邮箱验证成功！请设置用户名和密码';
+                    successEl.style.display = 'block';
+                    // 显示注册表单
+                    document.getElementById('register-step1').style.display = 'none';
+                    document.getElementById('register-step2').style.display = 'block';
+                } else {
+                    errorEl.textContent = data.detail || '验证失败';
+                }
+            } catch (e) {
+                errorEl.textContent = '网络错误，请重试';
+            }
+        }
+
         async function doRegister() {
             const username = document.getElementById('reg-username').value;
             const email = document.getElementById('reg-email').value;
             const password = document.getElementById('reg-password').value;
             const errorEl = document.getElementById('register-error');
 
-            if (!username || !email || !password) {
+            if (!username || !password) {
                 errorEl.textContent = '请填写所有字段';
+                return;
+            }
+
+            if (!verificationToken) {
+                errorEl.textContent = '请先验证邮箱';
                 return;
             }
 
@@ -582,10 +776,17 @@
                 const res = await fetch(`${AUTH_BASE}/auth/register`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, email, password })
+                    body: JSON.stringify({
+                        username,
+                        email,
+                        password,
+                        verification_token: verificationToken
+                    })
                 });
                 const data = await res.json();
                 if (res.ok) {
+                    // 重置注册表单
+                    resetRegisterForm();
                     hideModal('register');
                     showModal('login');
                     document.getElementById('login-username').value = username;
@@ -595,6 +796,226 @@
             } catch (e) {
                 errorEl.textContent = '网络错误';
             }
+        }
+
+        // 重置注册表单
+        function resetRegisterForm() {
+            verificationToken = null;
+            if (countdownTimer) {
+                clearInterval(countdownTimer);
+                countdownTimer = null;
+            }
+            document.getElementById('reg-email').value = '';
+            document.getElementById('reg-code').value = '';
+            document.getElementById('reg-username').value = '';
+            document.getElementById('reg-password').value = '';
+            document.getElementById('register-step1').style.display = 'block';
+            document.getElementById('register-step2').style.display = 'none';
+            document.getElementById('code-input-row').style.display = 'none';
+            document.getElementById('register-error').textContent = '';
+            document.getElementById('register-success').style.display = 'none';
+            const btn = document.getElementById('send-code-btn');
+            btn.disabled = false;
+            btn.textContent = '发送验证码';
+        }
+
+        // =========================================================================
+        // 密码重置相关函数
+        // =========================================================================
+        let resetToken = null;
+        let resetCountdownTimer = null;
+        let resetCountdownSeconds = 0;
+
+        // 发送密码重置验证码
+        async function sendResetCode() {
+            const email = document.getElementById('reset-email').value;
+            const errorEl = document.getElementById('reset-error');
+            const successEl = document.getElementById('reset-success');
+            const btn = document.getElementById('send-reset-btn');
+
+            if (!email) {
+                errorEl.textContent = '请输入邮箱地址';
+                return;
+            }
+
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                errorEl.textContent = '请输入有效的邮箱地址';
+                return;
+            }
+
+            errorEl.textContent = '';
+            successEl.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = '发送中...';
+
+            try {
+                const res = await fetch(`${AUTH_BASE}/auth/send-password-reset`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    document.getElementById('reset-code-row').style.display = 'block';
+                    successEl.textContent = '验证码已发送到您的邮箱，请查收';
+                    successEl.style.display = 'block';
+                    startResetCountdown(120);
+                } else if (res.status === 429) {
+                    errorEl.textContent = data.detail || '请求过于频繁，请稍后再试';
+                    btn.disabled = false;
+                    btn.textContent = '发送验证码';
+                    const retryAfter = data.retry_after || 120;
+                    startResetCountdown(retryAfter);
+                } else {
+                    errorEl.textContent = data.detail || '发送失败，请重试';
+                    btn.disabled = false;
+                    btn.textContent = '发送验证码';
+                }
+            } catch (e) {
+                errorEl.textContent = '网络错误，请重试';
+                btn.disabled = false;
+                btn.textContent = '发送验证码';
+            }
+        }
+
+        // 密码重置倒计时
+        function startResetCountdown(seconds) {
+            resetCountdownSeconds = seconds;
+            const btn = document.getElementById('send-reset-btn');
+            btn.disabled = true;
+
+            if (resetCountdownTimer) {
+                clearInterval(resetCountdownTimer);
+            }
+
+            updateResetCountdownDisplay();
+            resetCountdownTimer = setInterval(() => {
+                resetCountdownSeconds--;
+                if (resetCountdownSeconds <= 0) {
+                    clearInterval(resetCountdownTimer);
+                    resetCountdownTimer = null;
+                    btn.disabled = false;
+                    btn.textContent = '发送验证码';
+                } else {
+                    updateResetCountdownDisplay();
+                }
+            }, 1000);
+        }
+
+        function updateResetCountdownDisplay() {
+            const btn = document.getElementById('send-reset-btn');
+            btn.textContent = `${resetCountdownSeconds}秒后重发`;
+        }
+
+        // 验证密码重置码
+        async function verifyResetCode() {
+            const email = document.getElementById('reset-email').value;
+            const code = document.getElementById('reset-code').value;
+            const errorEl = document.getElementById('reset-error');
+            const successEl = document.getElementById('reset-success');
+
+            if (!code || code.length !== 6) {
+                errorEl.textContent = '请输入6位验证码';
+                return;
+            }
+
+            errorEl.textContent = '';
+            successEl.style.display = 'none';
+
+            try {
+                const res = await fetch(`${AUTH_BASE}/auth/verify-password-reset`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, code })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    resetToken = data.reset_token;
+                    successEl.textContent = '验证成功！请设置新密码';
+                    successEl.style.display = 'block';
+                    document.getElementById('reset-step1').style.display = 'none';
+                    document.getElementById('reset-step2').style.display = 'block';
+                } else {
+                    errorEl.textContent = data.detail || '验证失败';
+                }
+            } catch (e) {
+                errorEl.textContent = '网络错误，请重试';
+            }
+        }
+
+        // 执行密码重置
+        async function doResetPassword() {
+            const email = document.getElementById('reset-email').value;
+            const newPassword = document.getElementById('reset-new-password').value;
+            const confirmPassword = document.getElementById('reset-confirm-password').value;
+            const errorEl = document.getElementById('reset-error');
+
+            if (!newPassword || newPassword.length < 6) {
+                errorEl.textContent = '密码至少需要6个字符';
+                return;
+            }
+
+            if (newPassword !== confirmPassword) {
+                errorEl.textContent = '两次输入的密码不一致';
+                return;
+            }
+
+            if (!resetToken) {
+                errorEl.textContent = '请先验证邮箱';
+                return;
+            }
+
+            errorEl.textContent = '';
+
+            try {
+                const res = await fetch(`${AUTH_BASE}/auth/reset-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email,
+                        new_password: newPassword,
+                        reset_token: resetToken
+                    })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    // 重置成功，清理表单并跳转到登录
+                    resetResetPasswordForm();
+                    hideModal('reset-password');
+                    showModal('login');
+                    document.getElementById('login-username').value = email;
+                    document.getElementById('login-error').textContent = '';
+                    alert('密码重置成功，请使用新密码登录');
+                } else {
+                    errorEl.textContent = data.detail || '重置失败';
+                }
+            } catch (e) {
+                errorEl.textContent = '网络错误';
+            }
+        }
+
+        // 重置密码重置表单
+        function resetResetPasswordForm() {
+            resetToken = null;
+            if (resetCountdownTimer) {
+                clearInterval(resetCountdownTimer);
+                resetCountdownTimer = null;
+            }
+            document.getElementById('reset-email').value = '';
+            document.getElementById('reset-code').value = '';
+            document.getElementById('reset-new-password').value = '';
+            document.getElementById('reset-confirm-password').value = '';
+            document.getElementById('reset-step1').style.display = 'block';
+            document.getElementById('reset-step2').style.display = 'none';
+            document.getElementById('reset-code-row').style.display = 'none';
+            document.getElementById('reset-error').textContent = '';
+            document.getElementById('reset-success').style.display = 'none';
+            const btn = document.getElementById('send-reset-btn');
+            btn.disabled = false;
+            btn.textContent = '发送验证码';
         }
 
         function logout() {
