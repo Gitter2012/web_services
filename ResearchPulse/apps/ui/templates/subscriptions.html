@@ -60,6 +60,10 @@
         .item-icon.arxiv { background: #b31b1b; }
         .item-icon.rss { background: #f39c12; }
         .item-icon.wechat { background: #07c160; }
+        .item-icon.weibo { background: #e6162d; }
+        .item-icon.hackernews { background: #ff6600; }
+        .item-icon.reddit { background: #ff4500; }
+        .item-icon.twitter { background: #1da1f2; }
         .item-icon.cs { background: #3b82f6; }
         .item-icon.math { background: #8b5cf6; }
         .item-icon.phys { background: #ef4444; }
@@ -92,7 +96,7 @@
         .modal-body input { width: 100%; padding: 12px; margin-bottom: 16px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; }
         .modal-body button { width: 100%; padding: 12px; background: #1a1a2e; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; }
 
-        .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
         .stat-card { background: white; border-radius: 12px; padding: 20px; text-align: center; }
         .stat-value { font-size: 32px; font-weight: 600; color: #1a1a2e; }
         .stat-label { font-size: 13px; color: #888; margin-top: 4px; }
@@ -189,11 +193,15 @@
         <div class="stats-row" id="stats-row">
             <div class="stat-card">
                 <div class="stat-value" id="stat-arxiv">0</div>
-                <div class="stat-label">ArXiv 类目订阅</div>
+                <div class="stat-label">ArXiv 订阅</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="stat-rss">0</div>
-                <div class="stat-label">RSS 源订阅</div>
+                <div class="stat-label">RSS 订阅</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-other">0</div>
+                <div class="stat-label">其他订阅</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="stat-total">0</div>
@@ -205,6 +213,10 @@
             <button class="tab active" onclick="switchTab('arxiv')">ArXiv 类目</button>
             <button class="tab" onclick="switchTab('rss')">RSS 源</button>
             <button class="tab" onclick="switchTab('wechat')">微信公众号</button>
+            <button class="tab" onclick="switchTab('weibo')">微博热搜</button>
+            <button class="tab" onclick="switchTab('hackernews')">HackerNews</button>
+            <button class="tab" onclick="switchTab('reddit')">Reddit</button>
+            <button class="tab" onclick="switchTab('twitter')">Twitter</button>
             <button class="tab" onclick="switchTab('add-rss')" style="background: #4ecdc4; color: white;">+ 添加 RSS 源</button>
         </div>
 
@@ -425,14 +437,16 @@
         }
 
         function updateStats() {
-            let arxiv = 0, rss = 0;
+            let arxiv = 0, rss = 0, other = 0;
             userSubscriptions.forEach(s => {
-                if (s.startsWith('arxiv:')) arxiv++;
-                else if (s.startsWith('rss:')) rss++;
+                if (s.startsWith('arxiv_category:')) arxiv++;
+                else if (s.startsWith('rss_feed:')) rss++;
+                else other++;
             });
             document.getElementById('stat-arxiv').textContent = arxiv;
             document.getElementById('stat-rss').textContent = rss;
-            document.getElementById('stat-total').textContent = arxiv + rss;
+            document.getElementById('stat-other').textContent = other;
+            document.getElementById('stat-total').textContent = arxiv + rss + other;
         }
 
         // Tabs
@@ -566,7 +580,7 @@
                         code: c.code,
                         name: c.name,
                         description: c.description || '',
-                        type: 'arxiv'
+                        type: 'arxiv_category'  // 使用订阅类型
                     }));
                     document.getElementById('section-label').textContent = 'ArXiv 类目';
                 } else if (currentTab === 'rss') {
@@ -577,12 +591,64 @@
                         code: f.id.toString(),
                         name: f.title,
                         description: f.category || '',
-                        type: 'rss'
+                        type: 'rss_feed'  // 使用订阅类型
                     }));
                     document.getElementById('section-label').textContent = 'RSS 源';
-                } else {
+                } else if (currentTab === 'wechat') {
+                    // 微信公众号暂无专门 API
                     items = [];
                     document.getElementById('section-label').textContent = '微信公众号';
+                } else if (currentTab === 'weibo') {
+                    const res = await fetch(`${API_BASE}/weibo/boards`);
+                    const data = await res.json();
+                    items = (data.boards || []).map(b => ({
+                        id: b.id,
+                        code: b.board_type,
+                        name: b.board_name,
+                        description: b.description || '',
+                        type: 'weibo_hot_search',
+                        is_active: b.is_active
+                    }));
+                    document.getElementById('section-label').textContent = '微博热搜榜单';
+                } else if (currentTab === 'hackernews') {
+                    const res = await fetch(`${API_BASE}/hackernews/sources`);
+                    const data = await res.json();
+                    items = (data.sources || []).map(s => ({
+                        id: s.id,
+                        code: s.feed_type,
+                        name: s.feed_name,
+                        description: s.description || '',
+                        type: 'hackernews_source',
+                        is_active: s.is_active
+                    }));
+                    document.getElementById('section-label').textContent = 'HackerNews 板块';
+                } else if (currentTab === 'reddit') {
+                    const res = await fetch(`${API_BASE}/reddit/sources`);
+                    const data = await res.json();
+                    items = (data.sources || []).map(s => ({
+                        id: s.id,
+                        code: `${s.source_type}/${s.source_name}`,
+                        name: s.display_name || s.source_name,
+                        description: s.description || '',
+                        type: 'reddit_source',
+                        is_active: s.is_active
+                    }));
+                    document.getElementById('section-label').textContent = 'Reddit 订阅源';
+                } else if (currentTab === 'twitter') {
+                    const res = await fetch(`${API_BASE}/twitter/sources`);
+                    const data = await res.json();
+                    items = (data.sources || []).map(s => ({
+                        id: s.id,
+                        code: s.username,
+                        name: s.display_name || s.username,
+                        description: s.description || '',
+                        type: 'twitter_source',
+                        is_active: s.is_active
+                    }));
+                    document.getElementById('section-label').textContent = 'Twitter 用户';
+                } else {
+                    items = [];
+                    document.getElementById('section-label').textContent = '未知类型';
                 }
 
                 allItems = items;
@@ -602,6 +668,17 @@
                 return;
             }
 
+            // 类型到图标文字的映射
+            const typeIcons = {
+                'arxiv_category': 'AX',
+                'rss_feed': 'RS',
+                'wechat_account': '微',
+                'weibo_hot_search': '微',
+                'hackernews_source': 'HN',
+                'reddit_source': 'RD',
+                'twitter_source': 'TW'
+            };
+
             grid.innerHTML = items.map(item => {
                 const key = `${item.type}:${item.id}`;
                 const isSubscribed = userSubscriptions.has(key);
@@ -609,7 +686,7 @@
                 const isActive = item.is_active !== false;
 
                 // 显示名称：ArXiv 显示 code - name，其他类型只显示 name
-                const displayName = item.type === 'arxiv' && item.code
+                const displayName = item.type === 'arxiv_category' && item.code
                     ? `${item.code} - ${item.name}`
                     : item.name;
 
@@ -618,9 +695,14 @@
                     ? '<span class="item-badge inactive">未抓取</span>'
                     : '';
 
+                // 图标文字
+                const iconText = item.type === 'arxiv_category'
+                    ? (item.code || '').split('.')[0].toUpperCase().slice(0,2)
+                    : (typeIcons[item.type] || item.type.slice(0,2).toUpperCase());
+
                 return `
                     <div class="item-card ${isSubscribed ? 'subscribed' : ''} ${!isActive ? 'inactive' : ''}" data-id="${item.id}" data-type="${item.type}">
-                        <div class="item-icon ${iconClass}">${item.type === 'arxiv' ? (item.code || '').split('.')[0].toUpperCase().slice(0,2) : item.type.toUpperCase().slice(0,2)}</div>
+                        <div class="item-icon ${iconClass}">${iconText}</div>
                         <div class="item-info">
                             <div class="item-name">${escapeHtml(displayName)}${badgeHtml}</div>
                             <div class="item-desc">${escapeHtml(item.description || '')}</div>
@@ -636,13 +718,28 @@
         }
 
         function getIconClass(item) {
-            if (item.type === 'rss') return 'rss';
-            if (item.type === 'wechat') return 'wechat';
-            const code = item.code || '';
-            if (code.startsWith('cs.')) return 'cs';
-            if (code.startsWith('math.')) return 'math';
-            if (code.startsWith('physics') || code.includes('-ph')) return 'phys';
-            if (code.startsWith('stat.')) return 'stat';
+            const type = item.type || '';
+
+            // 订阅类型 -> 图标类映射
+            if (type === 'rss_feed' || type === 'rss') return 'rss';
+            if (type === 'wechat_account' || type === 'wechat') return 'wechat';
+            if (type === 'weibo_hot_search' || type === 'weibo') return 'weibo';
+            if (type === 'hackernews_source' || type === 'hackernews') return 'hackernews';
+            if (type === 'reddit_source' || type === 'reddit') return 'reddit';
+            if (type === 'twitter_source' || type === 'twitter') return 'twitter';
+
+            // ArXiv 分类逻辑（根据 code 前缀判断）
+            if (type === 'arxiv_category' || type === 'arxiv') {
+                const code = item.code || '';
+                if (code.startsWith('cs.')) return 'cs';
+                if (code.startsWith('math.')) return 'math';
+                if (code.startsWith('physics') || code.includes('-ph')) return 'phys';
+                if (code.startsWith('stat.')) return 'stat';
+                return 'arxiv';
+            }
+
+            return 'other';
+        }
             return 'arxiv';
         }
 
@@ -676,11 +773,15 @@
                 const res = await fetch(`${API_BASE}/sources/search?q=${encodeURIComponent(keyword)}&limit=50`);
                 const data = await res.json();
 
-                // 合并所有搜索结果
+                // 合并所有搜索结果（包含新源类型）
                 const allResults = [
                     ...(data.arxiv || []),
                     ...(data.rss || []),
-                    ...(data.wechat || [])
+                    ...(data.wechat || []),
+                    ...(data.weibo || []),
+                    ...(data.hackernews || []),
+                    ...(data.reddit || []),
+                    ...(data.twitter || [])
                 ];
 
                 allItems = allResults;
@@ -698,7 +799,11 @@
             const labels = {
                 'arxiv': 'ArXiv 类目',
                 'rss': 'RSS 源',
-                'wechat': '微信公众号'
+                'wechat': '微信公众号',
+                'weibo': '微博热搜',
+                'hackernews': 'HackerNews',
+                'reddit': 'Reddit',
+                'twitter': 'Twitter'
             };
             return labels[tab] || tab;
         }

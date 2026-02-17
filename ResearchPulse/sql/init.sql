@@ -105,7 +105,7 @@ CREATE TABLE `role_permissions` (
 DROP TABLE IF EXISTS `articles`;
 CREATE TABLE `articles` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `source_type` VARCHAR(20) NOT NULL COMMENT '来源类型: arxiv, rss, wechat',
+  `source_type` VARCHAR(20) NOT NULL COMMENT '来源类型: arxiv, rss, wechat, weibo, hackernews, reddit, twitter',
   `source_id` VARCHAR(100) NOT NULL COMMENT '来源ID',
   `external_id` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '外部ID',
   `title` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '标题',
@@ -501,7 +501,7 @@ DROP TABLE IF EXISTS `user_subscriptions`;
 CREATE TABLE `user_subscriptions` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `user_id` BIGINT NOT NULL COMMENT '用户ID',
-  `source_type` VARCHAR(30) NOT NULL COMMENT '来源类型: arxiv_category, rss_feed, wechat_account',
+  `source_type` VARCHAR(30) NOT NULL COMMENT '来源类型: arxiv_category, rss_feed, wechat_account, weibo_hot_search, hackernews_source, reddit_source, twitter_source',
   `source_id` BIGINT NOT NULL COMMENT '来源ID',
   `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否激活',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

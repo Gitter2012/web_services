@@ -57,10 +57,14 @@ from core.dependencies import CurrentUser, OptionalUserId
 from apps.crawler.models import (
     Article,
     ArxivCategory,
+    HackerNewsSource,
+    RedditSource,
     RssFeed,
+    TwitterSource,
     UserArticleState,
     UserSubscription,
     WechatAccount,
+    WeiboHotSearch,
 )
 
 logger = logging.getLogger(__name__)
@@ -543,7 +547,7 @@ async def toggle_article_star(
 
 @router.get("/api/categories")
 async def list_categories(
-    source_type: str = None,  # 数据源类型："arxiv"、"rss" 或 None（默认返回 ArXiv）
+    source_type: str = None,  # 数据源类型："arxiv"、"rss"、"weibo"、"hackernews"、"reddit"、"twitter" 或 None
     session: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
     """List available categories by source type.
@@ -551,7 +555,7 @@ async def list_categories(
     根据数据源类型返回分类列表。
 
     Args:
-        source_type: Source type (arxiv/rss).
+        source_type: Source type (arxiv/rss/weibo/hackernews/reddit/twitter).
         session: Async database session.
 
     Returns:
@@ -605,6 +609,86 @@ async def list_categories(
                 for idx, cat in enumerate(categories)
             ]
         }
+    elif source_type == "weibo":
+        # 返回微博热搜榜单列表
+        result = await session.execute(
+            select(WeiboHotSearch)
+            .where(WeiboHotSearch.is_active == True)
+            .order_by(WeiboHotSearch.board_type)
+        )
+        boards = result.scalars().all()
+        return {
+            "type": "weibo",
+            "categories": [
+                {
+                    "id": board.id,
+                    "code": board.board_type,
+                    "name": board.board_name,
+                    "description": board.description or "",
+                }
+                for board in boards
+            ]
+        }
+    elif source_type == "hackernews":
+        # 返回 HackerNews 板块列表
+        result = await session.execute(
+            select(HackerNewsSource)
+            .where(HackerNewsSource.is_active == True)
+            .order_by(HackerNewsSource.feed_type)
+        )
+        sources = result.scalars().all()
+        return {
+            "type": "hackernews",
+            "categories": [
+                {
+                    "id": src.id,
+                    "code": src.feed_type,
+                    "name": src.feed_name,
+                    "description": src.description or "",
+                }
+                for src in sources
+            ]
+        }
+    elif source_type == "reddit":
+        # 返回 Reddit 订阅源列表
+        result = await session.execute(
+            select(RedditSource)
+            .where(RedditSource.is_active == True)
+            .order_by(RedditSource.source_type, RedditSource.source_name)
+        )
+        sources = result.scalars().all()
+        return {
+            "type": "reddit",
+            "categories": [
+                {
+                    "id": src.id,
+                    "code": f"{src.source_type}/{src.source_name}",
+                    "name": src.display_name or src.source_name,
+                    "description": src.description or "",
+                }
+                for src in sources
+            ]
+        }
+    elif source_type == "twitter":
+        # 返回 Twitter 用户列表
+        result = await session.execute(
+            select(TwitterSource)
+            .where(TwitterSource.is_active == True)
+            .order_by(TwitterSource.username)
+        )
+        sources = result.scalars().all()
+        return {
+            "type": "twitter",
+            "categories": [
+                {
+                    "id": src.id,
+                    "code": src.username,
+                    "name": src.display_name or src.username,
+                    "description": src.description or "",
+                }
+                for src in sources
+            ]
+        }
     else:
         # 未知的数据源类型，返回空列表
         return {"type": "unknown", "categories": []}
@@ -640,6 +724,38 @@ async def list_all_sources(
     )
     rss_feeds = rss_result.scalars().all()
 
+    # 查询所有活跃的微博热搜榜单
+    weibo_result = await session.execute(
+        select(WeiboHotSearch)
+        .where(WeiboHotSearch.is_active == True)
+        .order_by(WeiboHotSearch.board_type)
+    )
+    weibo_boards = weibo_result.scalars().all()
+
+    # 查询所有活跃的 HackerNews 板块
+    hn_result = await session.execute(
+        select(HackerNewsSource)
+        .where(HackerNewsSource.is_active == True)
+        .order_by(HackerNewsSource.feed_type)
+    )
+    hn_sources = hn_result.scalars().all()
+
+    # 查询所有活跃的 Reddit 订阅源
+    reddit_result = await session.execute(
+        select(RedditSource)
+        .where(RedditSource.is_active == True)
+        .order_by(RedditSource.source_type, RedditSource.source_name)
+    )
+    reddit_sources = reddit_result.scalars().all()
+
+    # 查询所有活跃的 Twitter 用户
+    twitter_result = await session.execute(
+        select(TwitterSource)
+        .where(TwitterSource.is_active == True)
+        .order_by(TwitterSource.username)
+    )
+    twitter_sources = twitter_result.scalars().all()
+
     # 返回统一的数据源结构，前端可据此构建筛选 UI
     return {
         "arxiv_categories": [
@@ -649,6 +765,27 @@ async def list_all_sources(
         "rss_feeds": [
             {"id": feed.id, "title": feed.title, "category": feed.category}
             for feed in rss_feeds
+        ],
+        "weibo_hot_searches": [
+            {"id": b.id, "board_type": b.board_type, "board_name": b.board_name}
+            for b in weibo_boards
+        ],
+        "hackernews_sources": [
+            {"id": s.id, "feed_type": s.feed_type, "feed_name": s.feed_name}
+            for s in hn_sources
+        ],
+        "reddit_sources": [
+            {
+                "id": s.id,
+                "source_type": s.source_type,
+                "source_name": s.source_name,
+                "display_name": s.display_name,
+            }
+            for s in reddit_sources
+        ],
+        "twitter_sources": [
+            {"id": s.id, "username": s.username, "display_name": s.display_name}
+            for s in twitter_sources
         ],
     }
 
@@ -696,7 +833,7 @@ async def search_sources(
 ) -> Dict[str, Any]:
     """Search across all subscribable sources.
 
-    模糊搜索所有可订阅的数据源（ArXiv 类目、RSS 源、微信公众号）。
+    模糊搜索所有可订阅的数据源（ArXiv 类目、RSS 源、微信公众号、微博热搜、HackerNews、Reddit、Twitter）。
 
     Args:
         q: Search keyword (fuzzy match).
@@ -714,6 +851,10 @@ async def search_sources(
         "arxiv": [],
         "rss": [],
         "wechat": [],
+        "weibo": [],
+        "hackernews": [],
+        "reddit": [],
+        "twitter": [],
     }
 
     try:
@@ -737,7 +878,7 @@ async def search_sources(
         results["arxiv"] = [
             {
                 "id": cat.id,
-                "type": "arxiv",
+                "type": "arxiv_category",  # 使用订阅类型，便于前端直接调用 toggleSubscription
                 "code": cat.code,
                 "name": cat.name,
                 "description": cat.description or "",
@@ -767,7 +908,7 @@ async def search_sources(
         results["rss"] = [
             {
                 "id": feed.id,
-                "type": "rss",
+                "type": "rss_feed",  # 使用订阅类型
                 "code": str(feed.id),
                 "name": feed.title,
                 "description": feed.category or "",
@@ -799,7 +940,7 @@ async def search_sources(
         results["wechat"] = [
             {
                 "id": acc.id,
-                "type": "wechat",
+                "type": "wechat_account",  # 使用订阅类型
                 "code": getattr(acc, 'account_name', str(acc.id)),
                 "name": acc.display_name,
                 "description": acc.description or "",
@@ -811,7 +952,264 @@ async def search_sources(
         logger.warning(f"WeChat search skipped: {e}")
         # 微信搜索失败不影响其他搜索结果
 
+    try:
+        # 搜索微博热搜榜单：匹配 board_type、board_name、description
+        from sqlalchemy import func
+
+        weibo_result = await session.execute(
+            select(WeiboHotSearch)
+            .where(
+                or_(
+                    WeiboHotSearch.board_type.ilike(search_pattern),
+                    WeiboHotSearch.board_name.ilike(search_pattern),
+                    func.coalesce(WeiboHotSearch.description, "").ilike(search_pattern),
+                ),
+            )
+            .order_by(WeiboHotSearch.is_active.desc(), WeiboHotSearch.board_type)
+            .limit(limit)
+        )
+        weibo_boards = weibo_result.scalars().all()
+        results["weibo"] = [
+            {
+                "id": b.id,
+                "type": "weibo_hot_search",
+                "code": b.board_type,
+                "name": b.board_name,
+                "description": b.description or "",
+                "is_active": b.is_active,
+            }
+            for b in weibo_boards
+        ]
+    except Exception as e:
+        logger.warning(f"Weibo search skipped: {e}")
+
+    try:
+        # 搜索 HackerNews 板块：匹配 feed_type、feed_name、description
+        from sqlalchemy import func
+
+        hn_result = await session.execute(
+            select(HackerNewsSource)
+            .where(
+                or_(
+                    HackerNewsSource.feed_type.ilike(search_pattern),
+                    HackerNewsSource.feed_name.ilike(search_pattern),
+                    func.coalesce(HackerNewsSource.description, "").ilike(search_pattern),
+                ),
+            )
+            .order_by(HackerNewsSource.is_active.desc(), HackerNewsSource.feed_type)
+            .limit(limit)
+        )
+        hn_sources = hn_result.scalars().all()
+        results["hackernews"] = [
+            {
+                "id": s.id,
+                "type": "hackernews_source",
+                "code": s.feed_type,
+                "name": s.feed_name,
+                "description": s.description or "",
+                "is_active": s.is_active,
+            }
+            for s in hn_sources
+        ]
+    except Exception as e:
+        logger.warning(f"HackerNews search skipped: {e}")
+
+    try:
+        # 搜索 Reddit 订阅源：匹配 source_name、display_name、description
+        from sqlalchemy import func
+
+        reddit_result = await session.execute(
+            select(RedditSource)
+            .where(
+                or_(
+                    RedditSource.source_name.ilike(search_pattern),
+                    RedditSource.display_name.ilike(search_pattern),
+                    func.coalesce(RedditSource.description, "").ilike(search_pattern),
+                ),
+            )
+            .order_by(RedditSource.is_active.desc(), RedditSource.source_name)
+            .limit(limit)
+        )
+        reddit_sources = reddit_result.scalars().all()
+        results["reddit"] = [
+            {
+                "id": s.id,
+                "type": "reddit_source",
+                "code": f"{s.source_type}/{s.source_name}",
+                "name": s.display_name or s.source_name,
+                "description": s.description or "",
+                "is_active": s.is_active,
+            }
+            for s in reddit_sources
+        ]
+    except Exception as e:
+        logger.warning(f"Reddit search skipped: {e}")
+
+    try:
+        # 搜索 Twitter 用户：匹配 username、display_name、description
+        from sqlalchemy import func
+
+        twitter_result = await session.execute(
+            select(TwitterSource)
+            .where(
+                or_(
+                    TwitterSource.username.ilike(search_pattern),
+                    TwitterSource.display_name.ilike(search_pattern),
+                    func.coalesce(TwitterSource.description, "").ilike(search_pattern),
+                ),
+            )
+            .order_by(TwitterSource.is_active.desc(), TwitterSource.username)
+            .limit(limit)
+        )
+        twitter_sources = twitter_result.scalars().all()
+        results["twitter"] = [
+            {
+                "id": s.id,
+                "type": "twitter_source",
+                "code": s.username,
+                "name": s.display_name or s.username,
+                "description": s.description or "",
+                "is_active": s.is_active,
+            }
+            for s in twitter_sources
+        ]
+    except Exception as e:
+        logger.warning(f"Twitter search skipped: {e}")
+
     return results
+
+
+@router.get("/api/weibo/boards")
+async def list_weibo_boards(
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """List available Weibo hot search boards.
+
+    返回可用的微博热搜榜单列表。
+
+    Args:
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Weibo boards list payload.
+    """
+    result = await session.execute(
+        select(WeiboHotSearch)
+        .order_by(WeiboHotSearch.is_active.desc(), WeiboHotSearch.board_type)
+    )
+    boards = result.scalars().all()
+    return {
+        "boards": [
+            {
+                "id": b.id,
+                "board_type": b.board_type,
+                "board_name": b.board_name,
+                "description": b.description or "",
+                "is_active": b.is_active,
+            }
+            for b in boards
+        ]
+    }
+
+
+@router.get("/api/hackernews/sources")
+async def list_hackernews_sources(
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """List available HackerNews sources.
+
+    返回可用的 HackerNews 板块列表。
+
+    Args:
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: HackerNews sources list payload.
+    """
+    result = await session.execute(
+        select(HackerNewsSource)
+        .order_by(HackerNewsSource.is_active.desc(), HackerNewsSource.feed_type)
+    )
+    sources = result.scalars().all()
+    return {
+        "sources": [
+            {
+                "id": s.id,
+                "feed_type": s.feed_type,
+                "feed_name": s.feed_name,
+                "description": s.description or "",
+                "is_active": s.is_active,
+            }
+            for s in sources
+        ]
+    }
+
+
+@router.get("/api/reddit/sources")
+async def list_reddit_sources(
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """List available Reddit sources.
+
+    返回可用的 Reddit 订阅源列表。
+
+    Args:
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Reddit sources list payload.
+    """
+    result = await session.execute(
+        select(RedditSource)
+        .order_by(RedditSource.is_active.desc(), RedditSource.source_type, RedditSource.source_name)
+    )
+    sources = result.scalars().all()
+    return {
+        "sources": [
+            {
+                "id": s.id,
+                "source_type": s.source_type,
+                "source_name": s.source_name,
+                "display_name": s.display_name,
+                "description": s.description or "",
+                "is_active": s.is_active,
+            }
+            for s in sources
+        ]
+    }
+
+
+@router.get("/api/twitter/sources")
+async def list_twitter_sources(
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """List available Twitter sources.
+
+    返回可用的 Twitter 用户列表。
+
+    Args:
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Twitter sources list payload.
+    """
+    result = await session.execute(
+        select(TwitterSource)
+        .order_by(TwitterSource.is_active.desc(), TwitterSource.username)
+    )
+    sources = result.scalars().all()
+    return {
+        "sources": [
+            {
+                "id": s.id,
+                "username": s.username,
+                "display_name": s.display_name,
+                "description": s.description or "",
+                "is_active": s.is_active,
+            }
+            for s in sources
+        ]
+    }
 
 
 # ============================================================================
