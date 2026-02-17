@@ -4226,11 +4226,11 @@
                 });
                 const data = await res.json();
                 
-                tbody.innerHTML = data.boards?.length ? data.boards.map(b => `
+                tbody.innerHTML = data.sources?.length ? data.sources.map(b => `
                     <tr>
                         <td><input type="checkbox" data-id="${b.id}" class="hackernews-checkbox"></td>
-                        <td>${escapeHtml(b.board_name)}</td>
-                        <td><code>${escapeHtml(b.board_type)}</code></td>
+                        <td>${escapeHtml(b.feed_name)}</td>
+                        <td><code>${escapeHtml(b.feed_type)}</code></td>
                         <td><span class="badge ${b.is_active ? 'badge-success' : 'badge-warning'}">${b.is_active ? '活跃' : '禁用'}</span></td>
                         <td>${b.last_fetched_at ? formatDate(b.last_fetched_at) : '从未'}</td>
                         <td>
