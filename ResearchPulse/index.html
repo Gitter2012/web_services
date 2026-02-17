@@ -436,9 +436,9 @@
             const mobileNav = document.getElementById('mobile-nav');
             let html = `<a href="${APP_BASE}/">首页</a>`;
             if (user) {
-                html += `<a href="${APP_BASE}/subscriptions">订阅管理</a>`;
+                html += `<a href="#" onclick="goTo('subscriptions'); closeMobileMenu(); return false;">订阅管理</a>`;
                 if (user.is_superuser) {
-                    html += `<a href="${APP_BASE}/admin">管理后台</a>`;
+                    html += `<a href="#" onclick="goTo('admin'); closeMobileMenu(); return false;">管理后台</a>`;
                 }
                 html += `<a href="#" onclick="logout(); return false;">退出登录</a>`;
             } else {
@@ -453,8 +453,8 @@
             checkAuthState();
             loadCategoryNames();  // 预加载分类名称映射
             loadCategories();
+            loadArticles();
             loadStats();
-            // loadArticles() 在 checkAuthState 成功后调用
         });
 
         // Auth Functions
@@ -469,8 +469,6 @@
                         currentUser = await res.json();
                         updateAuthUI();
                         loadUserStars();
-                        // 登录成功后才加载文章列表
-                        loadArticles();
                         return;  // 成功获取用户信息后直接返回
                     } else {
                         localStorage.removeItem('access_token');
@@ -482,8 +480,6 @@
             // 只有在未登录或 token 无效时才设置 currentUser 为 null 并更新 UI
             currentUser = null;
             updateAuthUI();
-            // 显示未登录提示
-            showLoginPrompt();
         }
 
         function updateAuthUI() {
@@ -495,7 +491,7 @@
                 // 已登录用户显示用户名和退出按钮
                 area.innerHTML = `
                     <span class="user-info">👤 ${currentUser.username}</span>
-                    <a href="#" onclick="logout()">退出</a>
+                    <a href="#" onclick="doLogout()">退出</a>
                 `;
 
                 // 显示导出功能
@@ -597,12 +593,11 @@
             }
         }
 
-        function logout() {
+        function doLogout() {
             localStorage.removeItem('access_token');
             currentUser = null;
             userStars.clear();
             updateAuthUI();
-            showLoginPrompt();
         }
 
         function goTo(page) {
@@ -771,25 +766,6 @@
             }
 
             container.innerHTML = articles.map(article => renderArticle(article)).join('');
-        }
-
-        // 显示未登录提示
-        function showLoginPrompt() {
-            const container = document.getElementById('article-list');
-            container.innerHTML = `
-                <div class="empty-state" style="padding: 80px 20px;">
-                    <div class="icon" style="font-size: 64px;">🔐</div>
-                    <div class="text" style="font-size: 18px; margin-top: 16px;">请先登录查看文章内容</div>
-                    <div style="margin-top: 24px;">
-                        <button onclick="showModal('login')" style="padding: 12px 32px; background: #4ecdc4; color: white; border: none; border-radius: 8px; font-size: 15px; cursor: pointer;">登录</button>
-                        <button onclick="showModal('register')" style="padding: 12px 32px; background: #1a1a2e; color: white; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; margin-left: 12px;">注册账号</button>
-                    </div>
-                </div>
-            `;
-            // 隐藏分页
-            document.getElementById('pagination').innerHTML = '';
-            // 更新文章计数
-            document.getElementById('total-count').textContent = '-';
         }
 
         function renderArticle(article) {
