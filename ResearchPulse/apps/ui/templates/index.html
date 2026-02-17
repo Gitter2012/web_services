@@ -61,6 +61,10 @@
         .source-card .icon.arxiv { background: #b31b1b; }
         .source-card .icon.rss { background: #f39c12; }
         .source-card .icon.wechat { background: #07c160; }
+        .source-card .icon.weibo { background: #e6162d; }
+        .source-card .icon.hackernews { background: #ff6600; }
+        .source-card .icon.reddit { background: #ff4500; }
+        .source-card .icon.twitter { background: #1da1f2; }
         .source-card .info { flex: 1; }
         .source-card .name { font-size: 14px; font-weight: 500; color: #333; }
         .source-card .count { font-size: 12px; color: #888; }
@@ -97,6 +101,10 @@
         .source-badge.arxiv { background: #fef2f2; color: #b91c1c; text-transform: uppercase; }
         .source-badge.rss { background: #fffbeb; color: #d97706; }
         .source-badge.wechat { background: #ecfdf5; color: #059669; }
+        .source-badge.weibo { background: #fef2f2; color: #dc2626; }
+        .source-badge.hackernews { background: #fff7ed; color: #ea580c; }
+        .source-badge.reddit { background: #fef2f2; color: #dc2626; }
+        .source-badge.twitter { background: #eff6ff; color: #2563eb; }
 
         .source-card .icon.wechat { background: #059669; color: white; }
 
@@ -293,6 +301,34 @@
                         <div class="info">
                             <div class="name">微信</div>
                             <div class="count" id="count-wechat">0 篇</div>
+                        </div>
+                    </div>
+                    <div class="source-card" data-source="weibo" onclick="selectSource('weibo')">
+                        <div class="icon weibo">微</div>
+                        <div class="info">
+                            <div class="name">微博热搜</div>
+                            <div class="count" id="count-weibo">0 篇</div>
+                        </div>
+                    </div>
+                    <div class="source-card" data-source="hackernews" onclick="selectSource('hackernews')">
+                        <div class="icon hackernews">HN</div>
+                        <div class="info">
+                            <div class="name">HackerNews</div>
+                            <div class="count" id="count-hackernews">0 篇</div>
+                        </div>
+                    </div>
+                    <div class="source-card" data-source="reddit" onclick="selectSource('reddit')">
+                        <div class="icon reddit">RD</div>
+                        <div class="info">
+                            <div class="name">Reddit</div>
+                            <div class="count" id="count-reddit">0 篇</div>
+                        </div>
+                    </div>
+                    <div class="source-card" data-source="twitter" onclick="selectSource('twitter')">
+                        <div class="icon twitter">TW</div>
+                        <div class="info">
+                            <div class="name">Twitter</div>
+                            <div class="count" id="count-twitter">0 篇</div>
                         </div>
                     </div>
                 </div>
@@ -1114,7 +1150,7 @@
         async function loadStats() {
             try {
                 // Load counts for each source
-                const sources = ['', 'arxiv', 'rss', 'wechat'];
+                const sources = ['', 'arxiv', 'rss', 'wechat', 'weibo', 'hackernews', 'reddit', 'twitter'];
                 for (const src of sources) {
                     const params = new URLSearchParams({ page_size: 1 });
                     if (src) params.append('source_type', src);
@@ -1225,12 +1261,26 @@
         function renderArticle(article) {
             // 构建源标签：RSS 显示具体源名称，其他显示源类型
             let sourceBadge = '';
-            if (article.source_type === 'rss' && article.source_name) {
-                sourceBadge = `<span class="source-badge ${article.source_type}" title="${escapeHtml(article.source_name)}">${escapeHtml(article.source_name)}</span>`;
-            } else if (article.source_type === 'wechat' && article.wechat_account_name) {
-                sourceBadge = `<span class="source-badge ${article.source_type}" title="${escapeHtml(article.wechat_account_name)}">${escapeHtml(article.wechat_account_name)}</span>`;
+            const sourceType = article.source_type;
+
+            // 源类型显示名称映射
+            const sourceTypeNames = {
+                'arxiv': 'ArXiv',
+                'rss': 'RSS',
+                'wechat': '微信',
+                'weibo': '微博热搜',
+                'hackernews': 'HackerNews',
+                'reddit': 'Reddit',
+                'twitter': 'Twitter'
+            };
+
+            if (sourceType === 'rss' && article.source_name) {
+                sourceBadge = `<span class="source-badge ${sourceType}" title="${escapeHtml(article.source_name)}">${escapeHtml(article.source_name)}</span>`;
+            } else if (sourceType === 'wechat' && article.wechat_account_name) {
+                sourceBadge = `<span class="source-badge ${sourceType}" title="${escapeHtml(article.wechat_account_name)}">${escapeHtml(article.wechat_account_name)}</span>`;
             } else {
-                sourceBadge = `<span class="source-badge ${article.source_type}">${article.source_type}</span>`;
+                const displayName = sourceTypeNames[sourceType] || sourceType;
+                sourceBadge = `<span class="source-badge ${sourceType}">${displayName}</span>`;
             }
 
             // Clean HTML tags from content/summary for display
