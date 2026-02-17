@@ -190,18 +190,19 @@ class VerificationService:
         attempts_key = VerificationService._get_attempts_key(email)
         cache.delete(attempts_key)
 
-        # 5. 发送邮件
+        # 5. 发送邮件（使用数据库配置）
         from apps.auth.email_templates import get_verification_email_content
 
         plain_text, html_body = get_verification_email_content(code)
 
         try:
-            from common.email import send_notification_email
+            from common.email import send_email_with_priority
 
-            sent = await send_notification_email(
-                to_addr=email,
+            sent, error_msg = await send_email_with_priority(
+                to_addrs=[email],
                 subject="ResearchPulse - 邮箱验证码",
                 body=plain_text,
+                session=session,
                 html_body=html_body,
             )
 
@@ -216,7 +217,7 @@ class VerificationService:
                 # 邮件发送失败，清理缓存
                 cache.delete(code_key)
                 cache.delete(rate_key)
-                logger.error(f"Failed to send verification email to: {email}")
+                logger.error(f"Failed to send verification email to: {email}, error: {error_msg}")
                 return {
                     "success": False,
                     "message": "邮件发送失败，请稍后重试",
@@ -469,18 +470,19 @@ class VerificationService:
         attempts_key = VerificationService._get_reset_attempts_key(email)
         cache.delete(attempts_key)
 
-        # 5. 发送邮件
+        # 5. 发送邮件（使用数据库配置）
         from apps.auth.email_templates import get_password_reset_email_content
 
         plain_text, html_body = get_password_reset_email_content(code)
 
         try:
-            from common.email import send_notification_email
+            from common.email import send_email_with_priority
 
-            sent = await send_notification_email(
-                to_addr=email,
+            sent, error_msg = await send_email_with_priority(
+                to_addrs=[email],
                 subject="ResearchPulse - 密码重置验证码",
                 body=plain_text,
+                session=session,
                 html_body=html_body,
             )
 
@@ -495,7 +497,7 @@ class VerificationService:
                 # 邮件发送失败，清理缓存
                 cache.delete(code_key)
                 cache.delete(rate_key)
-                logger.error(f"Failed to send password reset email to: {email}")
+                logger.error(f"Failed to send password reset email to: {email}, error: {error_msg}")
                 return {
                     "success": False,
                     "message": "邮件发送失败，请稍后重试",
