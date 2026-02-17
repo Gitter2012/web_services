@@ -971,6 +971,7 @@ def _article_to_dict(article: Article) -> Dict[str, Any]:
         "url": article.url,                   # 原文链接
         "author": article.author,             # 作者
         "summary": article.summary or "",     # 摘要，None 时返回空字符串
+        "content": article.content or "",     # 正文内容，None 时返回空字符串
         "content_summary": article.content_summary,  # AI 生成的内容摘要或翻译
         "category": article.category,         # 所属分类
         "tags": article.tags or [],           # 标签列表，None 时返回空列表

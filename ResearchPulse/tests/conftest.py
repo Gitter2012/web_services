@@ -11,8 +11,9 @@ import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy import text
+from sqlalchemy import text, event, BigInteger, Integer
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.pool import StaticPool
 
 # Ensure ResearchPulse package root is on sys.path so bare imports work
 _PROJECT_ROOT = os.path.join(os.path.dirname(__file__), os.pardir)
@@ -21,6 +22,17 @@ if _PROJECT_ROOT not in sys.path:
 
 # Use in-memory SQLite for tests (faster, no external dependencies)
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+
+# Fix BigInteger autoincrement on SQLite: BigInteger maps to BIGINT which
+# doesn't support autoincrement in SQLite.  Only the exact type name INTEGER
+# gets the special ROWID alias behaviour.  We register a compilation hook so
+# that BigInteger renders as INTEGER on the sqlite dialect.
+from sqlalchemy.ext.compiler import compiles as _compiles  # noqa: E402
+
+@_compiles(BigInteger, "sqlite")
+def _compile_big_int_sqlite(type_, compiler, **kw):
+    return "INTEGER"
 
 
 @pytest.fixture(scope="session")
@@ -51,6 +63,11 @@ def test_engine():
         TEST_DATABASE_URL,
         echo=False,
         future=True,
+        # Use StaticPool to ensure all connections share the same in-memory
+        # SQLite database, preventing "index already exists" errors when
+        # drop_all/create_all are called across different connections.
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
     )
 
     return engine
@@ -93,9 +110,15 @@ async def db_session(setup_test_db) -> AsyncGenerator[AsyncSession, None]:
         AsyncGenerator[AsyncSession, None]: Async session generator.
     """
     from core.models.base import Base
-    from core.models.permission import DEFAULT_PERMISSIONS, DEFAULT_ROLES
+    from core.models.permission import (
+        DEFAULT_PERMISSIONS, DEFAULT_ROLES,
+        Permission, Role, RolePermission,
+    )
+    # Import User model to ensure user_roles association table is registered
+    # before SQLAlchemy tries to configure mapper relationships.
+    from core.models.user import User  # noqa: F401
 
-    # Create fresh tables for each test
+    # Recreate all tables for each test
     async with setup_test_db.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
@@ -108,35 +131,33 @@ async def db_session(setup_test_db) -> AsyncGenerator[AsyncSession, None]:
     )
 
     async with session_factory() as session:
-        # Seed default roles and permissions
+        # Seed default roles and permissions using ORM models
+        # (raw SQL doesn't work with BigInteger autoincrement on SQLite)
         try:
             # Create permissions
+            perm_objs = {}
             for perm_data in DEFAULT_PERMISSIONS:
-                await session.execute(
-                    text("INSERT INTO permissions (name, resource, action, description) VALUES (:name, :resource, :action, :description)"),
-                    perm_data
+                perm = Permission(
+                    name=perm_data["name"],
+                    resource=perm_data["resource"],
+                    action=perm_data["action"],
+                    description=perm_data["description"],
                 )
+                session.add(perm)
+                perm_objs[perm_data["name"]] = perm
             await session.flush()
 
-            # Create roles
+            # Create roles and assign permissions
             for role_name, role_data in DEFAULT_ROLES.items():
-                await session.execute(
-                    text("INSERT INTO roles (name, description) VALUES (:name, :description)"),
-                    {"name": role_name, "description": role_data["description"]}
+                role = Role(
+                    name=role_name,
+                    description=role_data["description"],
                 )
-            await session.flush()
-
-            # Assign permissions to roles
-            for role_name, role_data in DEFAULT_ROLES.items():
+                # Attach permission objects to the role relationship
                 for perm_name in role_data["permissions"]:
-                    await session.execute(
-                        text("""
-                            INSERT INTO role_permissions (role_id, permission_id)
-                            SELECT r.id, p.id FROM roles r, permissions p
-                            WHERE r.name = :role_name AND p.name = :perm_name
-                        """),
-                        {"role_name": role_name, "perm_name": perm_name}
-                    )
+                    if perm_name in perm_objs:
+                        role.permissions.append(perm_objs[perm_name])
+                session.add(role)
 
             await session.commit()
         except Exception as e:
@@ -213,6 +234,8 @@ def client(test_user_data: dict) -> Generator[TestClient, None, None]:
         TEST_DATABASE_URL,
         echo=False,
         future=True,
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
     )
 
     # Create session factory

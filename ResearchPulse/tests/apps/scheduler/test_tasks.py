@@ -8,7 +8,17 @@ Run with: pytest tests/apps/scheduler/ -v
 from __future__ import annotations
 
 import pytest
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
+
+
+def _reset_scheduler():
+    """Stop any running scheduler and reset the singleton."""
+    import apps.scheduler.tasks as tasks_module
+    if tasks_module._scheduler is not None:
+        if tasks_module._scheduler.running:
+            tasks_module._scheduler.shutdown()
+        tasks_module._scheduler = None
 
 
 class TestSchedulerSingleton:
@@ -29,7 +39,7 @@ class TestSchedulerSingleton:
         import apps.scheduler.tasks as tasks_module
 
         # Reset the singleton for testing
-        tasks_module._scheduler = None
+        _reset_scheduler()
 
         scheduler1 = get_scheduler()
         scheduler2 = get_scheduler()
@@ -49,7 +59,7 @@ class TestSchedulerSingleton:
         import apps.scheduler.tasks as tasks_module
 
         # Reset the singleton for testing
-        tasks_module._scheduler = None
+        _reset_scheduler()
 
         scheduler = get_scheduler()
         assert isinstance(scheduler, AsyncIOScheduler)
@@ -66,7 +76,7 @@ class TestSchedulerSingleton:
         import apps.scheduler.tasks as tasks_module
 
         # Reset the singleton for testing
-        tasks_module._scheduler = None
+        _reset_scheduler()
 
         scheduler = get_scheduler()
         # Timezone should be set from settings
@@ -91,10 +101,10 @@ class TestSchedulerLifecycle:
         from apps.scheduler import tasks as tasks_module
 
         # Reset singleton
-        tasks_module._scheduler = None
+        _reset_scheduler()
 
         # Mock the feature_config
-        with patch("apps.scheduler.tasks.feature_config") as mock_feature:
+        with patch("common.feature_config.feature_config") as mock_feature:
             mock_feature.get_bool.return_value = False  # Disable optional features
             mock_feature.get_int.return_value = 1
             mock_feature.get.return_value = "mon"
@@ -126,9 +136,9 @@ class TestSchedulerLifecycle:
         from apps.scheduler import tasks as tasks_module
 
         # Reset singleton
-        tasks_module._scheduler = None
+        _reset_scheduler()
 
-        with patch("apps.scheduler.tasks.feature_config") as mock_feature:
+        with patch("common.feature_config.feature_config") as mock_feature:
             # All optional features disabled
             mock_feature.get_bool.return_value = False
             mock_feature.get_int.return_value = 1
@@ -159,9 +169,9 @@ class TestSchedulerLifecycle:
         from apps.scheduler import tasks as tasks_module
 
         # Reset singleton
-        tasks_module._scheduler = None
+        _reset_scheduler()
 
-        with patch("apps.scheduler.tasks.feature_config") as mock_feature:
+        with patch("common.feature_config.feature_config") as mock_feature:
             # All optional features enabled
             mock_feature.get_bool.return_value = True
             mock_feature.get_int.return_value = 1
@@ -192,9 +202,9 @@ class TestSchedulerLifecycle:
         from apps.scheduler import tasks as tasks_module
 
         # Reset singleton
-        tasks_module._scheduler = None
+        _reset_scheduler()
 
-        with patch("apps.scheduler.tasks.feature_config") as mock_feature:
+        with patch("common.feature_config.feature_config") as mock_feature:
             mock_feature.get_bool.return_value = False
             mock_feature.get_int.return_value = 1
             mock_feature.get.return_value = "mon"
@@ -204,7 +214,11 @@ class TestSchedulerLifecycle:
         scheduler = tasks_module.get_scheduler()
         assert scheduler.running is True
 
+        # stop_scheduler should shut down without error
         await tasks_module.stop_scheduler()
+        # AsyncIOScheduler.shutdown() defers actual state change to the event
+        # loop, so yield control briefly before checking the running flag.
+        await asyncio.sleep(0.1)
         assert scheduler.running is False
 
     @pytest.mark.asyncio
@@ -219,7 +233,7 @@ class TestSchedulerLifecycle:
         from apps.scheduler import tasks as tasks_module
 
         # Reset singleton
-        tasks_module._scheduler = None
+        _reset_scheduler()
 
         # Should not raise exception when scheduler not running
         await tasks_module.stop_scheduler()
@@ -243,9 +257,9 @@ class TestJobTriggers:
         from apps.scheduler import tasks as tasks_module
         from apscheduler.triggers.interval import IntervalTrigger
 
-        tasks_module._scheduler = None
+        _reset_scheduler()
 
-        with patch("apps.scheduler.tasks.feature_config") as mock_feature:
+        with patch("common.feature_config.feature_config") as mock_feature:
             mock_feature.get_bool.return_value = False
             mock_feature.get_int.return_value = 6  # 6 hour interval
             mock_feature.get.return_value = "mon"
@@ -272,9 +286,9 @@ class TestJobTriggers:
         from apps.scheduler import tasks as tasks_module
         from apscheduler.triggers.cron import CronTrigger
 
-        tasks_module._scheduler = None
+        _reset_scheduler()
 
-        with patch("apps.scheduler.tasks.feature_config") as mock_feature:
+        with patch("common.feature_config.feature_config") as mock_feature:
             mock_feature.get_bool.return_value = False
             mock_feature.get_int.return_value = 3  # 3 AM
             mock_feature.get.return_value = "mon"
@@ -307,17 +321,20 @@ class TestJobReplaceExisting:
         """
         from apps.scheduler import tasks as tasks_module
 
-        tasks_module._scheduler = None
+        # Clean up any previously running scheduler
+        _reset_scheduler()
 
-        with patch("apps.scheduler.tasks.feature_config") as mock_feature:
+        with patch("common.feature_config.feature_config") as mock_feature:
             mock_feature.get_bool.return_value = False
             mock_feature.get_int.return_value = 1
             mock_feature.get.return_value = "mon"
 
             await tasks_module.start_scheduler()
 
-        # Starting again should not add duplicate jobs
-        with patch("apps.scheduler.tasks.feature_config") as mock_feature:
+        # Stop the scheduler, then start again to test replace_existing
+        _reset_scheduler()
+
+        with patch("common.feature_config.feature_config") as mock_feature:
             mock_feature.get_bool.return_value = False
             mock_feature.get_int.return_value = 1
             mock_feature.get.return_value = "mon"
@@ -437,5 +454,5 @@ class TestJobImports:
         Returns:
             None: This test does not return a value.
         """
-        from apps.scheduler.jobs.notification_job import run_notification_job
-        assert callable(run_notification_job)
+        from apps.scheduler.jobs.notification_job import send_all_user_notifications
+        assert callable(send_all_user_notifications)

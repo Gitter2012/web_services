@@ -777,8 +777,9 @@
                 sourceBadge = `<span class="source-badge ${article.source_type}">${article.source_type}</span>`;
             }
 
-            // Clean HTML tags from summary for display
-            const cleanSummary = stripHtml(article.summary || '');
+            // Clean HTML tags from content/summary for display
+            // 优先使用完整正文 content，降级到摘要 summary
+            const cleanSummary = stripHtml(article.content || article.summary || '');
             const hasLongSummary = cleanSummary.length > 300;
 
             // Format times

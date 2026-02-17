@@ -416,7 +416,7 @@ class TestFallbackMechanism:
         """
         from common.email import send_email_with_fallback
 
-        # First call fails, second succeeds
+        # First call fails (SendGrid 401), second call succeeds (Brevo 201)
         call_count = [0]
 
         def side_effect(*args, **kwargs):
@@ -438,6 +438,7 @@ class TestFallbackMechanism:
             backends=["sendgrid", "brevo"],
             from_addr="sender@example.com",
             api_key="test_key",
+            retries=1,
         )
 
         assert ok is True

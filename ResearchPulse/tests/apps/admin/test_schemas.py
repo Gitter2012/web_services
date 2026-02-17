@@ -98,8 +98,8 @@ class TestEmailConfigUpdateSchema:
             smtp_user="user@gmail.com",
             smtp_password="app_password",
             smtp_use_tls=True,
-            email_enabled=True,
-            active_backend="smtp",
+            sender_email="user@gmail.com",
+            is_active=True,
         )
         assert config.smtp_host == "smtp.gmail.com"
         assert config.smtp_port == 587
@@ -117,11 +117,11 @@ class TestEmailConfigUpdateSchema:
 
         config = EmailConfigUpdate(
             sendgrid_api_key="SG.test_key",
-            email_enabled=True,
-            active_backend="sendgrid",
+            sender_email="sender@example.com",
+            is_active=True,
         )
         assert config.sendgrid_api_key == "SG.test_key"
-        assert config.active_backend == "sendgrid"
+        assert config.is_active is True
 
     def test_valid_mailgun_config(self):
         """Verify valid Mailgun configuration.
@@ -136,8 +136,8 @@ class TestEmailConfigUpdateSchema:
         config = EmailConfigUpdate(
             mailgun_api_key="key-test",
             mailgun_domain="mg.example.com",
-            email_enabled=True,
-            active_backend="mailgun",
+            sender_email="noreply@mg.example.com",
+            is_active=True,
         )
         assert config.mailgun_api_key == "key-test"
         assert config.mailgun_domain == "mg.example.com"
@@ -155,8 +155,8 @@ class TestEmailConfigUpdateSchema:
         config = EmailConfigUpdate(
             brevo_api_key="xkeysib-test",
             brevo_from_name="ResearchPulse",
-            email_enabled=True,
-            active_backend="brevo",
+            sender_email="noreply@example.com",
+            is_active=True,
         )
         assert config.brevo_api_key == "xkeysib-test"
         assert config.brevo_from_name == "ResearchPulse"
@@ -174,19 +174,19 @@ class TestEmailConfigUpdateSchema:
         config = EmailConfigUpdate()
         assert config.smtp_host is None
         assert config.smtp_port is None
-        assert config.email_enabled is None
+        assert config.is_active is None
 
     def test_push_settings(self):
-        """Verify push notification settings.
+        """Verify push notification settings on EmailGlobalSettings.
 
-        验证推送通知设置。
+        验证推送通知设置属于 EmailGlobalSettings 模型。
 
         Returns:
             None: This test does not return a value.
         """
-        from apps.admin.api import EmailConfigUpdate
+        from apps.admin.api import EmailGlobalSettings
 
-        config = EmailConfigUpdate(
+        config = EmailGlobalSettings(
             push_frequency="daily",
             push_time="09:00",
             max_articles_per_email=20,
@@ -196,37 +196,37 @@ class TestEmailConfigUpdateSchema:
         assert config.max_articles_per_email == 20
 
 
-class TestAssignRoleSchema:
-    """Test AssignRole schema validation.
+class TestUserRoleUpdateSchema:
+    """Test UserRoleUpdate schema validation.
 
     验证角色分配请求模型校验逻辑。
     """
 
     def test_valid_assign_role(self):
-        """Verify valid AssignRole schema.
+        """Verify valid UserRoleUpdate schema.
 
         验证有效的角色分配。
 
         Returns:
             None: This test does not return a value.
         """
-        from apps.admin.api import AssignRole
+        from apps.admin.api import UserRoleUpdate
 
-        assign = AssignRole(role_name="admin")
+        assign = UserRoleUpdate(role_name="admin")
         assert assign.role_name == "admin"
 
     def test_assign_role_various_names(self):
-        """Verify AssignRole accepts various role names.
+        """Verify UserRoleUpdate accepts various role names.
 
         验证角色分配接受各种角色名。
 
         Returns:
             None: This test does not return a value.
         """
-        from apps.admin.api import AssignRole
+        from apps.admin.api import UserRoleUpdate
 
         for role_name in ["user", "admin", "editor", "viewer"]:
-            assign = AssignRole(role_name=role_name)
+            assign = UserRoleUpdate(role_name=role_name)
             assert assign.role_name == role_name
 
 

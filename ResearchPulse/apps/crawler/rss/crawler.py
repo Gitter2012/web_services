@@ -20,6 +20,7 @@ from typing import Any, Dict, List
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import feedparser
+from bs4 import BeautifulSoup
 
 from apps.crawler.base import BaseCrawler
 from common.http import get_text_async
@@ -176,6 +177,7 @@ class RssCrawler(BaseCrawler):
         """Parse RSS XML into article dictionaries.
 
         使用 feedparser 解析 XML 并逐条处理条目。
+        对于仅提供摘要的 Feed 条目，尝试访问原文 URL 提取完整正文。
 
         Args:
             raw_data: RSS/Atom XML text from fetch().
@@ -191,6 +193,19 @@ class RssCrawler(BaseCrawler):
             article = self._parse_entry(entry)
             if article:
                 articles.append(article)
+
+        # 对于 content 与 summary 相同（即 RSS 未提供完整正文）的文章，
+        # 尝试访问原文 URL 提取完整内容
+        for article in articles:
+            if article.get("url") and self._content_needs_fetch(article):
+                try:
+                    full_content = await self._fetch_full_content(article["url"])
+                    if full_content and len(full_content) > len(article.get("content", "")):
+                        article["content"] = full_content
+                except Exception as e:
+                    self.logger.debug(
+                        f"Failed to fetch full content for {article.get('url')}: {e}"
+                    )
 
         return articles
 
@@ -304,3 +319,103 @@ class RssCrawler(BaseCrawler):
             "tags": tags,
             "publish_time": publish_time,
         }
+
+    @staticmethod
+    def _content_needs_fetch(article: Dict[str, Any]) -> bool:
+        """Check whether an article's content should be fetched from the original URL.
+
+        当 content 为空、与 summary 完全相同、或长度过短（< 200 字符）时，
+        认为 RSS Feed 未提供完整正文，需要从原文页面提取。
+
+        Args:
+            article: Article dictionary from _parse_entry.
+
+        Returns:
+            bool: True if content should be fetched from the original URL.
+        """
+        content = (article.get("content") or "").strip()
+        summary = (article.get("summary") or "").strip()
+
+        # 无正文内容
+        if not content:
+            return True
+        # 正文与摘要完全相同（说明 RSS 只提供了摘要）
+        if content == summary:
+            return True
+        # 正文过短（去除 HTML 标签后不足 200 字符），可能只是截断的摘要
+        text_only = re.sub(r"<[^>]*>", "", content).strip()
+        if len(text_only) < 200:
+            return True
+        return False
+
+    async def _fetch_full_content(self, url: str) -> str:
+        """Fetch and extract the main content from an article's original URL.
+
+        访问原文网页，使用 BeautifulSoup 提取正文内容。
+        采用多重策略识别正文区域：
+          1. 优先查找 <article> 标签
+          2. 降级查找常见正文容器的 class/id（如 article-body, post-content 等）
+          3. 最终降级提取 <body> 中最大的文本块
+
+        Args:
+            url: Article URL to fetch.
+
+        Returns:
+            str: Extracted article content (HTML), or empty string on failure.
+        """
+        try:
+            html = await get_text_async(
+                url,
+                timeout=15.0,
+                retries=1,
+                backoff=1.0,
+            )
+        except Exception:
+            return ""
+
+        if not html:
+            return ""
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        # 移除干扰元素（脚本、样式、导航、侧边栏、页脚等）
+        for tag in soup.find_all(["script", "style", "nav", "header", "footer",
+                                   "aside", "iframe", "noscript"]):
+            tag.decompose()
+
+        # 策略 1: 查找 <article> 标签
+        article_tag = soup.find("article")
+        if article_tag:
+            text = article_tag.get_text(separator="\n", strip=True)
+            if len(text) >= 100:
+                return text
+
+        # 策略 2: 查找常见正文容器的 class 或 id
+        content_selectors = [
+            {"class_": re.compile(r"article[_-]?(body|content|text)", re.I)},
+            {"class_": re.compile(r"post[_-]?(body|content|text)", re.I)},
+            {"class_": re.compile(r"entry[_-]?(body|content|text)", re.I)},
+            {"class_": re.compile(r"(main[_-]?content|content[_-]?area)", re.I)},
+            {"id": re.compile(r"article[_-]?(body|content|text)", re.I)},
+            {"id": re.compile(r"(main[_-]?content|content[_-]?body)", re.I)},
+        ]
+        for selector in content_selectors:
+            container = soup.find("div", **selector)
+            if container:
+                text = container.get_text(separator="\n", strip=True)
+                if len(text) >= 100:
+                    return text
+
+        # 策略 3: 查找 body 中最长的文本段落集合
+        body = soup.find("body")
+        if body:
+            # 收集所有 <p> 标签的文本
+            paragraphs = body.find_all("p")
+            if paragraphs:
+                full_text = "\n".join(
+                    p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)
+                )
+                if len(full_text) >= 100:
+                    return full_text
+
+        return ""

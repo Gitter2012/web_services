@@ -125,14 +125,14 @@ class Article(Base, TimestampMixin):
     publish_time: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
-        index=True,
+        # NOTE: index defined in __table_args__ as ix_articles_publish_time
     )
     # 爬虫抓取此文章的时间
     crawl_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
-        index=True,
+        # NOTE: index defined in __table_args__ as ix_articles_crawl_time
     )
 
     # ---- 归档相关字段 ----
@@ -141,7 +141,7 @@ class Article(Base, TimestampMixin):
         Boolean,
         default=False,
         nullable=False,
-        index=True,
+        # NOTE: index defined in __table_args__ as ix_articles_archived
     )
     archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
