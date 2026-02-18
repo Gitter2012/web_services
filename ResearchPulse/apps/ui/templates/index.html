@@ -1304,7 +1304,19 @@
                 timeDisplay = `<span>📅 ${publishTime || crawlTime || '未知'}</span>`;
             }
 
-            const tags = (article.tags || []).slice(0, 5).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('');
+            let tagsArray = [];
+            const rawTags = article.tags;
+            if (Array.isArray(rawTags)) {
+                tagsArray = rawTags;
+            } else if (rawTags && typeof rawTags === 'object') {
+                // dict 类型 tags（如微博热搜元数据），提取有意义的 key-value 拼为标签
+                Object.entries(rawTags).forEach(([k, v]) => {
+                    if (v !== '' && v !== 0 && v !== null && v !== undefined) {
+                        tagsArray.push(`${k}: ${v}`);
+                    }
+                });
+            }
+            const tags = tagsArray.slice(0, 5).map(t => `<span class="tag">${escapeHtml(String(t))}</span>`).join('');
 
             // ArXiv specific details and actions
             let arxivDetails = '';

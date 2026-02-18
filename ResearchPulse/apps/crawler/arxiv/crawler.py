@@ -234,6 +234,11 @@ def _parse_rss_entry(entry: feedparser.FeedParserDict) -> Paper:
     match = re.search(r"arxiv.org/abs/([\w.]+(?:v\d+)?)", entry_id)
     if match:
         arxiv_id = match.group(1)
+    else:
+        # 兼容 RSS feed 中的 oai:arXiv.org:XXXX 格式 ID
+        match = re.search(r"oai:arXiv\.org:([\w.]+(?:v\d+)?)", entry_id)
+        if match:
+            arxiv_id = match.group(1)
 
     # 清洗标题和摘要中的 HTML 标签
     title = _clean_text(entry.get("title", ""))

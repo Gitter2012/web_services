@@ -162,11 +162,14 @@ class BaseCrawler(ABC):
                 else:
                     # 文章不存在：创建新记录
                     # 自动填入 source_type、source_id 和 crawl_time
+                    # 过滤掉非 Article 模型字段，避免子类爬虫传入额外字段导致 TypeError
+                    valid_columns = {c.key for c in Article.__table__.columns}
+                    filtered_data = {k: v for k, v in article_data.items() if k in valid_columns}
                     article = Article(
                         source_type=self.source_type,
                         source_id=self.source_id,
                         crawl_time=datetime.now(timezone.utc),
-                        **article_data,
+                        **filtered_data,
                     )
                     session.add(article)
                     saved_count += 1

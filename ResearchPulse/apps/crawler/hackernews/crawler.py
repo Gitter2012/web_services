@@ -77,6 +77,7 @@ class HackerNewsCrawler(BaseCrawler):
         feed_type: str,
         timeout: float = 30.0,
         fetch_external_content: bool = True,
+        **kwargs,
     ):
         """Initialize HackerNews crawler.
 

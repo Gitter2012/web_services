@@ -72,6 +72,7 @@ class RedditCrawler(BaseCrawler):
         source_name: str,
         timeout: float = 30.0,
         fetch_external_content: bool = True,
+        **kwargs,
     ):
         """Initialize Reddit crawler.
 
