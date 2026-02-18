@@ -25,6 +25,8 @@ from typing import Any, Dict, List
 import feedparser
 
 from apps.crawler.base import BaseCrawler
+from apps.crawler.registry import CrawlerRegistry
+from apps.crawler.models import ArxivCategory
 from common.http import get_text_async
 
 # 模块级日志器
@@ -421,6 +423,7 @@ def _parse_html_list(html_text: str, run_date: str | None = None) -> List[Paper]
 #   3. 智能补充: 当 Atom API 结果不足 max_results 时，才请求 RSS Feed
 #   4. 合并去重: 同一论文可能在多个源中出现，按 arxiv_id 去重并合并最完整的数据
 # =============================================================================
+@CrawlerRegistry.register("arxiv", model=ArxivCategory, priority=10)
 class ArxivCrawler(BaseCrawler):
     """Crawler for arXiv papers.
 

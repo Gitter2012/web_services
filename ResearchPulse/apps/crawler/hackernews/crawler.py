@@ -24,6 +24,8 @@ from typing import Any, Dict, List, Optional
 import feedparser
 
 from apps.crawler.base import BaseCrawler
+from apps.crawler.registry import CrawlerRegistry
+from apps.crawler.models import HackerNewsSource
 from common.http import get_text_async
 
 # 模块级日志器
@@ -60,6 +62,7 @@ HN_FEED_NAMES = {
 #   2. 对于链接类帖子（非 Ask HN），尝试抓取外部链接的原文内容
 #   3. 使用 HN 讨论页作为文章 URL，方便用户参与讨论
 # =============================================================================
+@CrawlerRegistry.register("hackernews", model=HackerNewsSource, priority=40)
 class HackerNewsCrawler(BaseCrawler):
     """Crawler for HackerNews RSS feeds via hnrss.org.
 

@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from apps.crawler.base import BaseCrawler
+from apps.crawler.registry import CrawlerRegistry
+from apps.crawler.models import WeiboHotSearch
 
 # 模块级日志器
 logger = logging.getLogger(__name__)
@@ -63,6 +65,7 @@ BOARD_TYPE_MAP = {
 }
 
 
+@CrawlerRegistry.register("weibo", model=WeiboHotSearch, priority=30)
 class WeiboCrawler(BaseCrawler):
     """Weibo hot search crawler.
 

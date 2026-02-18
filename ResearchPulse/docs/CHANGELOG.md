@@ -9,6 +9,27 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **爬虫模块重构** (`apps/crawler/`)
+  - `registry.py`: 爬虫注册表，支持装饰器方式注册爬虫类型
+  - `factory.py`: 爬虫工厂，封装爬虫实例创建逻辑
+  - `runner.py`: 统一运行器，提供单源/多源/全量爬取入口
+  - `crawl.sh`: 手动爬取触发脚本
+
+### 变更
+
+- **爬虫模块架构优化**
+  - 采用工厂模式 + 注册表模式重构爬虫模块
+  - 简化 `crawl_job.py`，移除冗余代码
+  - 添加新数据源无需修改调度代码，只需注册装饰器
+
+- **arXiv 爬虫增强**
+  - 支持多排序模式（submittedDate + lastUpdatedDate）
+  - 添加论文类型标记（new/updated）
+  - 新增 RSS 新域名 rss.arxiv.org，保留旧域名作为备用
+  - 更新 HTML 解析适配 arXiv 页面结构变化
+
 ### 文档
 
 - 全面更新 README.md，新增 7 种数据源说明、完整 API 概览、测试指南

@@ -25,6 +25,8 @@ from typing import Any, Dict, List, Optional
 import feedparser
 
 from apps.crawler.base import BaseCrawler
+from apps.crawler.registry import CrawlerRegistry
+from apps.crawler.models import RedditSource
 from common.http import get_text_async
 
 # 模块级日志器
@@ -54,6 +56,7 @@ LINK_POST_PATTERN = re.compile(r"^\s*submitted by\s+/u/\S+\s*\[link\]\s*\[commen
 #   2. source_type 区分 "subreddit" 和 "user" 两种订阅类型
 #   3. 对于链接类帖子，尝试抓取外部链接的内容
 # =============================================================================
+@CrawlerRegistry.register("reddit", model=RedditSource, priority=50)
 class RedditCrawler(BaseCrawler):
     """Crawler for Reddit RSS feeds.
 

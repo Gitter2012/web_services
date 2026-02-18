@@ -23,6 +23,8 @@ import feedparser
 from bs4 import BeautifulSoup
 
 from apps.crawler.base import BaseCrawler
+from apps.crawler.registry import CrawlerRegistry
+from apps.crawler.models import RssFeed
 from common.http import get_text_async
 
 # 模块级日志器
@@ -121,6 +123,7 @@ def generate_stable_external_id(entry: feedparser.FeedParserDict, url: str) -> s
 #   2. _parse_entry() 对每个字段都实现了多重降级逻辑，最大化信息提取
 #   3. 无标题的条目会被直接跳过，因为标题是展示文章的最基本要求
 # =============================================================================
+@CrawlerRegistry.register("rss", model=RssFeed, priority=20)
 class RssCrawler(BaseCrawler):
     """Crawler for RSS/Atom feeds.
 

@@ -114,11 +114,15 @@ ResearchPulse 采用分层架构设计，从上到下分为用户界面层、API
 
 ### 1. 爬虫模块 (apps/crawler)
 
-爬虫模块采用**插件架构**，通过抽象基类 `BaseCrawler` 定义统一接口，各数据源实现独立的爬虫类。
+爬虫模块采用**工厂模式 + 注册表模式**，通过抽象基类 `BaseCrawler` 定义统一接口，使用注册表管理爬虫类型，工厂类负责创建实例。
 
 ```
 crawler/
 ├── base.py              # 爬虫基类（定义 fetch/parse/save 接口）
+├── registry.py          # 爬虫注册表（装饰器注册、类型管理）
+├── factory.py           # 爬虫工厂（创建爬虫实例）
+├── runner.py            # 统一运行器（执行爬取任务）
+├── __init__.py          # 模块入口（自动导入注册）
 ├── arxiv/
 │   └── crawler.py       # arXiv 爬虫（API 方式）
 ├── rss/
@@ -151,6 +155,46 @@ class BaseCrawler:
     async def parse()         # 解析数据为文章对象
     async def save()          # 存入数据库（去重）
     async def run()           # 执行完整爬取流程
+```
+
+**爬虫注册机制：**
+
+```python
+# 使用装饰器注册爬虫类
+@CrawlerRegistry.register("arxiv", model=ArxivCategory, priority=10)
+class ArxivCrawler(BaseCrawler):
+    source_type = "arxiv"
+    ...
+
+# 注册表功能
+CrawlerRegistry.list_sources()           # 获取所有注册的源类型
+CrawlerRegistry.get_crawler_class("arxiv")  # 获取爬虫类
+CrawlerRegistry.get_model_class("arxiv")    # 获取数据源模型类
+```
+
+**工厂模式创建爬虫：**
+
+```python
+# 创建单个爬虫实例
+crawler = CrawlerFactory.create_sync("arxiv", category="cs.AI")
+
+# 为所有激活的数据源创建爬虫
+async for crawler, source in CrawlerFactory.create_for_active_sources():
+    result = await crawler.run()
+```
+
+**统一运行器：**
+
+```python
+# 运行单个数据源
+runner = CrawlerRunner()
+result = await runner.run_source("arxiv", category="cs.AI")
+
+# 运行指定类型的所有源
+summary = await runner.run_sources("arxiv")
+
+# 运行所有激活的爬虫
+summary = await runner.run_all()
 ```
 
 **各爬虫特点：**
@@ -755,10 +799,22 @@ TWITTERAPI_IO_KEY=xxx
 ### 添加新的数据源
 
 1. 在 `apps/crawler/` 下创建新目录
-2. 创建爬虫类继承 `BaseCrawler`
-3. 实现 `fetch()` 和 `parse()` 方法
-4. 在 `apps/scheduler/jobs/crawl_job.py` 中注册
-5. 更新 `config/defaults.yaml` 添加配置项
+2. 创建爬虫类继承 `BaseCrawler`，添加 `@CrawlerRegistry.register` 装饰器：
+   ```python
+   @CrawlerRegistry.register("new_source", model=NewSourceModel, priority=70)
+   class NewSourceCrawler(BaseCrawler):
+       source_type = "new_source"
+
+       async def fetch(self): ...
+       async def parse(self, raw_data): ...
+   ```
+3. 在 `apps/crawler/__init__.py` 末尾添加导入：
+   ```python
+   from apps.crawler.new_source import NewSourceCrawler
+   ```
+4. 更新 `config/defaults.yaml` 添加配置项（如需要）
+
+**注意**：无需修改 `crawl_job.py` 或其他调度代码，新爬虫会自动参与全量爬取。
 
 ### 添加新的 AI 提供方
 

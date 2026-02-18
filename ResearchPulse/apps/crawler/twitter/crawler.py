@@ -23,6 +23,8 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from apps.crawler.base import BaseCrawler
+from apps.crawler.registry import CrawlerRegistry
+from apps.crawler.models import TwitterSource
 
 # 模块级日志器
 logger = logging.getLogger(__name__)
@@ -42,6 +44,7 @@ DEFAULT_CACHE_TTL = 300.0  # 5 minutes
 #   2. 支持 last_tweet_id 增量抓取，减少重复数据
 #   3. 类级别 TTL 缓存，避免短时间内重复请求
 # =============================================================================
+@CrawlerRegistry.register("twitter", model=TwitterSource, priority=60)
 class TwitterCrawler(BaseCrawler):
     """Crawler for Twitter user tweets using TwitterAPI.io.
 

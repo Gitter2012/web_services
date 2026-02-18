@@ -49,11 +49,29 @@ show_help() {
     echo "              integration    集成测试"
     echo "              --html         HTML 报告"
     echo ""
+    echo -e "  ${CYAN}crawl${NC}     手动爬取"
+    echo "              all            所有数据源"
+    echo "              arxiv          arXiv 学术论文"
+    echo "              rss            RSS 订阅源"
+    echo "              weibo          微博热搜"
+    echo "              hackernews     HackerNews"
+    echo "              reddit         Reddit"
+    echo "              twitter        Twitter"
+    echo "              --dry-run      模拟运行"
+    echo "              --verbose, -v  详细输出"
+    echo ""
+    echo -e "  ${CYAN}sync${NC}      同步数据"
+    echo "              categories     arXiv 分类"
+    echo "              --force, -f    强制同步"
+    echo ""
     echo "示例:"
     echo "  ./scripts/control.sh deploy"
     echo "  ./scripts/control.sh start -d"
     echo "  ./scripts/control.sh status -v"
     echo "  ./scripts/control.sh test coverage --html"
+    echo "  ./scripts/control.sh crawl arxiv cs.AI cs.CL"
+    echo "  ./scripts/control.sh crawl all --dry-run"
+    echo "  ./scripts/control.sh sync categories --force"
     echo ""
 }
 
@@ -76,6 +94,8 @@ case "$COMMAND" in
     deploy|init)   "$SCRIPT_DIR/${COMMAND}.sh" "$@" ;;
     start|stop|restart|status) "$SCRIPT_DIR/service.sh" "$COMMAND" "$@" ;;
     test)          "$SCRIPT_DIR/test.sh" "$@" ;;
+    crawl)         "$SCRIPT_DIR/crawl.sh" "$@" ;;
+    sync)          "$SCRIPT_DIR/sync-categories.sh" "$@" ;;
     logs)          show_logs "$@" ;;
     help|--help|-h) show_help ;;
     *) echo -e "${RED}未知命令: $COMMAND${NC}"; show_help; exit 1 ;;
