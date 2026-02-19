@@ -1164,7 +1164,7 @@
             }
         }
 
-        function exportMarkdown() {
+        async function exportMarkdown() {
             const category = document.getElementById('category-select').value;
             const timeRange = document.getElementById('time-range').value;
             const sort = document.getElementById('sort-select').value;
@@ -1180,9 +1180,36 @@
                 params.append('from_date', date.toISOString().split('T')[0]);
             }
 
-            // Open download link
+            // 携带 token 请求导出接口，再通过 Blob 触发下载
             const url = `${API_BASE}/export/markdown?${params}`;
-            window.open(url, '_blank');
+            const headers = {};
+            const token = localStorage.getItem('access_token');
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            try {
+                const resp = await fetch(url, { headers });
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    alert(err.detail || '导出失败');
+                    return;
+                }
+                const blob = await resp.blob();
+                const disposition = resp.headers.get('Content-Disposition') || '';
+                const match = disposition.match(/filename="?([^"]+)"?/);
+                const filename = match ? match[1] : 'export.md';
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(a.href);
+            } catch (e) {
+                console.error('Export failed:', e);
+                alert('导出失败，请检查网络连接');
+            }
         }
 
         async function loadArticles() {
