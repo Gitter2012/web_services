@@ -243,6 +243,12 @@ def _parse_rss_entry(entry: feedparser.FeedParserDict) -> Paper:
     # 清洗标题和摘要中的 HTML 标签
     title = _clean_text(entry.get("title", ""))
     abstract = _clean_text(entry.get("summary", ""))
+    # 移除 RSS 摘要开头的 arXiv 元数据前缀（如 "arXiv:2602.14135v2 Announce Type: replace"）
+    abstract = re.sub(
+        r"^arXiv:\d+\.\d+(?:v\d+)?\s+Announce Type:\s*\S+\s*",
+        "",
+        abstract,
+    )
 
     # 提取作者列表，支持两种格式：
     # 1. authors 字段（结构化列表，每个元素有 name 属性）
