@@ -137,16 +137,22 @@ def is_paper_content(url: str, title: str) -> bool:
     return False
 
 
-def classify_by_domain(url: str) -> tuple[str, int] | None:
-    """Classify content by URL domain. Returns (category, importance) or None."""
+def classify_by_domain(url: str, domain: str | None = None) -> tuple[str, int] | None:
+    """Classify content by URL domain. Returns (category, importance) or None.
+
+    Args:
+        url: Article URL.
+        domain: Pre-parsed domain (skip urlparse if provided).
+    """
     # 根据 URL 域名进行快速分类
     # 参数：url - 文章的 URL
     # 返回值：(分类, 重要性分数) 或 None（无法根据域名分类时）
-    if not url:
+    if not url and not domain:
         return None
     try:
-        parsed = urlparse(url)
-        domain = parsed.netloc.lower().replace("www.", "")
+        if domain is None:
+            parsed = urlparse(url)
+            domain = parsed.netloc.lower().replace("www.", "")
         # 精确匹配高置信度域名
         if domain in HIGH_CONFIDENCE_DOMAINS:
             return HIGH_CONFIDENCE_DOMAINS[domain]
@@ -159,8 +165,15 @@ def classify_by_domain(url: str) -> tuple[str, int] | None:
     return None
 
 
-def estimate_task_type(url: str, title: str, content: str) -> str:
-    """Estimate the appropriate task type for processing."""
+def estimate_task_type(url: str, title: str, content: str, domain: str | None = None) -> str:
+    """Estimate the appropriate task type for processing.
+
+    Args:
+        url: Article URL.
+        title: Article title.
+        content: Article content.
+        domain: Pre-parsed domain (skip urlparse if provided).
+    """
     # 估算文章应使用的 AI 处理任务类型
     # 返回值：
     #   "paper_full" - 学术论文，使用论文专用的详细分析 prompt
@@ -176,8 +189,8 @@ def estimate_task_type(url: str, title: str, content: str) -> str:
     # 检查是否为学术论文
     if is_paper_content(url, title):
         return "paper_full"
-    # 检查域名分类结果
-    domain_result = classify_by_domain(url)
+    # 检查域名分类结果，复用已解析的 domain
+    domain_result = classify_by_domain(url, domain=domain)
     if domain_result:
         _, importance = domain_result
         if importance >= 7:

@@ -296,6 +296,13 @@ class BaseAIProvider(ABC):
         """
         ...
 
+    async def close(self) -> None:
+        """Release resources held by the provider.
+
+        释放 Provider 持有的资源（如 HTTP 连接池）。子类按需覆写。
+        """
+        pass
+
     @abstractmethod
     async def is_available(self) -> bool:
         """Check if the provider is available.

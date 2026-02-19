@@ -185,9 +185,10 @@ class EmbeddingService:
     async def batch_compute(
         self, article_ids: list[int], db: AsyncSession
     ) -> dict:
-        """Batch compute embeddings.
+        """Batch compute embeddings using bulk encoding.
 
-        批量计算文章嵌入。
+        批量计算文章嵌入，使用 encode_batch 一次性编码所有文本，
+        并批量写入 Milvus 和 MySQL，显著提升吞吐量。
 
         Args:
             article_ids: Article ID list.
@@ -196,23 +197,82 @@ class EmbeddingService:
         Returns:
             dict: Summary of computed/skipped/failed counts.
         """
-        # 逐篇计算嵌入并统计结果
+        if not article_ids:
+            return {"total": 0, "computed": 0, "skipped": 0, "failed": 0}
+
         computed = 0
         skipped = 0
         failed = 0
 
-        for article_id in article_ids:
-            try:
-                result = await self.compute_embedding(article_id, db)
-                if result.get("provider") == "cached":
-                    skipped += 1    # 已有嵌入，跳过
-                elif result.get("success"):
-                    computed += 1   # 成功计算
-                else:
-                    failed += 1     # 计算失败（如文章不存在）
-            except Exception as e:
-                logger.warning(f"Embedding failed for article {article_id}: {e}")
+        # 第一步：批量查询文章
+        result = await db.execute(
+            select(Article).where(Article.id.in_(article_ids))
+        )
+        articles = {a.id: a for a in result.scalars().all()}
+
+        # 第二步：批量检查已有嵌入（幂等性保障）
+        existing_result = await db.execute(
+            select(ArticleEmbedding.article_id).where(
+                ArticleEmbedding.article_id.in_(article_ids)
+            )
+        )
+        existing_ids = {row[0] for row in existing_result.all()}
+
+        # 第三步：构建待编码的文本列表
+        to_encode_ids: list[int] = []
+        to_encode_texts: list[str] = []
+        for aid in article_ids:
+            if aid in existing_ids:
+                skipped += 1
+                continue
+            article = articles.get(aid)
+            if not article:
                 failed += 1
+                continue
+            text = f"{article.title or ''} {article.ai_summary or article.summary or ''}"
+            if len(text) > 2000:
+                text = text[:2000]
+            to_encode_ids.append(aid)
+            to_encode_texts.append(text)
+
+        if not to_encode_texts:
+            return {"total": len(article_ids), "computed": computed, "skipped": skipped, "failed": failed}
+
+        # 第四步：批量编码（使用 encode_batch，通过线程池避免阻塞事件循环）
+        try:
+            embeddings = await asyncio.to_thread(self.provider.encode_batch, to_encode_texts)
+        except Exception as e:
+            logger.error(f"Batch encoding failed: {e}")
+            return {"total": len(article_ids), "computed": 0, "skipped": skipped, "failed": failed + len(to_encode_texts)}
+
+        # 第五步：批量写入 Milvus
+        milvus = self._get_milvus()
+        milvus_ids_map: dict[int, str] = {}
+        if milvus:
+            try:
+                ids = milvus.insert_vectors(to_encode_ids, embeddings)
+                if ids:
+                    for i, aid in enumerate(to_encode_ids):
+                        if i < len(ids):
+                            milvus_ids_map[aid] = str(ids[i])
+            except Exception as e:
+                logger.warning(f"Milvus batch insert failed: {e}")
+
+        # 第六步：批量创建 MySQL 元数据记录
+        dimension = len(embeddings[0]) if embeddings else settings.embedding_dimension
+        now = datetime.now(timezone.utc)
+        meta_records = []
+        for aid in to_encode_ids:
+            meta_records.append(ArticleEmbedding(
+                article_id=aid,
+                milvus_id=milvus_ids_map.get(aid),
+                provider=settings.embedding_provider,
+                model_name=settings.embedding_model,
+                dimension=dimension,
+                computed_at=now,
+            ))
+            computed += 1
+        db.add_all(meta_records)
 
         return {
             "total": len(article_ids),

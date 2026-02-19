@@ -302,6 +302,9 @@ class Article(Base, TimestampMixin):
         Index("ix_articles_crawl_time", "crawl_time"),
         # 归档状态索引：支持过滤已归档/未归档的文章
         Index("ix_articles_archived", "is_archived"),
+        # 复合索引：优化 AI 处理和 Embedding 任务的未处理文章查询
+        # 覆盖 WHERE ai_processed_at IS NULL AND is_archived = FALSE ORDER BY crawl_time DESC
+        Index("ix_articles_ai_unprocessed", "ai_processed_at", "is_archived", "crawl_time"),
     )
 
     def __repr__(self) -> str:

@@ -17,6 +17,7 @@ import logging
 import time
 
 import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from settings import settings
 from .base import BaseAIProvider, parse_json_response
@@ -51,6 +52,32 @@ class OpenAIProvider(BaseAIProvider):
         self._api_key = api_key or ""
         self._model = model or "gpt-4o-mini"  # 默认使用性价比高的 gpt-4o-mini
         self._base_url = "https://api.openai.com/v1"
+        # 持久化 HTTP 客户端，复用 TCP 连接
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Get or create the persistent HTTP client.
+
+        获取或创建持久化的 HTTP 客户端实例。
+
+        Returns:
+            httpx.AsyncClient: Shared HTTP client.
+        """
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=60,
+                limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+            )
+        return self._client
+
+    async def close(self) -> None:
+        """Close the persistent HTTP client.
+
+        关闭持久化的 HTTP 客户端，释放连接池资源。
+        """
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     async def is_available(self) -> bool:
         """Check availability of OpenAI provider.
@@ -63,6 +90,27 @@ class OpenAIProvider(BaseAIProvider):
         # OpenAI 的可用性判断简单依赖 API 密钥是否存在
         # 不做实际网络请求，避免不必要的 API 调用消耗
         return bool(self._api_key)
+
+    async def _call_api(self, headers: dict, payload: dict) -> dict:
+        """Execute the OpenAI API call with retry logic.
+
+        带重试逻辑的 OpenAI API 调用。
+
+        Args:
+            headers: HTTP headers including auth.
+            payload: API request body.
+
+        Returns:
+            dict: Raw API response JSON.
+        """
+        client = self._get_client()
+        response = await client.post(
+            f"{self._base_url}/chat/completions",
+            headers=headers,
+            json=payload,
+        )
+        response.raise_for_status()
+        return response.json()
 
     async def process_content(
         self, title: str, content: str, task_type: str = "content_high"
@@ -82,6 +130,11 @@ class OpenAIProvider(BaseAIProvider):
         # 构建 prompt，使用基类方法进行内容截断和模板选择
         prompt = self.build_prompt(title, content, task_type, settings.ai_max_content_length)
 
+        # 根据任务类型调整最大输出 token 数
+        # 高价值内容和论文需要更详细的输出（512 tokens）
+        # 低价值内容只需简要信息（256 tokens）
+        max_tokens = 512 if task_type in ("content_high", "paper_full") else 256
+
         # 构建 OpenAI Chat Completions API 请求头和请求体
         headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -91,22 +144,22 @@ class OpenAIProvider(BaseAIProvider):
             "model": self._model,
             "messages": [{"role": "user", "content": prompt}],  # 使用单轮对话格式
             "temperature": 0.3,    # 低温度确保输出稳定
-            "max_tokens": 512,     # 限制最大输出 token 数
+            "max_tokens": max_tokens,
         }
 
         # 记录开始时间，计算处理耗时
         start_time = time.time()
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
-                response = await client.post(
-                    f"{self._base_url}/chat/completions",
-                    headers=headers,
-                    json=payload,
-                )
-                response.raise_for_status()
-                result = response.json()
-                # 从 Chat Completions 响应中提取助手回复内容
-                response_text = result["choices"][0]["message"]["content"]
+            # 使用 tenacity 重试包装器调用 API，应对网络抖动和临时限流
+            retrying_call = retry(
+                stop=stop_after_attempt(settings.ai_max_retries),
+                wait=wait_exponential(multiplier=settings.ai_retry_base_delay, max=10),
+                retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+                reraise=True,
+            )(self._call_api)
+            result = await retrying_call(headers, payload)
+            # 从 Chat Completions 响应中提取助手回复内容
+            response_text = result["choices"][0]["message"]["content"]
 
             # 计算处理耗时（毫秒）
             duration_ms = int((time.time() - start_time) * 1000)

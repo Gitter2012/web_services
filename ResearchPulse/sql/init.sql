@@ -153,7 +153,10 @@ CREATE TABLE `articles` (
   KEY `ix_articles_publish_time` (`publish_time`),
   KEY `ix_articles_crawl_time` (`crawl_time`),
   KEY `ix_articles_archived` (`is_archived`),
-  KEY `ix_articles_category` (`category`)
+  KEY `ix_articles_category` (`category`),
+  -- 复合索引：优化 AI 处理和 Embedding 任务的未处理文章查询
+  -- 覆盖 WHERE ai_processed_at IS NULL AND is_archived = FALSE ORDER BY crawl_time DESC
+  KEY `ix_articles_ai_unprocessed` (`ai_processed_at`, `is_archived`, `crawl_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文章表';
 
 -- -----------------------------------------------------------------------------

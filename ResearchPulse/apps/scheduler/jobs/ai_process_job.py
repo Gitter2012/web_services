@@ -57,10 +57,20 @@ async def run_ai_process_job() -> dict:
 
         # 创建 AI 处理服务实例
         service = AIProcessorService()
-        # 批量处理未处理的文章，limit=50 控制单次处理量，避免长时间占用资源
-        result = await service.process_unprocessed(session, limit=50)
-        # 提交事务，持久化 AI 处理结果
-        await session.commit()
+        try:
+            # 批量处理未处理的文章，limit=50 控制单次处理量，避免长时间占用资源
+            # batch_process 内部使用独立 session 并发处理每篇文章，
+            # 单篇文章失败不会影响其他文章
+            result = await service.process_unprocessed(session, limit=50)
+            # 提交事务，持久化批量写入的处理日志
+            await session.commit()
+        except Exception as e:
+            logger.error(f"AI processing job failed: {e}", exc_info=True)
+            await session.rollback()
+            return {"error": str(e), "processed": 0, "cached": 0, "failed": 0, "total": 0}
+        finally:
+            # 确保释放 Provider 持有的 HTTP 连接池资源
+            await service.close()
 
     # 输出详细的处理统计日志
     logger.info(

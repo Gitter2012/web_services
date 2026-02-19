@@ -551,6 +551,26 @@ class Settings(BaseSettings):
         default=_ai_config.get("max_content_length", 1500),
         validation_alias="AI_MAX_CONTENT_LENGTH",
     )
+    # AI 批处理并发度（同时处理的文章数量上限）
+    ai_batch_concurrency: int = Field(
+        default=_ai_config.get("batch_concurrency", 5),
+        validation_alias="AI_BATCH_CONCURRENCY",
+    )
+    # AI 调用最大重试次数
+    ai_max_retries: int = Field(
+        default=_ai_config.get("max_retries", 3),
+        validation_alias="AI_MAX_RETRIES",
+    )
+    # AI 调用重试基础延迟（秒），指数退避的乘数
+    ai_retry_base_delay: float = Field(
+        default=_ai_config.get("retry_base_delay", 1.0),
+        validation_alias="AI_RETRY_BASE_DELAY",
+    )
+    # AI 降级回退 Provider（主 Provider 失败时使用，为空则不回退）
+    ai_fallback_provider: str = Field(
+        default=_ai_config.get("fallback_provider", ""),
+        validation_alias="AI_FALLBACK_PROVIDER",
+    )
 
     # ======================== 向量嵌入 / Milvus 配置 ========================
     # 嵌入向量提供商

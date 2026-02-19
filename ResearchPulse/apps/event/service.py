@@ -176,6 +176,15 @@ class EventService:
         )
         clusters = list(cluster_result.scalars().all())
 
+        # 构建按 category 分组的聚类索引，用于快速预过滤
+        # 这样对每篇文章只需先在同 category 的聚类子集中匹配，
+        # 减少 O(n*m) 的无效比较
+        from collections import defaultdict
+        category_to_clusters: dict[str, list[EventCluster]] = defaultdict(list)
+        for cluster in clusters:
+            cat = cluster.category or "其他"
+            category_to_clusters[cat].append(cluster)
+
         clustered = 0
         new_clusters = 0
 
@@ -185,20 +194,33 @@ class EventService:
             best_score = 0.0       # 最佳匹配分数
             best_method = "keyword"  # 最佳匹配的检测方法
 
-            # 与每个活跃聚类计算匹配分数
-            for cluster in clusters:
-                score, method = compute_cluster_score(
-                    article.title or "",
-                    article.content or "",
-                    cluster.title,
-                    article.ai_category or "",
-                    cluster.category or "",
-                )
-                # 保留最高分的匹配
-                if score > best_score:
-                    best_score = score
-                    best_match = cluster
-                    best_method = method
+            article_category = article.ai_category or "其他"
+
+            # 预过滤优化：优先在同 category 的聚类中匹配
+            # 如果同 category 未找到，再扩展到全量聚类
+            candidate_groups = [category_to_clusters.get(article_category, [])]
+            if len(candidate_groups[0]) < len(clusters):
+                candidate_groups.append(clusters)  # 全量聚类作为 fallback
+
+            for candidates in candidate_groups:
+                for cluster in candidates:
+                    score, method = compute_cluster_score(
+                        article.title or "",
+                        article.content or "",
+                        cluster.title,
+                        article_category,
+                        cluster.category or "",
+                    )
+                    # 保留最高分的匹配
+                    if score > best_score:
+                        best_score = score
+                        best_match = cluster
+                        best_method = method
+
+                # 如果在同 category 中已找到高分匹配，无需搜索全量
+                threshold_check = 0.35 if best_method in ("model", "entity") else 0.50
+                if best_match and best_score >= threshold_check:
+                    break
 
             # 根据匹配方法使用不同的阈值
             # model 和 entity 匹配的置信度更高，使用较低阈值（0.35）
@@ -244,6 +266,9 @@ class EventService:
                 )
                 db.add(member)
                 clusters.append(new_cluster)  # 加入当前批次的聚类列表，后续文章可以匹配到它
+                # 同时更新 category 索引
+                cat = new_cluster.category or "其他"
+                category_to_clusters[cat].append(new_cluster)
                 clustered += 1
                 new_clusters += 1
 

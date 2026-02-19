@@ -17,6 +17,7 @@ import logging
 import time
 
 import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from settings import settings
 from .base import BaseAIProvider, parse_json_response
@@ -57,6 +58,32 @@ class OllamaProvider(BaseAIProvider):
         self._base_url = base_url or settings.ollama_base_url
         self._model = model or settings.ollama_model
         self._timeout = timeout or settings.ollama_timeout
+        # 持久化 HTTP 客户端，复用 TCP 连接，避免每次请求创建新连接
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Get or create the persistent HTTP client.
+
+        获取或创建持久化的 HTTP 客户端实例。
+
+        Returns:
+            httpx.AsyncClient: Shared HTTP client.
+        """
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=self._timeout,
+                limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+            )
+        return self._client
+
+    async def close(self) -> None:
+        """Close the persistent HTTP client.
+
+        关闭持久化的 HTTP 客户端，释放连接池资源。
+        """
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     async def is_available(self) -> bool:
         """Check if Ollama service is running.
@@ -69,11 +96,35 @@ class OllamaProvider(BaseAIProvider):
         # 通过调用 /api/tags 端点检测 Ollama 服务是否可用
         # 使用短超时（5秒）快速判断，避免阻塞
         try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                response = await client.get(f"{self._base_url}/api/tags")
-                return response.status_code == 200
+            client = self._get_client()
+            response = await client.get(f"{self._base_url}/api/tags")
+            return response.status_code == 200
         except (httpx.RequestError, OSError):
             return False
+
+    async def _call_api(self, payload: dict) -> dict:
+        """Execute the Ollama API call with retry logic.
+
+        带重试逻辑的 Ollama API 调用。
+        使用 tenacity 实现指数退避重试，应对网络抖动、服务临时不可用等瞬时故障。
+
+        Args:
+            payload: Ollama API request body.
+
+        Returns:
+            dict: Raw API response JSON.
+
+        Raises:
+            httpx.HTTPStatusError: On non-retryable HTTP errors.
+            httpx.RequestError: On non-retryable connection errors.
+        """
+        client = self._get_client()
+        response = await client.post(
+            f"{self._base_url}/api/generate",
+            json=payload,
+        )
+        response.raise_for_status()
+        return response.json()
 
     async def process_content(
         self, title: str, content: str, task_type: str = "content_high"
@@ -113,14 +164,15 @@ class OllamaProvider(BaseAIProvider):
         # 记录开始时间，用于计算处理耗时
         start_time = time.time()
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                response = await client.post(
-                    f"{self._base_url}/api/generate",
-                    json=payload,
-                )
-                response.raise_for_status()
-                result = response.json()
-                response_text = result.get("response", "")
+            # 使用 tenacity 重试包装器调用 API，应对网络抖动和临时限流
+            retrying_call = retry(
+                stop=stop_after_attempt(settings.ai_max_retries),
+                wait=wait_exponential(multiplier=settings.ai_retry_base_delay, max=10),
+                retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+                reraise=True,
+            )(self._call_api)
+            result = await retrying_call(payload)
+            response_text = result.get("response", "")
 
             # 计算处理耗时（毫秒）
             duration_ms = int((time.time() - start_time) * 1000)
