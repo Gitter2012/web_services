@@ -519,25 +519,39 @@ class CrawlerRunner:
         self._print("爬取摘要", "info")
         print("=" * 50)
 
+        # 同时构建日志文本
+        log_lines = ["爬取摘要"]
+
         for source_type, results in summary.results.items():
             if results:
                 total_fetched = sum(r.fetched_count for r in results)
                 total_saved = sum(r.saved_count for r in results)
-                print(f"  {source_type:12} {len(results)} 个源, 获取 {total_fetched}, 保存 {total_saved}")
+                line = f"  {source_type:12} {len(results)} 个源, 获取 {total_fetched}, 保存 {total_saved}"
+                print(line)
+                log_lines.append(line.strip())
 
         print("-" * 50)
 
         if summary.errors:
             self._print(f"  错误:        {len(summary.errors)} 个", "warning")
+            log_lines.append(f"错误: {len(summary.errors)} 个")
             for err in summary.errors[:5]:
                 print(f"    - {err}")
+                log_lines.append(f"  - {err}")
             if len(summary.errors) > 5:
                 print(f"    ... 还有 {len(summary.errors) - 5} 个错误")
+                log_lines.append(f"  ... 还有 {len(summary.errors) - 5} 个错误")
 
         self._print(f"  总计保存:    {summary.total_articles} 篇文章", "success")
         print(f"  耗时:        {summary.duration_seconds:.2f} 秒")
+        log_lines.append(f"总计保存: {summary.total_articles} 篇文章")
+        log_lines.append(f"耗时: {summary.duration_seconds:.2f} 秒")
 
         if self.dry_run:
             self._print("  [模拟运行] 数据未写入数据库", "warning")
+            log_lines.append("[模拟运行] 数据未写入数据库")
 
         print("=" * 50)
+
+        # 输出到日志
+        logger.info("爬取摘要 | " + " | ".join(log_lines[1:]))
