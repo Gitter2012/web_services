@@ -113,10 +113,14 @@ async def cmd_notify(args: argparse.Namespace) -> int:
 
     手动触发用户订阅通知任务，等同于定时任务 run_notification_job。
     """
-    from apps.scheduler.jobs.notification_job import (
-        run_notification_job,
-        send_all_user_notifications,
-    )
+    from core.database import close_db
+
+    # 预加载所有 ORM 模型，确保 SQLAlchemy mapper 能解析 relationship 中的
+    # 字符串引用（如 User.roles -> "Role"）。正常运行时 main.py 的 lifespan
+    # 会完成这些导入，但 CLI 脚本跳过了 FastAPI 启动流程，需要手动触发。
+    import core.models.user  # noqa: F401
+    import core.models.permission  # noqa: F401
+    import apps.crawler.models  # noqa: F401
 
     since: Optional[datetime] = None
     if args.since:
@@ -133,19 +137,34 @@ async def cmd_notify(args: argparse.Namespace) -> int:
 
     max_users = args.max_users
 
-    if since or max_users != 100:
-        # 自定义参数: 直接调用 send_all_user_notifications
-        _print(f"触发用户通知 (since={since}, max_users={max_users})")
-        results = await send_all_user_notifications(since=since, max_users=max_users)
-    else:
-        # 默认: 调用完整的 run_notification_job (过去 24 小时)
-        _print("触发通知任务 (过去 24 小时)")
-        results = await run_notification_job()
+    try:
+        # 预热 feature_config 缓存:
+        # feature_config._maybe_refresh_cache() 的同步版本会在检测到
+        # 运行中的事件循环时，通过 ThreadPoolExecutor 在新线程中调用
+        # asyncio.run()，导致在不同事件循环中创建数据库连接，
+        # 从而触发 "Future attached to a different loop" 错误。
+        # 通过提前异步加载缓存来避免此问题。
+        from common.feature_config import feature_config
 
-    # 关闭数据库连接
-    from core.database import close_db
+        await feature_config.async_reload()
 
-    await close_db()
+        from apps.scheduler.jobs.notification_job import (
+            run_notification_job,
+            send_all_user_notifications,
+        )
+
+        if since or max_users != 100:
+            # 自定义参数: 直接调用 send_all_user_notifications
+            _print(f"触发用户通知 (since={since}, max_users={max_users})")
+            results = await send_all_user_notifications(since=since, max_users=max_users)
+        else:
+            # 默认: 调用完整的 run_notification_job (过去 24 小时)
+            _print("触发通知任务 (过去 24 小时)")
+            results = await run_notification_job()
+    finally:
+        # 确保在同一事件循环中关闭数据库连接，
+        # 避免事件循环关闭后连接清理报错
+        await close_db()
 
     # 打印结果
     print()

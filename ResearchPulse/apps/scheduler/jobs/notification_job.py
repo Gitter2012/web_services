@@ -35,6 +35,8 @@ from core.database import get_session_factory
 from common.email import send_email, send_email_with_priority
 # render_articles_by_source: 按数据源分组渲染文章为 Markdown 格式
 from common.markdown import render_articles_by_source
+# Jinja2 邮件模板渲染（美化 HTML 邮件）
+from common.email_templates import render_user_digest, render_admin_report
 from settings import settings
 
 logger = logging.getLogger(__name__)
@@ -247,81 +249,77 @@ async def send_user_notification_email(
     # Generate email content
     subject = f"ResearchPulse - {date} 订阅文章 ({len(articles)} 篇)"
 
-    # 先生成 Markdown 格式的文章列表内容
-    # 按数据源分组展示，每篇文章包含摘要（最长300字符）
-    # Generate markdown content
+    # ---- 生成 HTML 邮件正文 ----
+    use_jinja2 = settings.email_template_engine.lower() != "legacy"
+
+    if use_jinja2:
+        # Jinja2 模板：直接从文章数据渲染美化 HTML，完整显示摘要不截断
+        html_body = render_user_digest(
+            articles=articles,
+            date=date,
+            url_prefix=settings.url_prefix,
+        )
+    else:
+        # Legacy: 先生成 Markdown 再逐行转换为简易 HTML
+        md_content_html = render_articles_by_source(
+            articles,
+            date=date,
+            include_abstract=True,
+            abstract_max_len=0,  # 不截断
+        )
+        html_lines = []
+        for line in md_content_html.split("\n"):
+            line = line.strip()
+            if not line:
+                html_lines.append("")
+                continue
+            if line.startswith("# "):
+                html_lines.append(f"<h1>{line[2:]}</h1>")
+            elif line.startswith("## "):
+                html_lines.append(f"<h2>{line[3:]}</h2>")
+            elif line.startswith("### "):
+                html_lines.append(f"<h3>{line[4:]}</h3>")
+            elif line.startswith("**") and line.endswith("**"):
+                html_lines.append(f"<p><strong>{line[2:-2]}</strong></p>")
+            elif line.startswith("- "):
+                html_lines.append(f"<li>{line[2:]}</li>")
+            elif line.startswith("---"):
+                html_lines.append("<hr>")
+            else:
+                line = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                html_lines.append(f"<p>{line}</p>")
+
+        html_body = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }}
+                h1 {{ color: #1a1a2e; }}
+                h2 {{ color: #333; border-bottom: 1px solid #eee; padding-bottom: 10px; }}
+                h3 {{ color: #666; }}
+                a {{ color: #4ecdc4; }}
+                hr {{ border: none; border-top: 1px solid #eee; margin: 20px 0; }}
+                code {{ background: #f5f5f5; padding: 2px 6px; border-radius: 4px; }}
+            </style>
+        </head>
+        <body>
+            {"".join(html_lines)}
+            <hr>
+            <p style="color: #888; font-size: 12px;">
+                此邮件由 ResearchPulse v2 自动发送。<br>
+                访问 <a href="{settings.url_prefix}">ResearchPulse</a> 管理您的订阅。
+            </p>
+        </body>
+        </html>
+        """
+
+    # 纯文本版本（HTML 邮件的降级方案），完整显示摘要不截断
     md_content = render_articles_by_source(
         articles,
         date=date,
         include_abstract=True,
-        abstract_max_len=300,
+        abstract_max_len=0,
     )
-
-    # ---- 将 Markdown 转换为简易 HTML 格式 ----
-    # 采用简单的逐行转换策略，而非引入完整的 Markdown 解析库
-    # 这样做的原因是邮件 HTML 对复杂 Markdown 语法的兼容性有限，
-    # 简单转换已能满足邮件展示需求
-    # Convert to HTML-like format for email
-    # Simple conversion: newlines to <br>, headers to bold
-    html_lines = []
-    for line in md_content.split("\n"):
-        line = line.strip()
-        if not line:
-            html_lines.append("")
-            continue
-        # 一级标题转为 <h1>
-        if line.startswith("# "):
-            html_lines.append(f"<h1>{line[2:]}</h1>")
-        # 二级标题转为 <h2>
-        elif line.startswith("## "):
-            html_lines.append(f"<h2>{line[3:]}</h2>")
-        # 三级标题转为 <h3>
-        elif line.startswith("### "):
-            html_lines.append(f"<h3>{line[4:]}</h3>")
-        # 粗体文本转为 <strong>
-        elif line.startswith("**") and line.endswith("**"):
-            html_lines.append(f"<p><strong>{line[2:-2]}</strong></p>")
-        # 无序列表项转为 <li>
-        elif line.startswith("- "):
-            html_lines.append(f"<li>{line[2:]}</li>")
-        # 水平分割线转为 <hr>
-        elif line.startswith("---"):
-            html_lines.append("<hr>")
-        else:
-            # 普通文本: 先转义 HTML 特殊字符以防止 XSS，然后包裹在 <p> 中
-            # Escape HTML
-            line = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            html_lines.append(f"<p>{line}</p>")
-
-    # 组装完整的 HTML 邮件正文
-    # 包含内联 CSS 样式，确保在各邮件客户端中有一致的展示效果
-    html_body = f"""
-    <html>
-    <head>
-        <style>
-            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }}
-            h1 {{ color: #1a1a2e; }}
-            h2 {{ color: #333; border-bottom: 1px solid #eee; padding-bottom: 10px; }}
-            h3 {{ color: #666; }}
-            a {{ color: #4ecdc4; }}
-            hr {{ border: none; border-top: 1px solid #eee; margin: 20px 0; }}
-            code {{ background: #f5f5f5; padding: 2px 6px; border-radius: 4px; }}
-        </style>
-    </head>
-    <body>
-        {"".join(html_lines)}
-        <hr>
-        <p style="color: #888; font-size: 12px;">
-            此邮件由 ResearchPulse v2 自动发送。<br>
-            访问 <a href="{settings.url_prefix}">ResearchPulse</a> 管理您的订阅。
-        </p>
-    </body>
-    </html>
-    """
-
-    # 纯文本版本的邮件正文（作为 HTML 邮件的降级方案）
-    # 某些邮件客户端可能不支持 HTML，此时会显示纯文本版本
-    # Plain text body
     text_body = f"""ResearchPulse - {date} 订阅文章
 
 您订阅的文章如下：
@@ -397,7 +395,7 @@ async def send_crawl_completion_notification(
     total = crawl_stats.get("total_articles", 0)
     errors = crawl_stats.get("errors", [])
 
-    # 构建纯文本格式的报告正文（管理员报告不需要 HTML 美化）
+    # 纯文本报告正文
     body = f"""ResearchPulse 爬取完成报告
 
 时间: {datetime.now(timezone.utc).isoformat()}
@@ -414,7 +412,18 @@ async def send_crawl_completion_notification(
 ---
 ResearchPulse v2
 """
-    # 注意: errors[:5] 最多只展示前5条错误，避免邮件过长
+
+    # 根据配置决定是否生成 HTML 版本
+    html_body = None
+    if settings.email_template_engine.lower() != "legacy":
+        try:
+            html_body = render_admin_report(
+                crawl_stats=crawl_stats,
+                url_prefix=settings.url_prefix,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to render admin report HTML, falling back to text: {e}")
+            html_body = None
 
     try:
         # 确定管理员收件地址：优先使用超级管理员邮箱，其次使用发件人地址
@@ -424,6 +433,7 @@ ResearchPulse v2
             subject=subject,
             body=body,
             to_addrs=[admin_email],
+            html_body=html_body,
             backend=settings.email_backend.split(",")[0].strip() or "smtp",
             from_addr=settings.email_from,
         )

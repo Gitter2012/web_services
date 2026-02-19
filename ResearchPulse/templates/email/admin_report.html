@@ -1,0 +1,107 @@
+{# ==========================================================================
+   ResearchPulse v2 管理员爬取报告邮件模板
+   变量:
+     - stats: dict       各来源统计 {"arxiv": 50, "rss": 80, ...}
+     - total: int        总文章数
+     - errors: list      错误信息列表
+     - timestamp: str    报告时间
+     - url_prefix: str   站点 URL
+   ========================================================================== #}
+{% extends "base.html" %}
+
+{% block title %}ResearchPulse - 爬取完成报告{% endblock %}
+
+{% block header %}
+<tr>
+  <td style="background-color:#1a1a2e; padding:24px 30px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td>
+          <h1 style="margin:0; font-size:22px; font-weight:700; color:#ffffff; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+            ResearchPulse
+          </h1>
+          <p style="margin:8px 0 0; font-size:14px; color:rgba(255,255,255,0.8); font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+            爬取完成报告
+          </p>
+        </td>
+        <td align="right" valign="middle">
+          {% if errors %}
+          <span style="display:inline-block; padding:4px 14px; border-radius:12px; background-color:#e74c3c; color:#ffffff; font-size:13px; font-weight:600; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+            {{ errors|length }} 个错误
+          </span>
+          {% else %}
+          <span style="display:inline-block; padding:4px 14px; border-radius:12px; background-color:#2ecc71; color:#ffffff; font-size:13px; font-weight:600; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+            全部成功
+          </span>
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>
+{% endblock %}
+
+{% block content %}
+{# ===== 统计概览 ===== #}
+<tr>
+  <td style="padding:24px 30px 10px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #eeeeee; border-radius:6px; overflow:hidden;">
+      {# 总文章数 #}
+      <tr>
+        <td style="padding:14px 18px; border-bottom:1px solid #f0f0f0; font-size:14px; color:#333333; font-weight:600; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+          总文章数
+        </td>
+        <td align="right" style="padding:14px 18px; border-bottom:1px solid #f0f0f0; font-size:18px; font-weight:700; color:#1a1a2e; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+          {{ total }}
+        </td>
+      </tr>
+      {# 各来源统计 #}
+      {% set source_labels = {"arxiv": "ArXiv", "rss": "RSS", "wechat": "WeChat", "weibo": "微博", "hackernews": "HackerNews", "reddit": "Reddit", "twitter": "Twitter"} %}
+      {% for key, count in stats.items()|sort %}
+      <tr>
+        <td style="padding:10px 18px;{% if not loop.last %} border-bottom:1px solid #f0f0f0;{% endif %} font-size:14px; color:#666666; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+          {{ source_labels.get(key, key) }}
+        </td>
+        <td align="right" style="padding:10px 18px;{% if not loop.last %} border-bottom:1px solid #f0f0f0;{% endif %} font-size:14px; color:#333333; font-weight:600; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+          {{ count }}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </td>
+</tr>
+
+{# ===== 时间戳 ===== #}
+<tr>
+  <td style="padding:10px 30px;">
+    <p style="margin:0; font-size:13px; color:#888888; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+      报告时间: {{ timestamp }}
+    </p>
+  </td>
+</tr>
+
+{# ===== 错误区域 ===== #}
+{% if errors %}
+<tr>
+  <td style="padding:10px 30px 20px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #f5c6cb; border-radius:6px; background-color:#fff5f5; overflow:hidden;">
+      <tr>
+        <td style="padding:14px 18px;">
+          <p style="margin:0 0 8px; font-size:14px; font-weight:600; color:#c0392b; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+            错误详情（{{ errors|length }}）
+          </p>
+          {% for err in errors %}
+          <p style="margin:4px 0; padding:6px 10px; background-color:#ffffff; border-radius:4px; font-size:13px; color:#666666; line-height:1.4; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+            {{ err }}
+          </p>
+          {% endfor %}
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>
+{% endif %}
+
+{# 底部间距 #}
+<tr><td style="padding:10px 0;"></td></tr>
+{% endblock %}

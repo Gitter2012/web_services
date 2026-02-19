@@ -1,0 +1,164 @@
+{# ==========================================================================
+   ResearchPulse v2 用户订阅摘要邮件模板
+   变量:
+     - date: str            日期字符串
+     - total_count: int     总文章数
+     - groups: dict         按来源分组的文章 {source_type: [article_dict, ...]}
+     - source_names: dict   来源显示名 {"arxiv": "arXiv 论文", ...}
+     - url_prefix: str      站点 URL
+   ========================================================================== #}
+{% extends "base.html" %}
+
+{% block title %}ResearchPulse - {{ date }} 订阅文章{% endblock %}
+
+{% block header %}
+<tr>
+  <td style="background-color:#1a1a2e; padding:24px 30px;">
+    <h1 style="margin:0; font-size:22px; font-weight:700; color:#ffffff; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+      ResearchPulse
+    </h1>
+    <p style="margin:8px 0 0; font-size:14px; color:rgba(255,255,255,0.8); font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+      {{ date }} 订阅文章摘要
+    </p>
+  </td>
+</tr>
+{% endblock %}
+
+{% block content %}
+{# ===== 统计栏 ===== #}
+<tr>
+  <td style="padding:20px 30px 10px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="font-size:14px; color:#333333; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+          共 <strong style="font-size:18px; color:#1a1a2e;">{{ total_count }}</strong> 篇文章
+        </td>
+        <td align="right" style="font-size:0;">
+          {# 来源徽章 #}
+          {% for source, items in groups.items()|sort %}
+          {% set badge_colors = {"arxiv": "#b31b1b", "rss": "#f5a623", "wechat": "#07c160"} %}
+          {% set bg = badge_colors.get(source, "#666666") %}
+          <span style="display:inline-block; padding:3px 10px; margin-left:6px; border-radius:12px; background-color:{{ bg }}; color:#ffffff; font-size:12px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+            {{ source_names.get(source, source|upper) }} {{ items|length }}
+          </span>
+          {% endfor %}
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>
+
+{# ===== 按来源分组 ===== #}
+{% for source in groups.keys()|sort %}
+{% set items = groups[source] %}
+{% set border_colors = {"arxiv": "#b31b1b", "rss": "#f5a623", "wechat": "#07c160"} %}
+{% set bc = border_colors.get(source, "#666666") %}
+
+{# 来源分组标题 #}
+<tr>
+  <td style="padding:20px 30px 8px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="border-left:4px solid {{ bc }}; padding-left:12px;">
+          <h2 style="margin:0; font-size:16px; font-weight:600; color:#333333; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+            {{ source_names.get(source, source|upper) }}
+            <span style="font-weight:400; color:#888888; font-size:14px;">（{{ items|length }} 篇）</span>
+          </h2>
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>
+
+{# 文章卡片 #}
+{% for article in items %}
+<tr>
+  <td style="padding:8px 30px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #eeeeee; border-radius:6px; overflow:hidden;">
+      <tr>
+        <td style="padding:16px 18px;">
+
+          {# 标题 #}
+          {% set title = article.get("title", "")|clean %}
+          {% if title %}
+          <a href="{{ article.get('url', '') }}" style="display:block; font-size:16px; font-weight:600; color:#1a1a2e; text-decoration:none; line-height:1.4; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+            {{ title }}
+          </a>
+          {% endif %}
+
+          {# 元信息 #}
+          <p style="margin:6px 0 0; font-size:13px; color:#666666; line-height:1.5; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+            {% set author = article.get("author", "")|clean %}
+            {% if author %}<span>{{ author }}</span>{% endif %}
+            {% set category = article.get("category", "") %}
+            {% if category %}
+              {% if author %}<span style="color:#cccccc;"> | </span>{% endif %}
+              <span>{{ category }}</span>
+            {% endif %}
+            {% set publish_time = article.get("publish_time") %}
+            {% if publish_time %}
+              {% if author or category %}<span style="color:#cccccc;"> | </span>{% endif %}
+              <span>{{ publish_time|format_dt }}</span>
+            {% endif %}
+          </p>
+
+          {# arXiv 专属 #}
+          {% if source == "arxiv" %}
+          {% set arxiv_id = article.get("arxiv_id", "") %}
+          {% if arxiv_id %}
+          <p style="margin:6px 0 0; font-size:12px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+            <span style="color:#888888;">arXiv: {{ arxiv_id }}</span>
+            {% set primary_cat = article.get("arxiv_primary_category", "") %}
+            {% if primary_cat %}
+              <span style="color:#cccccc;"> | </span>
+              <span style="color:#888888;">{{ primary_cat }}</span>
+            {% endif %}
+            <span style="color:#cccccc;"> | </span>
+            <a href="https://arxiv.org/pdf/{{ arxiv_id }}" style="color:#4ecdc4; text-decoration:none; font-size:12px;">PDF</a>
+            <span style="color:#cccccc;"> | </span>
+            <a href="https://hjfy.top/arxiv/{{ arxiv_id }}" style="color:#4ecdc4; text-decoration:none; font-size:12px;">中英对照</a>
+          </p>
+          {% endif %}
+          {% endif %}
+
+          {# 标签 #}
+          {% set tags = article.get("tags", []) %}
+          {% if tags %}
+          <p style="margin:8px 0 0; font-size:0; line-height:0;">
+            {% for tag in tags[:10] %}
+            <span style="display:inline-block; padding:2px 8px; margin:2px 4px 2px 0; border-radius:3px; background-color:#f0f0f5; color:#555555; font-size:12px; line-height:18px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">{{ tag|clean }}</span>
+            {% endfor %}
+          </p>
+          {% endif %}
+
+          {# 摘要 — 不截断，完整显示 #}
+          {% set summary = article.get("summary", "")|clean %}
+          {% if summary %}
+          <p style="margin:10px 0 0; font-size:14px; color:#444444; line-height:1.6; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+            {{ summary }}
+          </p>
+          {% endif %}
+
+          {# AI 总结 #}
+          {% set content_summary = article.get("content_summary", "") %}
+          {% if content_summary %}
+          <div style="margin:10px 0 0; padding:10px 14px; background-color:#f8f9fa; border-left:3px solid #4ecdc4; border-radius:0 4px 4px 0;">
+            <p style="margin:0 0 4px; font-size:12px; font-weight:600; color:#4ecdc4; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">AI 总结</p>
+            <p style="margin:0; font-size:13px; color:#444444; line-height:1.5; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+              {{ content_summary|clean }}
+            </p>
+          </div>
+          {% endif %}
+
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>
+{% endfor %}
+
+{% endfor %}
+
+{# 底部间距 #}
+<tr><td style="padding:10px 0;"></td></tr>
+{% endblock %}

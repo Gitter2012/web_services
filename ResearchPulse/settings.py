@@ -477,6 +477,11 @@ class Settings(BaseSettings):
         default=_email_config.get("notification", {}).get("max_articles", 20),
         validation_alias="EMAIL_MAX_ARTICLES",
     )
+    # 邮件模板引擎：jinja2（新版美化模板）/ legacy（原有 Markdown 转 HTML）
+    email_template_engine: str = Field(
+        default=_email_config.get("notification", {}).get("template_engine", "jinja2"),
+        validation_alias="EMAIL_TEMPLATE_ENGINE",
+    )
 
     # ======================== 功能开关（Feature Toggles） ========================
     # 可通过环境变量或管理后台动态启用

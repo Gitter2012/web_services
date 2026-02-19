@@ -85,6 +85,8 @@ class TestAdminEmailRecipient:
             mock_settings.email_from = "noreply@example.com"
             mock_settings.superuser_email = "admin@example.com"
             mock_settings.email_backend = "smtp"
+            mock_settings.email_template_engine = "jinja2"
+            mock_settings.url_prefix = "http://localhost"
             mock_send.return_value = (True, "")
 
             await send_crawl_completion_notification({
@@ -114,6 +116,8 @@ class TestAdminEmailRecipient:
             mock_settings.email_from = "noreply@example.com"
             mock_settings.superuser_email = ""
             mock_settings.email_backend = "smtp"
+            mock_settings.email_template_engine = "jinja2"
+            mock_settings.url_prefix = "http://localhost"
             mock_send.return_value = (True, "")
 
             await send_crawl_completion_notification({
@@ -272,6 +276,7 @@ class TestUserNotificationEmailSendPath:
              patch("apps.scheduler.jobs.notification_job.settings") as mock_settings:
             mock_priority.return_value = (True, "")
             mock_settings.url_prefix = "http://localhost"
+            mock_settings.email_template_engine = "jinja2"
 
             result = await send_user_notification_email(
                 user_email="user@example.com",
@@ -310,6 +315,7 @@ class TestUserNotificationEmailSendPath:
             mock_settings.email_backend = "smtp"
             mock_settings.email_from = "sender@example.com"
             mock_settings.url_prefix = "http://localhost"
+            mock_settings.email_template_engine = "jinja2"
 
             result = await send_user_notification_email(
                 user_email="user@example.com",
@@ -437,3 +443,75 @@ class TestRunNotificationJob:
 
             assert result["status"] == "failed"
             assert "Database connection lost" in result["error"]
+
+
+class TestTemplateEngineToggle:
+    """Test EMAIL_TEMPLATE_ENGINE config toggle.
+
+    验证邮件模板引擎配置切换。
+    """
+
+    @pytest.mark.asyncio
+    async def test_jinja2_engine_uses_render_user_digest(self):
+        """Verify Jinja2 engine calls render_user_digest.
+
+        验证 jinja2 模式调用 render_user_digest。
+        """
+        from apps.scheduler.jobs.notification_job import send_user_notification_email
+
+        articles = [
+            {"id": 1, "title": "Test", "url": "https://example.com",
+             "source_type": "rss", "author": "A", "summary": "S",
+             "category": "", "publish_time": None, "crawl_time": None,
+             "arxiv_id": None, "arxiv_primary_category": None,
+             "arxiv_updated_time": None, "wechat_account_name": None, "tags": []}
+        ]
+
+        with patch("apps.scheduler.jobs.notification_job.send_email") as mock_send, \
+             patch("apps.scheduler.jobs.notification_job.settings") as mock_settings, \
+             patch("apps.scheduler.jobs.notification_job.render_user_digest") as mock_render:
+            mock_settings.email_template_engine = "jinja2"
+            mock_settings.url_prefix = "http://localhost"
+            mock_settings.email_backend = "smtp"
+            mock_settings.email_from = "sender@example.com"
+            mock_send.return_value = (True, "")
+            mock_render.return_value = "<html>jinja2 output</html>"
+
+            await send_user_notification_email("u@x.com", 1, articles, session=None)
+
+            mock_render.assert_called_once()
+            # html_body should be from render_user_digest
+            call_kwargs = mock_send.call_args[1]
+            assert call_kwargs["html_body"] == "<html>jinja2 output</html>"
+
+    @pytest.mark.asyncio
+    async def test_legacy_engine_skips_render_user_digest(self):
+        """Verify legacy engine does NOT call render_user_digest.
+
+        验证 legacy 模式不调用 render_user_digest。
+        """
+        from apps.scheduler.jobs.notification_job import send_user_notification_email
+
+        articles = [
+            {"id": 1, "title": "Test", "url": "https://example.com",
+             "source_type": "rss", "author": "A", "summary": "S",
+             "category": "", "publish_time": None, "crawl_time": None,
+             "arxiv_id": None, "arxiv_primary_category": None,
+             "arxiv_updated_time": None, "wechat_account_name": None, "tags": []}
+        ]
+
+        with patch("apps.scheduler.jobs.notification_job.send_email") as mock_send, \
+             patch("apps.scheduler.jobs.notification_job.settings") as mock_settings, \
+             patch("apps.scheduler.jobs.notification_job.render_user_digest") as mock_render:
+            mock_settings.email_template_engine = "legacy"
+            mock_settings.url_prefix = "http://localhost"
+            mock_settings.email_backend = "smtp"
+            mock_settings.email_from = "sender@example.com"
+            mock_send.return_value = (True, "")
+
+            await send_user_notification_email("u@x.com", 1, articles, session=None)
+
+            mock_render.assert_not_called()
+            # html_body should contain <style> (legacy inline)
+            call_kwargs = mock_send.call_args[1]
+            assert "<style>" in call_kwargs["html_body"]
