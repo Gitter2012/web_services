@@ -4973,57 +4973,65 @@
             const headers = { 'Authorization': `Bearer ${token}` };
             const container = document.getElementById('pipeline-feature-toggles');
 
-            const features = [
-                { key: 'feature.ai_processor', name: 'AI 处理器', desc: '启用 AI 内容分析（摘要、分类、评分）' },
-                { key: 'feature.embedding', name: '向量嵌入', desc: '启用文章向量化（语义搜索前提）' },
-                { key: 'feature.event_clustering', name: '事件聚类', desc: '启用自动事件聚类' },
-                { key: 'feature.topic_radar', name: '话题雷达', desc: '启用话题自动发现' },
-                { key: 'feature.action_items', name: '行动建议', desc: '启用可执行建议提取' },
-                { key: 'feature.report_generation', name: '报告生成', desc: '启用周报/月报自动生成' },
-            ];
+            const featureMeta = {
+                'feature.ai_processor': { name: 'AI 处理器', desc: '启用 AI 内容分析（摘要、分类、评分）' },
+                'feature.embedding': { name: '向量嵌入', desc: '启用文章向量化（语义搜索前提）' },
+                'feature.event_clustering': { name: '事件聚类', desc: '启用自动事件聚类' },
+                'feature.topic_radar': { name: '话题雷达', desc: '启用话题自动发现' },
+                'feature.action_items': { name: '行动建议', desc: '启用可执行建议提取' },
+                'feature.report_generation': { name: '报告生成', desc: '启用周报/月报自动生成' },
+            };
 
-            let html = '';
-            for (const f of features) {
-                let enabled = false;
-                try {
-                    const res = await fetch(`${ADMIN_BASE}/config/${f.key}`, { headers });
-                    if (res.ok) {
-                        const data = await res.json();
-                        enabled = data.value === 'true' || data.value === true;
-                    }
-                } catch(e) {}
+            try {
+                const res = await fetch(`${ADMIN_BASE}/features`, { headers });
+                if (!res.ok) {
+                    container.innerHTML = '<div style="color:#dc2626;text-align:center;padding:20px;">加载功能开关失败</div>';
+                    return;
+                }
+                const data = await res.json();
+                const featureList = data.features || [];
 
-                html += `
-                    <div class="toggle-item">
-                        <div class="toggle-info">
-                            <h4>${f.name}</h4>
-                            <p>${f.desc}</p>
+                let html = '';
+                for (const key of Object.keys(featureMeta)) {
+                    const meta = featureMeta[key];
+                    const feature = featureList.find(f => f.key === key);
+                    const enabled = feature ? feature.enabled : false;
+
+                    html += `
+                        <div class="toggle-item">
+                            <div class="toggle-info">
+                                <h4>${meta.name}</h4>
+                                <p>${meta.desc}</p>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" ${enabled ? 'checked' : ''} onchange="togglePipelineFeature('${key}', this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
                         </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" ${enabled ? 'checked' : ''} onchange="togglePipelineFeature('${f.key}', this.checked)">
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                `;
-            }
+                    `;
+                }
 
-            container.innerHTML = html || '<div style="color:#999;text-align:center;padding:20px;">无法加载功能开关</div>';
+                container.innerHTML = html || '<div style="color:#999;text-align:center;padding:20px;">无可用功能开关</div>';
+            } catch(e) {
+                container.innerHTML = '<div style="color:#dc2626;text-align:center;padding:20px;">网络错误，无法加载功能开关</div>';
+            }
         }
 
         async function togglePipelineFeature(key, enabled) {
             const token = localStorage.getItem('access_token');
             try {
-                const res = await fetch(`${ADMIN_BASE}/config/${key}`, {
+                const res = await fetch(`${ADMIN_BASE}/features/${key}`, {
                     method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ value: enabled ? 'true' : 'false' }),
+                    body: JSON.stringify({ enabled: enabled }),
                 });
                 if (!res.ok) {
-                    alert('切换失败');
-                    loadPipelineFeatureToggles();  // Refresh to revert UI
+                    const err = await res.json().catch(() => ({}));
+                    alert('切换失败: ' + (err.detail || '未知错误'));
+                    loadPipelineFeatureToggles();
                 }
             } catch(e) {
                 alert('网络错误');
