@@ -218,6 +218,7 @@
                 <a href="#" class="nav-item" onclick="switchSection('roles')">🔐 角色管理</a>
                 <a href="#" class="nav-item" onclick="switchSection('audit')">📋 审计日志</a>
                 <a href="#" class="nav-item" onclick="switchSection('config')">⚙️ 系统配置</a>
+                <a href="#" class="nav-item" onclick="switchSection('pipeline')">🔄 Pipeline 监控</a>
                 <a href="#" class="nav-item" onclick="location.href=APP_BASE+'/'; return false;">🏠 返回首页</a>
             </nav>
         </div>
@@ -1373,6 +1374,133 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Pipeline Monitoring Section -->
+            <div id="section-pipeline" class="section" style="display:none;">
+                <div class="page-header">
+                    <h1>Pipeline 监控</h1>
+                    <p>AI 处理流水线运行状态监控与管理</p>
+                </div>
+
+                <!-- Pipeline Stats -->
+                <div class="stats-grid" id="pipeline-stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="pl-stat-ai">-</div>
+                        <div class="stat-label">AI 已处理</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="pl-stat-embed">-</div>
+                        <div class="stat-label">已向量化</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="pl-stat-events">-</div>
+                        <div class="stat-label">事件聚类</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="pl-stat-topics">-</div>
+                        <div class="stat-label">话题匹配</div>
+                    </div>
+                </div>
+
+                <!-- Pipeline Stage Details -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Pipeline 流程概览</h3>
+                        <button class="btn btn-primary" onclick="refreshPipelineStats()">刷新</button>
+                    </div>
+                    <div class="card-body">
+                        <div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:20px 0;flex-wrap:wrap;">
+                            <div style="text-align:center;padding:16px 20px;background:#f0f9ff;border-radius:8px;min-width:120px;">
+                                <div style="font-size:13px;color:#2563eb;font-weight:600;">1. AI 分析</div>
+                                <div style="font-size:11px;color:#888;margin-top:4px;">每小时</div>
+                                <div style="font-size:18px;font-weight:600;margin-top:8px;" id="pl-detail-ai">-</div>
+                            </div>
+                            <div style="font-size:20px;color:#ddd;">→</div>
+                            <div style="text-align:center;padding:16px 20px;background:#faf5ff;border-radius:8px;min-width:120px;">
+                                <div style="font-size:13px;color:#7c3aed;font-weight:600;">2. 向量化</div>
+                                <div style="font-size:11px;color:#888;margin-top:4px;">每2小时</div>
+                                <div style="font-size:18px;font-weight:600;margin-top:8px;" id="pl-detail-embed">-</div>
+                            </div>
+                            <div style="font-size:20px;color:#ddd;">→</div>
+                            <div style="text-align:center;padding:16px 20px;background:#ecfdf5;border-radius:8px;min-width:120px;">
+                                <div style="font-size:13px;color:#059669;font-weight:600;">3. 事件聚类</div>
+                                <div style="font-size:11px;color:#888;margin-top:4px;">每日 2AM</div>
+                                <div style="font-size:18px;font-weight:600;margin-top:8px;" id="pl-detail-events">-</div>
+                            </div>
+                            <div style="font-size:20px;color:#ddd;">→</div>
+                            <div style="text-align:center;padding:16px 20px;background:#fffbeb;border-radius:8px;min-width:120px;">
+                                <div style="font-size:13px;color:#d97706;font-weight:600;">4. 话题发现</div>
+                                <div style="font-size:11px;color:#888;margin-top:4px;">每周一 1AM</div>
+                                <div style="font-size:18px;font-weight:600;margin-top:8px;" id="pl-detail-topics">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Token Usage -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Token 消耗统计</h3>
+                    </div>
+                    <div class="card-body">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>日期</th>
+                                    <th>提供商</th>
+                                    <th>模型</th>
+                                    <th>调用次数</th>
+                                    <th>缓存命中</th>
+                                    <th>输入字符</th>
+                                    <th>输出字符</th>
+                                </tr>
+                            </thead>
+                            <tbody id="token-stats-body">
+                                <tr><td colspan="7" style="text-align:center;color:#888;">加载中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Recent Processing Logs -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>最近处理日志</h3>
+                    </div>
+                    <div class="card-body">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>文章ID</th>
+                                    <th>提供商</th>
+                                    <th>模型</th>
+                                    <th>任务类型</th>
+                                    <th>耗时(ms)</th>
+                                    <th>状态</th>
+                                    <th>缓存</th>
+                                    <th>时间</th>
+                                </tr>
+                            </thead>
+                            <tbody id="processing-logs-body">
+                                <tr><td colspan="8" style="text-align:center;color:#888;">加载中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Feature Flags -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Pipeline 功能开关</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="toggle-list" id="pipeline-feature-toggles">
+                            <div style="text-align:center;color:#888;padding:20px;">加载中...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -1466,6 +1594,7 @@
             if (name === 'topics') loadTopics();
             if (name === 'reports') loadReports();
             if (name === 'roles') loadRoles();
+            if (name === 'pipeline') loadPipelineMonitor();
         }
 
         // Dashboard
@@ -4684,6 +4813,222 @@
         function formatDate(iso) {
             if (!iso) return '';
             return new Date(iso).toLocaleDateString('zh-CN');
+        }
+
+        // ============================================================================
+        // Pipeline Monitoring Functions
+        // ============================================================================
+
+        async function loadPipelineMonitor() {
+            await Promise.all([
+                refreshPipelineStats(),
+                loadTokenStats(),
+                loadProcessingLogs(),
+                loadPipelineFeatureToggles(),
+            ]);
+        }
+
+        async function refreshPipelineStats() {
+            const token = localStorage.getItem('access_token');
+            const headers = { 'Authorization': `Bearer ${token}` };
+
+            try {
+                // Get overall dashboard stats for article count
+                const statsRes = await fetch(`${ADMIN_BASE}/stats`, { headers });
+                const stats = statsRes.ok ? await statsRes.json() : {};
+                const totalArticles = stats.articles || 0;
+
+                // Get AI processed count (articles with ai_processed_at not null)
+                // We query the articles API with a small page to get counts
+                const aiRes = await fetch(`${API_BASE}/articles?page_size=1`, { headers });
+                const aiData = aiRes.ok ? await aiRes.json() : { total: 0 };
+
+                // Try to get embedding stats
+                let embedCount = '-';
+                try {
+                    const embedRes = await fetch(`${API_BASE}/embedding/stats`, { headers });
+                    if (embedRes.ok) {
+                        const embedData = await embedRes.json();
+                        embedCount = embedData.total_embeddings || embedData.total || 0;
+                    }
+                } catch(e) {}
+
+                // Try to get event count
+                let eventCount = '-';
+                try {
+                    const eventRes = await fetch(`${API_BASE}/events?limit=1&offset=0&active_only=false`, { headers });
+                    if (eventRes.ok) {
+                        const eventData = await eventRes.json();
+                        eventCount = eventData.total || 0;
+                    }
+                } catch(e) {}
+
+                // Try to get topic count
+                let topicCount = '-';
+                try {
+                    const topicRes = await fetch(`${API_BASE}/topics?limit=1&offset=0`, { headers });
+                    if (topicRes.ok) {
+                        const topicData = await topicRes.json();
+                        topicCount = topicData.total || 0;
+                    }
+                } catch(e) {}
+
+                document.getElementById('pl-stat-ai').textContent = totalArticles;
+                document.getElementById('pl-stat-embed').textContent = embedCount;
+                document.getElementById('pl-stat-events').textContent = eventCount;
+                document.getElementById('pl-stat-topics').textContent = topicCount;
+
+                document.getElementById('pl-detail-ai').textContent = totalArticles + ' 篇';
+                document.getElementById('pl-detail-embed').textContent = embedCount + ' 篇';
+                document.getElementById('pl-detail-events').textContent = eventCount + ' 个';
+                document.getElementById('pl-detail-topics').textContent = topicCount + ' 个';
+            } catch(e) {
+                console.error('Failed to load pipeline stats:', e);
+            }
+        }
+
+        async function loadTokenStats() {
+            const token = localStorage.getItem('access_token');
+            const headers = { 'Authorization': `Bearer ${token}` };
+            const tbody = document.getElementById('token-stats-body');
+
+            try {
+                const res = await fetch(`${API_BASE}/ai/process/token-stats`, { headers });
+                if (!res.ok) {
+                    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#999;">无法加载 Token 统计（功能可能未启用）</td></tr>`;
+                    return;
+                }
+                const data = await res.json();
+                const stats = data.stats || data || [];
+
+                if (!Array.isArray(stats) || stats.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#999;">暂无 Token 消耗数据</td></tr>`;
+                    return;
+                }
+
+                tbody.innerHTML = stats.slice(0, 20).map(s => `
+                    <tr>
+                        <td>${escapeHtml(s.date || '-')}</td>
+                        <td>${escapeHtml(s.provider || '-')}</td>
+                        <td>${escapeHtml(s.model || '-')}</td>
+                        <td>${s.total_calls || 0}</td>
+                        <td>${s.cached_calls || 0}</td>
+                        <td>${(s.total_input_chars || 0).toLocaleString()}</td>
+                        <td>${(s.total_output_chars || 0).toLocaleString()}</td>
+                    </tr>
+                `).join('');
+            } catch(e) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#dc2626;">加载失败</td></tr>`;
+            }
+        }
+
+        async function loadProcessingLogs() {
+            const token = localStorage.getItem('access_token');
+            const headers = { 'Authorization': `Bearer ${token}` };
+            const tbody = document.getElementById('processing-logs-body');
+
+            try {
+                // Try the AI status endpoint or a logs endpoint
+                const res = await fetch(`${ADMIN_BASE}/ai-logs?limit=20`, { headers });
+                if (!res.ok) {
+                    // Fallback: show a message
+                    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#999;">处理日志端点暂未开放</td></tr>`;
+                    return;
+                }
+                const data = await res.json();
+                const logs = data.logs || data || [];
+
+                if (!Array.isArray(logs) || logs.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#999;">暂无处理日志</td></tr>`;
+                    return;
+                }
+
+                tbody.innerHTML = logs.slice(0, 20).map(l => {
+                    const statusBadge = l.success
+                        ? '<span class="badge badge-success">成功</span>'
+                        : `<span class="badge badge-danger" title="${escapeHtml(l.error_message || '')}">失败</span>`;
+                    const cacheBadge = l.cached
+                        ? '<span class="badge badge-info">缓存</span>'
+                        : '<span class="badge badge-warning">实时</span>';
+                    return `
+                        <tr>
+                            <td>${l.article_id || '-'}</td>
+                            <td>${escapeHtml(l.provider || '-')}</td>
+                            <td>${escapeHtml(l.model || '-')}</td>
+                            <td>${escapeHtml(l.task_type || '-')}</td>
+                            <td>${l.duration_ms || '-'}</td>
+                            <td>${statusBadge}</td>
+                            <td>${cacheBadge}</td>
+                            <td>${l.created_at ? formatDate(l.created_at) : '-'}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch(e) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#999;">处理日志端点暂未开放</td></tr>`;
+            }
+        }
+
+        async function loadPipelineFeatureToggles() {
+            const token = localStorage.getItem('access_token');
+            const headers = { 'Authorization': `Bearer ${token}` };
+            const container = document.getElementById('pipeline-feature-toggles');
+
+            const features = [
+                { key: 'feature.ai_processor', name: 'AI 处理器', desc: '启用 AI 内容分析（摘要、分类、评分）' },
+                { key: 'feature.embedding', name: '向量嵌入', desc: '启用文章向量化（语义搜索前提）' },
+                { key: 'feature.event_clustering', name: '事件聚类', desc: '启用自动事件聚类' },
+                { key: 'feature.topic_radar', name: '话题雷达', desc: '启用话题自动发现' },
+                { key: 'feature.action_items', name: '行动建议', desc: '启用可执行建议提取' },
+                { key: 'feature.report_generation', name: '报告生成', desc: '启用周报/月报自动生成' },
+            ];
+
+            let html = '';
+            for (const f of features) {
+                let enabled = false;
+                try {
+                    const res = await fetch(`${ADMIN_BASE}/config/${f.key}`, { headers });
+                    if (res.ok) {
+                        const data = await res.json();
+                        enabled = data.value === 'true' || data.value === true;
+                    }
+                } catch(e) {}
+
+                html += `
+                    <div class="toggle-item">
+                        <div class="toggle-info">
+                            <h4>${f.name}</h4>
+                            <p>${f.desc}</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" ${enabled ? 'checked' : ''} onchange="togglePipelineFeature('${f.key}', this.checked)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html || '<div style="color:#999;text-align:center;padding:20px;">无法加载功能开关</div>';
+        }
+
+        async function togglePipelineFeature(key, enabled) {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/config/${key}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ value: enabled ? 'true' : 'false' }),
+                });
+                if (!res.ok) {
+                    alert('切换失败');
+                    loadPipelineFeatureToggles();  // Refresh to revert UI
+                }
+            } catch(e) {
+                alert('网络错误');
+                loadPipelineFeatureToggles();
+            }
         }
     </script>
 </body>

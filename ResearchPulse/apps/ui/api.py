@@ -66,6 +66,9 @@ from apps.crawler.models import (
     WechatAccount,
     WeiboHotSearch,
 )
+from apps.embedding.models import ArticleEmbedding
+from apps.event.models import EventCluster, EventMember
+from apps.topic.models import ArticleTopic, Topic
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +178,66 @@ async def admin_page(
             "request": request,
             "user_id": user_id,
         },
+    )
+
+
+@router.get("/events", response_class=HTMLResponse)
+async def events_page(
+    request: Request,
+    user_id: OptionalUserId = None,
+) -> HTMLResponse:
+    """Event clustering page.
+
+    事件聚类页面渲染入口。
+    """
+    return _templates.TemplateResponse(
+        "events.html",
+        {"request": request, "user_id": user_id},
+    )
+
+
+@router.get("/topics", response_class=HTMLResponse)
+async def topics_page(
+    request: Request,
+    user_id: OptionalUserId = None,
+) -> HTMLResponse:
+    """Topic discovery page.
+
+    话题趋势页面渲染入口。
+    """
+    return _templates.TemplateResponse(
+        "topics.html",
+        {"request": request, "user_id": user_id},
+    )
+
+
+@router.get("/actions", response_class=HTMLResponse)
+async def actions_page(
+    request: Request,
+    user_id: OptionalUserId = None,
+) -> HTMLResponse:
+    """Action items page.
+
+    行动建议页面渲染入口。
+    """
+    return _templates.TemplateResponse(
+        "actions.html",
+        {"request": request, "user_id": user_id},
+    )
+
+
+@router.get("/reports", response_class=HTMLResponse)
+async def reports_page(
+    request: Request,
+    user_id: OptionalUserId = None,
+) -> HTMLResponse:
+    """Reports center page.
+
+    报告中心页面渲染入口。
+    """
+    return _templates.TemplateResponse(
+        "reports.html",
+        {"request": request, "user_id": user_id},
     )
 
 
@@ -1344,6 +1407,179 @@ async def delete_subscription(
     return {"status": "ok"}
 
 
+
+# ============================================================================
+# Pipeline Status API Endpoint
+# ============================================================================
+# 查询文章在 AI Pipeline 各阶段的处理状态
+# 供前端展示 Pipeline 处理进度指示器
+
+@router.get("/api/articles/{article_id}/pipeline-status")
+async def get_pipeline_status(
+    article_id: int,
+    user_id: OptionalUserId = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Get the AI pipeline processing status for a single article.
+
+    查询文章在 AI Pipeline 各阶段（AI处理、向量化、事件聚类、话题匹配）的处理状态。
+
+    Args:
+        article_id: Article ID.
+
+    Returns:
+        Dict with pipeline stage statuses.
+    """
+    # 查询文章基本信息
+    article = await session.get(Article, article_id)
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    # 查询 Embedding 状态
+    embedding_result = await session.execute(
+        select(ArticleEmbedding).where(ArticleEmbedding.article_id == article_id)
+    )
+    embedding = embedding_result.scalar_one_or_none()
+
+    # 查询 Event 聚类状态
+    event_result = await session.execute(
+        select(EventMember).where(EventMember.article_id == article_id)
+    )
+    event_member = event_result.scalar_one_or_none()
+
+    # 查询 Topic 匹配状态
+    topic_result = await session.execute(
+        select(ArticleTopic).where(ArticleTopic.article_id == article_id)
+    )
+    article_topics = topic_result.scalars().all()
+
+    # 如果有关联事件，获取事件标题
+    event_info = None
+    if event_member:
+        event_cluster_result = await session.execute(
+            select(EventCluster).where(EventCluster.id == event_member.event_id)
+        )
+        event_cluster = event_cluster_result.scalar_one_or_none()
+        if event_cluster:
+            event_info = {
+                "event_id": event_cluster.id,
+                "title": event_cluster.title,
+                "article_count": event_cluster.article_count,
+            }
+
+    # 如果有关联话题，获取话题名称
+    topic_infos = []
+    if article_topics:
+        topic_ids = [at.topic_id for at in article_topics]
+        topics_result = await session.execute(
+            select(Topic).where(Topic.id.in_(topic_ids))
+        )
+        topics = {t.id: t for t in topics_result.scalars().all()}
+        for at in article_topics:
+            t = topics.get(at.topic_id)
+            if t:
+                topic_infos.append({
+                    "topic_id": t.id,
+                    "name": t.name,
+                    "match_score": at.match_score,
+                })
+
+    return {
+        "article_id": article_id,
+        "stages": {
+            "ai_process": {
+                "status": "completed" if article.ai_processed_at else "pending",
+                "completed_at": article.ai_processed_at.isoformat() if article.ai_processed_at else None,
+                "provider": article.ai_provider,
+                "model": article.ai_model,
+                "method": article.processing_method,
+            },
+            "embedding": {
+                "status": "completed" if embedding else "pending",
+                "provider": embedding.provider if embedding else None,
+                "model": embedding.model_name if embedding else None,
+                "dimension": embedding.dimension if embedding else None,
+                "computed_at": embedding.computed_at.isoformat() if embedding and embedding.computed_at else None,
+            },
+            "event_cluster": {
+                "status": "clustered" if event_member else "unclustered",
+                "similarity_score": event_member.similarity_score if event_member else None,
+                "detection_method": event_member.detection_method if event_member else None,
+                "event": event_info,
+            },
+            "topic": {
+                "status": "matched" if article_topics else "unmatched",
+                "topic_count": len(article_topics),
+                "topics": topic_infos,
+            },
+        },
+    }
+
+
+@router.get("/api/articles/batch-pipeline-status")
+async def batch_pipeline_status(
+    article_ids: str = Query(..., description="逗号分隔的文章 ID 列表"),
+    user_id: OptionalUserId = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Batch query pipeline status for multiple articles.
+
+    批量查询文章的 Pipeline 处理状态（轻量版，仅返回各阶段完成状态）。
+    用于文章列表页的 Pipeline 状态指示器。
+
+    Args:
+        article_ids: Comma-separated article IDs (max 50).
+
+    Returns:
+        Dict mapping article_id -> stage completion booleans.
+    """
+    try:
+        ids = [int(x.strip()) for x in article_ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid article_ids format")
+
+    if len(ids) > 50:
+        ids = ids[:50]
+
+    if not ids:
+        return {"statuses": {}}
+
+    # 批量查询 AI 处理状态（直接从 articles 表读取 ai_processed_at）
+    articles_result = await session.execute(
+        select(Article.id, Article.ai_processed_at).where(Article.id.in_(ids))
+    )
+    ai_status = {row[0]: row[1] is not None for row in articles_result.all()}
+
+    # 批量查询 Embedding 状态
+    embed_result = await session.execute(
+        select(ArticleEmbedding.article_id).where(ArticleEmbedding.article_id.in_(ids))
+    )
+    embed_ids = {row[0] for row in embed_result.all()}
+
+    # 批量查询 Event 聚类状态
+    event_result = await session.execute(
+        select(EventMember.article_id).where(EventMember.article_id.in_(ids))
+    )
+    event_ids = {row[0] for row in event_result.all()}
+
+    # 批量查询 Topic 匹配状态
+    topic_result = await session.execute(
+        select(ArticleTopic.article_id).where(ArticleTopic.article_id.in_(ids))
+    )
+    topic_ids = {row[0] for row in topic_result.all()}
+
+    statuses = {}
+    for aid in ids:
+        statuses[str(aid)] = {
+            "ai_process": ai_status.get(aid, False),
+            "embedding": aid in embed_ids,
+            "event_cluster": aid in event_ids,
+            "topic": aid in topic_ids,
+        }
+
+    return {"statuses": statuses}
+
+
 # ============================================================================
 # Helpers
 # ============================================================================
@@ -1383,6 +1619,18 @@ def _article_to_dict(article: Article) -> Dict[str, Any]:
         "arxiv_updated_time": article.arxiv_updated_time.isoformat() if article.arxiv_updated_time else None,
         # 微信公众号特有字段
         "wechat_account_name": article.wechat_account_name,    # 微信公众号名称
+        # ---- AI 处理结果字段（AIGC 标记与展示） ----
+        "ai_summary": article.ai_summary,                      # AI 生成的中文摘要
+        "ai_category": article.ai_category,                    # AI 自动分类
+        "importance_score": article.importance_score,           # AI 重要性评分 1-10
+        "one_liner": article.one_liner,                        # 一句话结论
+        "key_points": article.key_points,                      # 关键要点 JSON
+        "impact_assessment": article.impact_assessment,        # 影响力评估 JSON
+        "actionable_items": article.actionable_items,          # 可执行建议 JSON
+        "ai_processed_at": article.ai_processed_at.isoformat() if article.ai_processed_at else None,
+        "ai_provider": article.ai_provider,                    # AI 服务提供商
+        "ai_model": article.ai_model,                          # 具体模型名称
+        "processing_method": article.processing_method,        # 处理方式: ai/rule/cached/screen
     }
 
 

@@ -131,6 +131,52 @@
         .export-btn { width: 100%; padding: 10px 16px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; background: white; cursor: pointer; transition: all 0.2s; }
         .export-btn:hover { background: #f5f5f5; border-color: #4ecdc4; color: #4ecdc4; }
 
+        /* AIGC Badge & AI Insight Styles */
+        .source-badge.aigc { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .aigc-tag { display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600; letter-spacing: 0.5px; vertical-align: middle; }
+        .importance-score { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+        .importance-score.high { background: #fee2e2; color: #dc2626; }
+        .importance-score.medium { background: #fef3c7; color: #d97706; }
+        .importance-score.low { background: #dcfce7; color: #059669; }
+        .ai-insight { border-left: 3px solid #764ba2; margin: 12px 0 0 0; padding: 0; border-radius: 0 8px 8px 0; background: #faf8ff; }
+        .ai-insight-header { cursor: pointer; font-size: 13px; color: #764ba2; font-weight: 500; padding: 10px 14px; display: flex; align-items: center; gap: 8px; user-select: none; }
+        .ai-insight-header:hover { background: #f3eeff; }
+        .ai-insight-header .toggle-arrow { transition: transform 0.2s; font-size: 10px; }
+        .ai-insight-header .toggle-arrow.open { transform: rotate(90deg); }
+        .ai-insight-body { padding: 0 14px 14px 14px; font-size: 13px; color: #444; line-height: 1.7; }
+        .ai-insight-body .one-liner { font-weight: 600; color: #1a1a2e; margin-bottom: 10px; font-size: 14px; }
+        .ai-insight-body .ai-summary-text { margin-bottom: 12px; color: #555; }
+        .ai-insight-body .section-title { font-size: 12px; font-weight: 600; color: #764ba2; margin: 10px 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+        .key-points-list { list-style: none; padding: 0; margin: 0; }
+        .key-points-list li { padding: 6px 0; border-bottom: 1px solid #f0ecf7; display: flex; gap: 8px; align-items: flex-start; }
+        .key-points-list li:last-child { border-bottom: none; }
+        .kp-type { font-size: 11px; padding: 2px 6px; border-radius: 3px; background: #ede9fe; color: #7c3aed; font-weight: 500; white-space: nowrap; flex-shrink: 0; }
+        .kp-value { flex: 1; }
+        .kp-impact { font-size: 11px; color: #888; margin-top: 2px; }
+        .impact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .impact-item { background: white; border-radius: 6px; padding: 8px 10px; border: 1px solid #ede9fe; }
+        .impact-item .impact-label { font-size: 11px; color: #888; margin-bottom: 4px; }
+        .impact-item .impact-text { font-size: 12px; color: #333; }
+        .actionable-list { list-style: none; padding: 0; margin: 0; }
+        .actionable-list li { padding: 6px 0; border-bottom: 1px solid #f0ecf7; display: flex; gap: 8px; align-items: flex-start; }
+        .actionable-list li:last-child { border-bottom: none; }
+        .act-priority { font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+        .act-priority.high { background: #fee2e2; color: #dc2626; }
+        .act-priority.medium { background: #fef3c7; color: #d97706; }
+        .act-priority.low { background: #dcfce7; color: #059669; }
+        .ai-meta { margin-top: 10px; padding-top: 8px; border-top: 1px solid #ede9fe; font-size: 11px; color: #999; display: flex; gap: 12px; flex-wrap: wrap; }
+
+        /* Pipeline Status Indicator */
+        .pipeline-indicator { display: flex; align-items: center; gap: 2px; margin-top: 8px; }
+        .pipeline-stage { display: flex; align-items: center; gap: 4px; padding: 3px 8px; font-size: 11px; border-radius: 3px; color: #999; background: #f5f5f5; cursor: default; transition: all 0.2s; }
+        .pipeline-stage.completed { background: #dcfce7; color: #059669; }
+        .pipeline-stage.pending { background: #f5f5f5; color: #bbb; }
+        .pipeline-stage-dot { width: 6px; height: 6px; border-radius: 50%; background: #ddd; flex-shrink: 0; }
+        .pipeline-stage.completed .pipeline-stage-dot { background: #059669; }
+        .pipeline-stage.pending .pipeline-stage-dot { background: #ddd; }
+        .pipeline-connector { width: 12px; height: 1px; background: #ddd; flex-shrink: 0; }
+        .pipeline-connector.active { background: #059669; }
+
         /* ArXiv Specific Fields */
         .arxiv-details { background: #fafafa; border-radius: 8px; padding: 12px 16px; margin-top: 12px; }
         .arxiv-details .row { display: flex; gap: 24px; font-size: 12px; color: #666; }
@@ -541,6 +587,10 @@
             let html = `<a href="${APP_BASE}/">首页</a>`;
             if (user) {
                 html += `<a href="${APP_BASE}/subscriptions">订阅管理</a>`;
+                html += `<a href="${APP_BASE}/events">事件聚类</a>`;
+                html += `<a href="${APP_BASE}/topics">话题趋势</a>`;
+                html += `<a href="${APP_BASE}/actions">行动建议</a>`;
+                html += `<a href="${APP_BASE}/reports">报告中心</a>`;
                 if (user.is_superuser) {
                     html += `<a href="${APP_BASE}/admin">管理后台</a>`;
                 }
@@ -608,6 +658,10 @@
                 // 显示订阅管理
                 let navHtml = `<a href="${APP_BASE}/">首页</a>`;
                 navHtml += '<a href="#" onclick="goTo(\'subscriptions\')">订阅管理</a>';
+                navHtml += `<a href="${APP_BASE}/events">事件聚类</a>`;
+                navHtml += `<a href="${APP_BASE}/topics">话题趋势</a>`;
+                navHtml += `<a href="${APP_BASE}/actions">行动建议</a>`;
+                navHtml += `<a href="${APP_BASE}/reports">报告中心</a>`;
                 // 仅超级管理员显示管理后台
                 if (currentUser.is_superuser) {
                     navHtml += '<a href="#" onclick="goTo(\'admin\')">管理后台</a>';
@@ -1264,6 +1318,9 @@
             }
 
             container.innerHTML = articles.map(article => renderArticle(article)).join('');
+
+            // 异步加载 Pipeline 状态指示器
+            loadBatchPipelineStatus(articles.map(a => a.id));
         }
 
         // 显示未登录提示
@@ -1308,6 +1365,26 @@
             } else {
                 const displayName = sourceTypeNames[sourceType] || sourceType;
                 sourceBadge = `<span class="source-badge ${sourceType}">${displayName}</span>`;
+            }
+
+            // AIGC 标记：当文章经过 AI 处理时显示
+            let aigcBadge = '';
+            if (article.ai_processed_at) {
+                const method = article.processing_method || 'ai';
+                const methodNames = { 'ai': 'AI', 'rule': '规则', 'cached': '缓存', 'screen': '筛选' };
+                const methodLabel = methodNames[method] || method;
+                const providerInfo = article.ai_provider ? `${article.ai_provider}` : '';
+                const modelInfo = article.ai_model ? ` / ${article.ai_model}` : '';
+                aigcBadge = `<span class="source-badge aigc" title="AIGC - ${methodLabel}处理 ${providerInfo}${modelInfo}">AIGC</span>`;
+            }
+
+            // 重要性评分指示器
+            let scoreIndicator = '';
+            if (article.importance_score) {
+                const score = article.importance_score;
+                const level = score >= 8 ? 'high' : score >= 5 ? 'medium' : 'low';
+                const levelNames = { 'high': '高', 'medium': '中', 'low': '低' };
+                scoreIndicator = `<span class="importance-score ${level}" title="AI 重要性评分">${score}/10 ${levelNames[level]}</span>`;
             }
 
             // Clean HTML tags from content/summary for display
@@ -1378,22 +1455,28 @@
 
             const isStarred = userStars.has(article.id);
 
+            // AI 分析面板（折叠式）
+            const aiInsight = renderAiInsight(article);
+
             return `
                 <div class="article-card">
                     <div class="article-header">
                         <div class="article-title">
                             <a href="${escapeHtml(article.url)}" target="_blank">${escapeHtml(article.title)}</a>
                         </div>
-                        <div class="article-source">${sourceBadge}</div>
+                        <div class="article-source">${aigcBadge}${sourceBadge}</div>
                     </div>
                     <div class="article-meta">
                         <span>👤 ${escapeHtml(article.author || '未知作者')}</span>
                         ${timeDisplay}
                         ${article.category ? `<span>📁 ${escapeHtml(article.category)}${categoryNames[article.category] ? ' - ' + escapeHtml(categoryNames[article.category]) : ''}</span>` : ''}
+                        ${article.ai_category ? `<span>🤖 ${escapeHtml(article.ai_category)}</span>` : ''}
+                        ${scoreIndicator}
                     </div>
                     <div class="${contentClass}" data-full="${escapeHtml(cleanSummary)}">${escapeHtml(cleanSummary)}</div>
                     ${expandBtn}
                     ${arxivDetails}
+                    ${aiInsight}
                     <div class="article-footer">
                         <div class="article-tags">${tags}</div>
                         <div class="article-actions">
@@ -1403,8 +1486,143 @@
                             ${arxivActions}
                         </div>
                     </div>
+                    <div class="pipeline-indicator" id="pipeline-${article.id}"></div>
                 </div>
             `;
+        }
+
+        // ---- AI 分析面板渲染函数 ----
+
+        function renderAiInsight(article) {
+            // 如果没有任何 AI 处理结果，不显示面板
+            if (!article.ai_processed_at) return '';
+
+            const hasContent = article.one_liner || article.ai_summary || article.key_points || article.impact_assessment || article.actionable_items;
+            if (!hasContent) return '';
+
+            const cardId = `ai-insight-${article.id}`;
+
+            return `
+                <div class="ai-insight" id="${cardId}">
+                    <div class="ai-insight-header" onclick="toggleAiInsight('${cardId}')">
+                        <span class="toggle-arrow" id="${cardId}-arrow">&#9654;</span>
+                        <span class="aigc-tag">AIGC</span>
+                        <span>AI 智能分析</span>
+                        ${article.one_liner ? `<span style="color:#888;font-weight:normal;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">&mdash; ${escapeHtml(article.one_liner)}</span>` : ''}
+                    </div>
+                    <div class="ai-insight-body" id="${cardId}-body" style="display:none;">
+                        ${article.one_liner ? `<div class="one-liner">${escapeHtml(article.one_liner)}</div>` : ''}
+                        ${article.ai_summary ? `<div class="ai-summary-text">${escapeHtml(article.ai_summary)}</div>` : ''}
+                        ${renderKeyPoints(article.key_points)}
+                        ${renderImpactAssessment(article.impact_assessment)}
+                        ${renderActionableItems(article.actionable_items)}
+                        <div class="ai-meta">
+                            ${article.ai_provider ? `<span>提供商: ${escapeHtml(article.ai_provider)}</span>` : ''}
+                            ${article.ai_model ? `<span>模型: ${escapeHtml(article.ai_model)}</span>` : ''}
+                            ${article.processing_method ? `<span>方式: ${escapeHtml(article.processing_method)}</span>` : ''}
+                            ${article.ai_processed_at ? `<span>处理时间: ${formatDate(article.ai_processed_at)}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleAiInsight(cardId) {
+            const body = document.getElementById(cardId + '-body');
+            const arrow = document.getElementById(cardId + '-arrow');
+            if (body.style.display === 'none') {
+                body.style.display = 'block';
+                arrow.classList.add('open');
+            } else {
+                body.style.display = 'none';
+                arrow.classList.remove('open');
+            }
+        }
+
+        function renderKeyPoints(keyPoints) {
+            if (!keyPoints || !Array.isArray(keyPoints) || keyPoints.length === 0) return '';
+            const items = keyPoints.map(kp => {
+                const type = kp.type ? `<span class="kp-type">${escapeHtml(String(kp.type))}</span>` : '';
+                const value = kp.value ? `<span class="kp-value">${escapeHtml(String(kp.value))}${kp.impact ? `<div class="kp-impact">${escapeHtml(String(kp.impact))}</div>` : ''}</span>` : '';
+                return `<li>${type}${value}</li>`;
+            }).join('');
+            return `
+                <div class="section-title">关键要点</div>
+                <ul class="key-points-list">${items}</ul>
+            `;
+        }
+
+        function renderImpactAssessment(impact) {
+            if (!impact || typeof impact !== 'object') return '';
+            const shortTerm = impact.short_term || impact.shortTerm || '';
+            const longTerm = impact.long_term || impact.longTerm || '';
+            const certainty = impact.certainty || '';
+            if (!shortTerm && !longTerm) return '';
+            return `
+                <div class="section-title">影响力评估${certainty ? ` (确定性: ${escapeHtml(String(certainty))})` : ''}</div>
+                <div class="impact-grid">
+                    ${shortTerm ? `<div class="impact-item"><div class="impact-label">短期影响</div><div class="impact-text">${escapeHtml(String(shortTerm))}</div></div>` : ''}
+                    ${longTerm ? `<div class="impact-item"><div class="impact-label">长期影响</div><div class="impact-text">${escapeHtml(String(longTerm))}</div></div>` : ''}
+                </div>
+            `;
+        }
+
+        function renderActionableItems(items) {
+            if (!items || !Array.isArray(items) || items.length === 0) return '';
+            const priorityMap = { '高': 'high', '中': 'medium', '低': 'low', 'high': 'high', 'medium': 'medium', 'low': 'low' };
+            const rendered = items.map(item => {
+                const priority = item.priority || '';
+                const pClass = priorityMap[priority] || 'medium';
+                const type = item.type ? `[${escapeHtml(String(item.type))}] ` : '';
+                const desc = item.description ? escapeHtml(String(item.description)) : '';
+                return `<li><span class="act-priority ${pClass}">${escapeHtml(String(priority || '中'))}</span><span>${type}${desc}</span></li>`;
+            }).join('');
+            return `
+                <div class="section-title">可执行建议</div>
+                <ul class="actionable-list">${rendered}</ul>
+            `;
+        }
+
+        // ---- Pipeline 状态指示器 ----
+
+        async function loadBatchPipelineStatus(articleIds) {
+            if (!articleIds || articleIds.length === 0) return;
+            try {
+                const res = await fetch(`${API_BASE}/articles/batch-pipeline-status?article_ids=${articleIds.join(',')}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const statuses = data.statuses || {};
+                for (const [aid, stages] of Object.entries(statuses)) {
+                    const el = document.getElementById(`pipeline-${aid}`);
+                    if (el) {
+                        el.innerHTML = renderPipelineIndicator(stages);
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load pipeline status:', e);
+            }
+        }
+
+        function renderPipelineIndicator(stages) {
+            const stageList = [
+                { key: 'ai_process', label: 'AI分析' },
+                { key: 'embedding', label: '向量化' },
+                { key: 'event_cluster', label: '事件聚类' },
+                { key: 'topic', label: '话题匹配' },
+            ];
+            let html = '';
+            let prevDone = false;
+            stageList.forEach((stage, idx) => {
+                const done = !!stages[stage.key];
+                const cls = done ? 'completed' : 'pending';
+                if (idx > 0) {
+                    const connCls = prevDone && done ? 'active' : '';
+                    html += `<span class="pipeline-connector ${connCls}"></span>`;
+                }
+                html += `<span class="pipeline-stage ${cls}"><span class="pipeline-stage-dot"></span>${stage.label}</span>`;
+                prevDone = done;
+            });
+            return html;
         }
 
         function toggleExpand(btn) {
