@@ -12,6 +12,7 @@
 | `init.sh` | 初始化 |
 | `crawl.sh` | 手动爬取触发 |
 | `email.sh` | 手动邮件发送 |
+| `ai-pipeline.sh` | AI 流水线手动运行 |
 | `sync-categories.sh` | arXiv 分类同步 |
 
 ## 快速使用
@@ -139,6 +140,51 @@ JWT_SECRET_KEY=your_secret
 ./scripts/control.sh email notify
 ./scripts/control.sh email send --to user@example.com --subject "标题" --body "内容"
 ```
+
+## AI 流水线
+
+使用 `ai-pipeline.sh` 可手动运行 AI 处理流水线的各个阶段：
+
+```bash
+# 运行完整的 AI 流水线（ai → embedding → event → topic）
+./scripts/ai-pipeline.sh all
+
+# 仅运行 AI 处理阶段
+./scripts/ai-pipeline.sh ai
+
+# 运行 AI 处理 + 嵌入计算
+./scripts/ai-pipeline.sh ai embedding
+
+# 仅运行嵌入到主题发现（跳过 AI 处理）
+./scripts/ai-pipeline.sh embedding event topic
+
+# 每阶段最多处理 200 条文章
+./scripts/ai-pipeline.sh all --limit 200
+
+# 忽略功能开关，强制运行所有阶段
+./scripts/ai-pipeline.sh all --force
+
+# 以 JSON 格式输出结果
+./scripts/ai-pipeline.sh all --json
+```
+
+**流水线阶段**（按依赖顺序）：
+
+| 阶段 | 说明 | 功能开关 |
+|------|------|----------|
+| `ai` | AI 文章处理（摘要/分类/评分） | `feature.ai_processor` |
+| `embedding` | 向量嵌入计算 | `feature.embedding` |
+| `event` | 事件聚类 | `feature.event_clustering` |
+| `topic` | 主题发现 | `feature.topic_radar` |
+
+**选项**：
+- `--limit <n>`: 每阶段最多处理的文章数（默认 50）
+- `--force`: 忽略功能开关，强制运行所有指定阶段
+- `--verbose, -v`: 显示详细输出（包含完整错误栈）
+- `--json`: 以 JSON 格式输出结果
+- `--help, -h`: 显示帮助信息
+
+**说明**：无论命令行中阶段的输入顺序如何，脚本会自动按流水线依赖顺序（ai → embedding → event → topic）排列执行。功能未启用的阶段默认会被跳过，使用 `--force` 可强制运行。
 
 ## 数据同步
 

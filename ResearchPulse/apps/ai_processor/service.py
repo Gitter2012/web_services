@@ -236,7 +236,7 @@ class AIProcessorService:
         semaphore = asyncio.Semaphore(settings.ai_batch_concurrency)
         session_factory = get_session_factory()
         results: list[dict] = [{}] * len(article_ids)
-        logs: list[AIProcessingLog] = []
+        log_dicts: list[dict] = []
 
         async def _process_one(index: int, article_id: int) -> None:
             """Process a single article within the semaphore-guarded context."""
@@ -246,10 +246,21 @@ class AIProcessorService:
                     async with session_factory() as session:
                         result = await self.process_article(article_id, session, force=force)
                         await session.commit()
-                        # 提取日志对象
+                        # 提取日志对象的字段为 dict，避免跨 session 传递 ORM 实例
                         log = result.pop("_log", None)
                         if log:
-                            logs.append(log)
+                            log_dicts.append({
+                                "article_id": log.article_id,
+                                "provider": log.provider,
+                                "model": log.model,
+                                "task_type": log.task_type,
+                                "input_chars": log.input_chars,
+                                "output_chars": log.output_chars,
+                                "duration_ms": log.duration_ms,
+                                "success": log.success,
+                                "error_message": log.error_message,
+                                "cached": log.cached,
+                            })
                         results[index] = result
                 except Exception as e:
                     logger.error(f"Error processing article {article_id}: {e}")
@@ -267,9 +278,9 @@ class AIProcessorService:
 
         self._batch_mode = False
 
-        # O12: 批量写入所有处理日志
-        if logs:
-            db.add_all(logs)
+        # O12: 用收集的 dict 数据批量创建新的 ORM 对象写入外层 session
+        if log_dicts:
+            db.add_all([AIProcessingLog(**d) for d in log_dicts])
 
         # 统计结果
         processed = 0
