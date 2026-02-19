@@ -146,11 +146,13 @@ ai_processor:
     model_screen: ""
     timeout: 120
     keep_alive: 300
+    api_key: ""  # Optional API key for authenticated Ollama deployments
     thinking_enabled: false
     concurrent_enabled: false
     workers_heavy: 2
     workers_screen: 4
   openai:
+    base_url: "https://api.openai.com/v1"  # Custom base URL for proxies or compatible APIs
     model: "gpt-4o"
     model_light: "gpt-4o-mini"
     timeout: 60

@@ -536,6 +536,11 @@ class Settings(BaseSettings):
         default=_ai_config.get("ollama", {}).get("timeout", 120),
         validation_alias="OLLAMA_TIMEOUT",
     )
+    # Ollama API 密钥（可选，用于有认证要求的远程 Ollama 部署）
+    ollama_api_key: str = Field(
+        default=_ai_config.get("ollama", {}).get("api_key", ""),
+        validation_alias="OLLAMA_API_KEY",
+    )
     # AI 结果缓存开关（避免对相同内容重复调用 AI）
     ai_cache_enabled: bool = Field(
         default=_ai_config.get("cache", {}).get("enabled", True),
@@ -570,6 +575,31 @@ class Settings(BaseSettings):
     ai_fallback_provider: str = Field(
         default=_ai_config.get("fallback_provider", ""),
         validation_alias="AI_FALLBACK_PROVIDER",
+    )
+    # OpenAI API 密钥
+    openai_api_key: str = Field(
+        default="",
+        validation_alias="OPENAI_API_KEY",
+    )
+    # OpenAI API Base URL（支持自定义代理或兼容 API 服务）
+    openai_base_url: str = Field(
+        default=_ai_config.get("openai", {}).get("base_url", "https://api.openai.com/v1"),
+        validation_alias="OPENAI_BASE_URL",
+    )
+    # OpenAI 使用的模型名称
+    openai_model: str = Field(
+        default=_ai_config.get("openai", {}).get("model", "gpt-4o"),
+        validation_alias="OPENAI_MODEL",
+    )
+    # OpenAI 轻量模型
+    openai_model_light: str = Field(
+        default=_ai_config.get("openai", {}).get("model_light", "gpt-4o-mini"),
+        validation_alias="OPENAI_MODEL_LIGHT",
+    )
+    # OpenAI API 请求超时时间（秒）
+    openai_timeout: int = Field(
+        default=_ai_config.get("openai", {}).get("timeout", 60),
+        validation_alias="OPENAI_TIMEOUT",
     )
 
     # ======================== 向量嵌入 / Milvus 配置 ========================

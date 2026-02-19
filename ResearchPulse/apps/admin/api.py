@@ -1869,7 +1869,9 @@ class AIConfigUpdate(BaseModel):
     ollama_model: Optional[str] = None
     ollama_model_light: Optional[str] = None
     ollama_timeout: Optional[int] = None
+    ollama_api_key: Optional[str] = None
     # OpenAI settings
+    openai_base_url: Optional[str] = None
     openai_model: Optional[str] = None
     openai_model_light: Optional[str] = None
     openai_timeout: Optional[int] = None
@@ -1906,7 +1908,9 @@ async def get_ai_config(
             "ollama_model": feature_config.get("ai.ollama_model", "qwen3:32b"),
             "ollama_model_light": feature_config.get("ai.ollama_model_light", ""),
             "ollama_timeout": feature_config.get_int("ai.ollama_timeout", 120),
+            "ollama_api_key": "***" if feature_config.get("ai.ollama_api_key", "") else "",
             # OpenAI
+            "openai_base_url": feature_config.get("ai.openai_base_url", "https://api.openai.com/v1"),
             "openai_model": feature_config.get("ai.openai_model", "gpt-4o"),
             "openai_model_light": feature_config.get("ai.openai_model_light", "gpt-4o-mini"),
             "openai_timeout": feature_config.get_int("ai.openai_timeout", 60),
@@ -1958,6 +1962,12 @@ async def update_ai_config(
     if update.ollama_timeout is not None:
         await feature_config.async_set("ai.ollama_timeout", str(update.ollama_timeout), updated_by=admin.id)
         updates.append("ollama_timeout")
+    if update.ollama_api_key is not None:
+        await feature_config.async_set("ai.ollama_api_key", update.ollama_api_key, updated_by=admin.id)
+        updates.append("ollama_api_key")
+    if update.openai_base_url is not None:
+        await feature_config.async_set("ai.openai_base_url", update.openai_base_url, updated_by=admin.id)
+        updates.append("openai_base_url")
     if update.openai_model is not None:
         await feature_config.async_set("ai.openai_model", update.openai_model, updated_by=admin.id)
         updates.append("openai_model")

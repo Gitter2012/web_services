@@ -522,6 +522,11 @@ SMTP_PASSWORD=your-app-password
 AI_PROVIDER=ollama                          # ollama / openai / claude
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=qwen3:32b
+OLLAMA_API_KEY=                             # 可选，用于有认证要求的远程部署
+
+# OpenAI（支持自定义 API 地址）
+OPENAI_API_KEY=sk-xxx
+OPENAI_BASE_URL=https://api.openai.com/v1  # 支持代理或兼容 API 服务
 
 # 向量嵌入
 EMBEDDING_PROVIDER=sentence-transformers

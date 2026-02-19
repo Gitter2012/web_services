@@ -1117,6 +1117,8 @@ INSERT INTO `system_config` (`config_key`, `config_value`, `description`, `is_se
 ('ai.ollama_model', 'qwen3:32b', 'Ollama model name', 0),
 ('ai.ollama_model_light', '', 'Ollama light model for simple tasks', 0),
 ('ai.ollama_timeout', '120', 'Ollama request timeout in seconds', 0),
+('ai.ollama_api_key', '', 'Ollama API key (optional, for authenticated deployments)', 1),
+('ai.openai_base_url', 'https://api.openai.com/v1', 'OpenAI API base URL (supports custom proxies or compatible APIs)', 0),
 ('ai.openai_model', 'gpt-4o', 'OpenAI model name', 0),
 ('ai.openai_model_light', 'gpt-4o-mini', 'OpenAI light model name', 0),
 ('ai.openai_timeout', '60', 'OpenAI request timeout in seconds', 0),

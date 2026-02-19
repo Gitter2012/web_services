@@ -38,7 +38,7 @@ class OpenAIEmbeddingProvider(BaseEmbeddingProvider):
     基于 OpenAI Embeddings API 的云端嵌入实现。
     """
 
-    def __init__(self, api_key: str = "", model_name: str = "text-embedding-3-small"):
+    def __init__(self, api_key: str = "", model_name: str = "text-embedding-3-small", base_url: str = ""):
         """Initialize OpenAI embedding provider.
 
         初始化 OpenAI 嵌入提供商。
@@ -46,9 +46,13 @@ class OpenAIEmbeddingProvider(BaseEmbeddingProvider):
         Args:
             api_key: OpenAI API key.
             model_name: Embedding model name.
+            base_url: Custom API base URL (supports proxies or compatible APIs).
         """
         self._api_key = api_key
         self.model_name = model_name
+        # 支持自定义 Base URL，与 AI Provider 保持一致
+        from settings import settings
+        self._base_url = (base_url or settings.openai_base_url or "https://api.openai.com/v1").rstrip("/")
         # 根据模型名称推断维度
         # text-embedding-3-small: 1536 维
         # text-embedding-3-large: 3072 维
@@ -72,7 +76,7 @@ class OpenAIEmbeddingProvider(BaseEmbeddingProvider):
         # 调用 OpenAI Embeddings API，返回向量数据
         import httpx as _httpx
         response = _httpx.post(
-            "https://api.openai.com/v1/embeddings",
+            f"{self._base_url}/embeddings",
             headers={"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"},
             json={"input": text, "model": self.model_name},
             timeout=30,
@@ -99,7 +103,7 @@ class OpenAIEmbeddingProvider(BaseEmbeddingProvider):
         # OpenAI API 支持在 input 中传入列表进行批量编码
         import httpx as _httpx
         response = _httpx.post(
-            "https://api.openai.com/v1/embeddings",
+            f"{self._base_url}/embeddings",
             headers={"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"},
             json={"input": texts, "model": self.model_name},
             timeout=60,  # 批量请求使用更长超时

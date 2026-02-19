@@ -124,10 +124,12 @@ AI Processor Settings
        base_url: "http://localhost:11434"
        model: "qwen3:32b"
        timeout: 120
+       api_key: ""  # Optional, for authenticated remote Ollama
 
      openai:
        model: "gpt-4o"
        model_light: "gpt-4o-mini"
+       base_url: "https://api.openai.com/v1"  # Custom proxy or compatible API
 
      claude:
        model: "claude-sonnet-4-20250514"

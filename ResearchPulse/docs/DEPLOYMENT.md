@@ -273,6 +273,7 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=qwen3:32b
 OLLAMA_MODEL_LIGHT=qwen3:8b  # 可选轻量模型
 OLLAMA_TIMEOUT=120
+OLLAMA_API_KEY=              # 可选，用于有认证要求的远程 Ollama 部署
 ```
 
 ### GPU 支持
@@ -426,6 +427,9 @@ services:
       - SUPERUSER_PASSWORD=${SUPERUSER_PASSWORD}
       - AI_PROVIDER=ollama
       - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_API_KEY=${OLLAMA_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
       - MILVUS_HOST=milvus
       - MILVUS_PORT=19530
       - REDIS_HOST=redis

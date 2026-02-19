@@ -168,12 +168,14 @@ OLLAMA_BASE_URL=http://localhost:11434  # Ollama 服务地址
 OLLAMA_MODEL=qwen3:32b                 # 主模型（推荐 qwen3:32b）
 OLLAMA_MODEL_LIGHT=                     # 轻量模型（可选，用于简单任务）
 OLLAMA_TIMEOUT=120                      # 请求超时（秒）
+OLLAMA_API_KEY=                         # API 密钥（可选，用于有认证要求的远程 Ollama 部署）
 ```
 
 ### OpenAI 配置（云端推理）
 
 ```bash
 OPENAI_API_KEY=sk-xxx                  # OpenAI API 密钥
+OPENAI_BASE_URL=https://api.openai.com/v1  # API 地址（支持自定义代理或兼容 API 服务）
 OPENAI_MODEL=gpt-4o                    # 主模型
 OPENAI_MODEL_LIGHT=gpt-4o-mini        # 轻量模型
 OPENAI_TIMEOUT=60                      # 请求超时（秒）
@@ -208,6 +210,7 @@ ai_processor:
     model_light: ""                 # 轻量模型
     model_screen: ""                # 筛选模型
     timeout: 120                    # 超时（秒）
+    api_key: ""                     # API 密钥（可选）
     keep_alive: "5m"                # 模型保活时间
     thinking_enabled: true          # 思维链
     concurrent_enabled: false       # 并发处理
@@ -216,6 +219,7 @@ ai_processor:
   openai:
     model: "gpt-4o"
     model_light: "gpt-4o-mini"
+    base_url: "https://api.openai.com/v1"  # 自定义 API 地址
     timeout: 60
   claude:
     model: "claude-3-sonnet"
@@ -389,6 +393,8 @@ topic:
 | `ai.ollama_base_url` | http://localhost:11434 | Ollama 地址 |
 | `ai.ollama_model` | qwen3:32b | Ollama 模型 |
 | `ai.ollama_timeout` | 120 | Ollama 超时（秒） |
+| `ai.ollama_api_key` | （空） | Ollama API 密钥（敏感字段，GET 时显示为 `***`） |
+| `ai.openai_base_url` | https://api.openai.com/v1 | OpenAI API 地址 |
 | `ai.cache_enabled` | true | AI 缓存开关 |
 | `ai.cache_ttl` | 86400 | AI 缓存 TTL（秒） |
 | `ai.max_content_length` | 1500 | 最大内容长度 |
@@ -673,6 +679,7 @@ ai_processor:
   openai:
     model: "gpt-4o"
     model_light: "gpt-4o-mini"
+    base_url: "https://api.openai.com/v1"  # 自定义 API 地址
     timeout: 60
   claude:
     model: "claude-3-sonnet"

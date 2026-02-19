@@ -44,6 +44,7 @@ class OllamaProvider(BaseAIProvider):
         base_url: str | None = None,
         model: str | None = None,
         timeout: int | None = None,
+        api_key: str | None = None,
     ):
         """Initialize Ollama provider.
 
@@ -53,11 +54,14 @@ class OllamaProvider(BaseAIProvider):
             base_url: Ollama base URL.
             model: Model name.
             timeout: Request timeout in seconds.
+            api_key: Optional API key for authenticated Ollama deployments.
         """
         # 从配置或参数获取 Ollama 服务地址、模型名称和超时时间
         self._base_url = base_url or settings.ollama_base_url
         self._model = model or settings.ollama_model
         self._timeout = timeout or settings.ollama_timeout
+        # 可选 API 密钥，用于有认证要求的远程 Ollama 部署
+        self._api_key = api_key if api_key is not None else settings.ollama_api_key
         # 持久化 HTTP 客户端，复用 TCP 连接，避免每次请求创建新连接
         self._client: httpx.AsyncClient | None = None
 
@@ -85,6 +89,19 @@ class OllamaProvider(BaseAIProvider):
             await self._client.aclose()
             self._client = None
 
+    def _get_headers(self) -> dict:
+        """Build HTTP headers, including Authorization if API key is set.
+
+        构建 HTTP 请求头。如果配置了 API 密钥，则自动添加 Authorization 头。
+
+        Returns:
+            dict: HTTP headers.
+        """
+        headers: dict = {}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+        return headers
+
     async def is_available(self) -> bool:
         """Check if Ollama service is running.
 
@@ -97,7 +114,10 @@ class OllamaProvider(BaseAIProvider):
         # 使用短超时（5秒）快速判断，避免阻塞
         try:
             client = self._get_client()
-            response = await client.get(f"{self._base_url}/api/tags")
+            response = await client.get(
+                f"{self._base_url}/api/tags",
+                headers=self._get_headers(),
+            )
             return response.status_code == 200
         except (httpx.RequestError, OSError):
             return False
@@ -121,6 +141,7 @@ class OllamaProvider(BaseAIProvider):
         client = self._get_client()
         response = await client.post(
             f"{self._base_url}/api/generate",
+            headers=self._get_headers(),
             json=payload,
         )
         response.raise_for_status()

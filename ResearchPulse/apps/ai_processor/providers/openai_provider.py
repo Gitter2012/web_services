@@ -39,7 +39,7 @@ class OpenAIProvider(BaseAIProvider):
     基于 OpenAI Chat Completions 的 AI 处理提供商。
     """
 
-    def __init__(self, api_key: str | None = None, model: str | None = None):
+    def __init__(self, api_key: str | None = None, model: str | None = None, base_url: str | None = None, timeout: int | None = None):
         """Initialize OpenAI provider.
 
         初始化 OpenAI 提供商。
@@ -47,11 +47,15 @@ class OpenAIProvider(BaseAIProvider):
         Args:
             api_key: OpenAI API key.
             model: Model name override.
+            base_url: API base URL (supports custom proxies or compatible APIs).
+            timeout: Request timeout in seconds.
         """
-        # API 密钥和模型名称可通过构造参数或配置文件传入
-        self._api_key = api_key or ""
-        self._model = model or "gpt-4o-mini"  # 默认使用性价比高的 gpt-4o-mini
-        self._base_url = "https://api.openai.com/v1"
+        # API 密钥、模型名称、基址URL和超时可通过构造参数或配置文件传入
+        self._api_key = api_key or settings.openai_api_key or ""
+        self._model = model or settings.openai_model or "gpt-4o-mini"
+        # 支持自定义 Base URL，可接入代理、Azure OpenAI 或其他兼容 API
+        self._base_url = (base_url or settings.openai_base_url or "https://api.openai.com/v1").rstrip("/")
+        self._timeout = timeout or settings.openai_timeout or 60
         # 持久化 HTTP 客户端，复用 TCP 连接
         self._client: httpx.AsyncClient | None = None
 
@@ -65,7 +69,7 @@ class OpenAIProvider(BaseAIProvider):
         """
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
-                timeout=60,
+                timeout=self._timeout,
                 limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
             )
         return self._client
