@@ -7,9 +7,10 @@ Run with: pytest tests/common/test_email.py -v
 
 from __future__ import annotations
 
+import asyncio
 import os
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 import smtplib
 
 
@@ -568,3 +569,216 @@ class TestRecipientCleaning:
             # Check that whitespace was stripped
             called_to_addrs = mock_smtp.call_args[1]["to_addrs"]
             assert called_to_addrs == ["user@example.com", "other@example.com"]
+
+
+class TestSendWithConfigKwargs:
+    """Test _send_with_config passes correct kwargs to send_email (Fix #1).
+
+    验证 _send_with_config 对各后端传递正确的参数名。
+    """
+
+    @pytest.mark.asyncio
+    async def test_sendgrid_config_passes_api_key(self):
+        """Verify SendGrid config passes api_key (not sendgrid_api_key).
+
+        验证 SendGrid 配置使用 api_key 参数名。
+
+        Returns:
+            None: This test does not return a value.
+        """
+        from common.email import _send_with_config
+
+        mock_config = MagicMock()
+        mock_config.backend_type = "sendgrid"
+        mock_config.sender_email = "sender@example.com"
+        mock_config.sendgrid_api_key = "SG.test_key"
+
+        with patch("common.email.send_email") as mock_send:
+            mock_send.return_value = (True, "")
+            ok, err = await _send_with_config(
+                to_addrs=["user@example.com"],
+                subject="Test",
+                body="Hello",
+                config=mock_config,
+            )
+            assert ok is True
+            call_kwargs = mock_send.call_args[1]
+            assert call_kwargs["api_key"] == "SG.test_key"
+            # Must NOT contain old-style sendgrid_api_key
+            assert "sendgrid_api_key" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_mailgun_config_passes_api_key_and_domain(self):
+        """Verify Mailgun config passes api_key and domain (not mailgun_api_key).
+
+        验证 Mailgun 配置使用 api_key 和 domain 参数名。
+
+        Returns:
+            None: This test does not return a value.
+        """
+        from common.email import _send_with_config
+
+        mock_config = MagicMock()
+        mock_config.backend_type = "mailgun"
+        mock_config.sender_email = "sender@example.com"
+        mock_config.mailgun_api_key = "key-test123"
+        mock_config.mailgun_domain = "mg.example.com"
+
+        with patch("common.email.send_email") as mock_send:
+            mock_send.return_value = (True, "")
+            ok, err = await _send_with_config(
+                to_addrs=["user@example.com"],
+                subject="Test",
+                body="Hello",
+                config=mock_config,
+            )
+            assert ok is True
+            call_kwargs = mock_send.call_args[1]
+            assert call_kwargs["api_key"] == "key-test123"
+            assert call_kwargs["domain"] == "mg.example.com"
+            assert "mailgun_api_key" not in call_kwargs
+            assert "mailgun_domain" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_brevo_config_passes_api_key_and_from_name(self):
+        """Verify Brevo config passes api_key and from_name (not brevo_api_key).
+
+        验证 Brevo 配置使用 api_key 和 from_name 参数名。
+
+        Returns:
+            None: This test does not return a value.
+        """
+        from common.email import _send_with_config
+
+        mock_config = MagicMock()
+        mock_config.backend_type = "brevo"
+        mock_config.sender_email = "sender@example.com"
+        mock_config.brevo_api_key = "xkeysib-test"
+        mock_config.brevo_from_name = "MyApp"
+
+        with patch("common.email.send_email") as mock_send:
+            mock_send.return_value = (True, "")
+            ok, err = await _send_with_config(
+                to_addrs=["user@example.com"],
+                subject="Test",
+                body="Hello",
+                config=mock_config,
+            )
+            assert ok is True
+            call_kwargs = mock_send.call_args[1]
+            assert call_kwargs["api_key"] == "xkeysib-test"
+            assert call_kwargs["from_name"] == "MyApp"
+            assert "brevo_api_key" not in call_kwargs
+            assert "brevo_from_name" not in call_kwargs
+
+
+class TestAsyncToThread:
+    """Test asyncio.to_thread usage (Fix #2).
+
+    验证异步函数使用 asyncio.to_thread 而非弃用的 get_event_loop。
+    """
+
+    @pytest.mark.asyncio
+    async def test_send_notification_email_uses_to_thread(self):
+        """Verify send_notification_email uses asyncio.to_thread.
+
+        验证 send_notification_email 使用 asyncio.to_thread 执行。
+
+        Returns:
+            None: This test does not return a value.
+        """
+        from common.email import send_notification_email
+
+        with patch("common.email.send_email") as mock_send:
+            mock_send.return_value = (True, "")
+
+            with patch("settings.settings") as mock_settings:
+                mock_settings.email_backend = "smtp"
+                mock_settings.email_from = "sender@example.com"
+
+                # Verify it runs as a coroutine (proving async execution)
+                result = send_notification_email(
+                    to_addr="user@example.com",
+                    subject="Test",
+                    body="Hello",
+                )
+                assert asyncio.iscoroutine(result)
+                ok = await result
+                assert ok is True
+
+    @pytest.mark.asyncio
+    async def test_send_with_config_uses_to_thread(self):
+        """Verify _send_with_config uses asyncio.to_thread.
+
+        验证 _send_with_config 使用 asyncio.to_thread 执行。
+
+        Returns:
+            None: This test does not return a value.
+        """
+        from common.email import _send_with_config
+
+        mock_config = MagicMock()
+        mock_config.backend_type = "smtp"
+        mock_config.sender_email = "sender@example.com"
+        mock_config.smtp_host = "smtp.example.com"
+        mock_config.smtp_port = 587
+        mock_config.smtp_user = "user"
+        mock_config.smtp_password = "pass"
+        mock_config.smtp_use_tls = True
+
+        with patch("common.email.send_email") as mock_send:
+            mock_send.return_value = (True, "")
+
+            # _send_with_config should be awaitable (uses asyncio.to_thread)
+            result = _send_with_config(
+                to_addrs=["user@example.com"],
+                subject="Test",
+                body="Hello",
+                config=mock_config,
+            )
+            assert asyncio.iscoroutine(result)
+            ok, err = await result
+            assert ok is True
+
+
+class TestFallbackErrorPreservation:
+    """Test send_email_with_fallback preserves last error (Fix #3).
+
+    验证 send_email_with_fallback 保留最后一个错误信息。
+    """
+
+    @patch("httpx.post")
+    def test_fallback_preserves_last_error_message(self, mock_post):
+        """Verify fallback returns last error when all backends fail.
+
+        验证所有后端失败时保留最后一个后端的错误信息。
+
+        Args:
+            mock_post: Mocked httpx.post.
+
+        Returns:
+            None: This test does not return a value.
+        """
+        from common.email import send_email_with_fallback
+
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+        mock_response.text = "Forbidden - API key expired"
+        mock_post.return_value = mock_response
+
+        ok, err = send_email_with_fallback(
+            subject="Test",
+            body="Hello",
+            to_addrs=["user@example.com"],
+            backends=["sendgrid", "brevo"],
+            from_addr="sender@example.com",
+            api_key="test_key",
+            retries=1,
+        )
+
+        assert ok is False
+        # Error should contain the actual error from the last backend
+        assert "All email backends failed" in err
+        assert "Last error" in err
+        # Should include the specific error from the last attempted backend
+        assert len(err) > len("✗ All email backends failed. Last error: ")

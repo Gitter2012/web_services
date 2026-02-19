@@ -1704,18 +1704,19 @@ async def update_email_settings(
     更新全局邮件设置（应用到所有配置）。
     """
     # Update all configs with global settings
-    if data.email_enabled is not None or data.push_frequency is not None or data.push_time is not None or data.max_articles_per_email is not None:
-        update_stmt = update(EmailConfig)
-        if data.email_enabled is not None:
-            update_stmt = update_stmt.values(email_enabled=data.email_enabled)
-        if data.push_frequency is not None:
-            update_stmt = update_stmt.values(push_frequency=data.push_frequency)
-        if data.push_time is not None:
-            update_stmt = update_stmt.values(push_time=data.push_time)
-        if data.max_articles_per_email is not None:
-            update_stmt = update_stmt.values(max_articles_per_email=data.max_articles_per_email)
-        
-        await session.execute(update_stmt)
+    # 收集所有需要更新的字段，一次性调用 .values() 避免链式覆盖
+    update_fields: Dict[str, Any] = {}
+    if data.email_enabled is not None:
+        update_fields["email_enabled"] = data.email_enabled
+    if data.push_frequency is not None:
+        update_fields["push_frequency"] = data.push_frequency
+    if data.push_time is not None:
+        update_fields["push_time"] = data.push_time
+    if data.max_articles_per_email is not None:
+        update_fields["max_articles_per_email"] = data.max_articles_per_email
+
+    if update_fields:
+        await session.execute(update(EmailConfig).values(**update_fields))
     
     return {"status": "ok", "message": "Global email settings updated"}
 
@@ -1771,8 +1772,36 @@ async def test_email_config(
             raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
     elif config.backend_type in ("sendgrid", "mailgun", "brevo"):
-        # These would require HTTP API calls
-        return {"status": "ok", "message": f"Test email would be sent to {test_email} via {config.backend_type} ({config.name})"}
+        # 使用 common/email.py 的 send_email 函数实际发送测试邮件
+        from common.email import send_email
+        try:
+            from_addr = config.sender_email or config.smtp_user or ""
+            kwargs: Dict[str, Any] = {}
+            if config.backend_type == "sendgrid":
+                kwargs["api_key"] = config.sendgrid_api_key
+            elif config.backend_type == "mailgun":
+                kwargs["api_key"] = config.mailgun_api_key
+                kwargs["domain"] = config.mailgun_domain
+            elif config.backend_type == "brevo":
+                kwargs["api_key"] = config.brevo_api_key
+                kwargs["from_name"] = config.brevo_from_name
+
+            ok, err = send_email(
+                subject=f"ResearchPulse Test Email - {config.name}",
+                body=f"This is a test email from ResearchPulse using {config.name} ({config.backend_type}).",
+                to_addrs=[test_email],
+                backend=config.backend_type,
+                from_addr=from_addr,
+                **kwargs,
+            )
+            if ok:
+                return {"status": "ok", "message": f"Test email sent to {test_email} via {config.backend_type} ({config.name})"}
+            else:
+                raise HTTPException(status_code=500, detail=f"Failed to send email: {err}")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown backend: {config.backend_type}")

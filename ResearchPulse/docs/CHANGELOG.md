@@ -11,6 +11,29 @@
 
 ### 新增
 
+- **手动邮件发送脚本** (`scripts/email.sh`, `scripts/_email_runner.py`)
+  - `test`: 发送测试邮件，验证邮件后端配置是否正常
+  - `notify`: 手动触发用户订阅通知（等同于定时任务 `run_notification_job`）
+  - `send`: 向指定地址发送自定义邮件（支持 HTML、文件读取、多收件人）
+  - 支持指定后端 (smtp/sendgrid/mailgun/brevo) 或按优先级自动 fallback
+  - 已集成到 `control.sh` 统一入口（`./scripts/control.sh email ...`）
+
+- **邮件与通知代码修复** (14 项)
+  - 修复 `_send_with_config` kwargs 参数名不匹配问题
+  - 替换已废弃的 `get_event_loop().run_in_executor()` 为 `asyncio.to_thread()`
+  - 修复 `send_email_with_fallback` 丢失最终错误信息
+  - 修复 `update_email_settings` 链式 `.values()` 覆盖问题
+  - 统一 `email_enabled` 与 `feature.email_notification` 双开关检查
+  - 修复管理员报告收件人地址错误
+  - 修复非 SMTP 后端测试邮件未实际发送
+  - 修复 ArXiv/WeChat 订阅匹配使用 ID 而非 code/name
+  - 统一邮件发送路径（优先使用 `send_email_with_priority`）
+  - 添加 `is_active` 过滤条件到订阅查询
+  - 移除 SMTP 重试循环中的死代码
+  - 替换邮件模板中的硬编码占位 URL
+  - 使用 `hmac.compare_digest()` 替代明文比较验证码/令牌
+  - 添加 `asyncio.Semaphore(5)` 控制并发通知发送
+
 - **爬虫模块重构** (`apps/crawler/`)
   - `registry.py`: 爬虫注册表，支持装饰器方式注册爬虫类型
   - `factory.py`: 爬虫工厂，封装爬虫实例创建逻辑

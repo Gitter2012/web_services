@@ -18,6 +18,7 @@ This module handles sending email notifications to users after crawling.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set
@@ -30,8 +31,8 @@ from sqlalchemy.orm import selectinload
 # UserArticleState: 用户文章阅读状态模型（如已读/未读/收藏等）
 from apps.crawler.models import Article, UserSubscription, UserArticleState
 from core.database import get_session_factory
-# send_email: 基础邮件发送函数; send_email_with_fallback: 带降级策略的邮件发送
-from common.email import send_email, send_email_with_fallback
+# send_email: 基础邮件发送函数; send_email_with_priority: 基于数据库配置的优先级发送
+from common.email import send_email, send_email_with_priority
 # render_articles_by_source: 按数据源分组渲染文章为 Markdown 格式
 from common.markdown import render_articles_by_source
 from settings import settings
@@ -91,17 +92,36 @@ async def get_user_subscribed_articles(
         # For rss: source_type='rss_feed', source_id=feed_id
         # For wechat: source_type='wechat_account', source_id=account_id
 
-        arxiv_categories: Set[int] = set()     # 用户订阅的 ArXiv 分类 ID 集合
+        arxiv_category_ids: Set[int] = set()   # 用户订阅的 ArXiv 分类 ID 集合
         rss_feeds: Set[int] = set()            # 用户订阅的 RSS 源 ID 集合
-        wechat_accounts: Set[int] = set()      # 用户订阅的微信公众号 ID 集合
+        wechat_account_ids: Set[int] = set()   # 用户订阅的微信公众号 ID 集合
 
         for sub in subscriptions:
             if sub.source_type == "arxiv_category":
-                arxiv_categories.add(sub.source_id)
+                arxiv_category_ids.add(sub.source_id)
             elif sub.source_type == "rss_feed":
                 rss_feeds.add(sub.source_id)
             elif sub.source_type == "wechat_account":
-                wechat_accounts.add(sub.source_id)
+                wechat_account_ids.add(sub.source_id)
+
+        # ---- 第二步(续): 将订阅 ID 解析为实际的分类代码/公众号名称 ----
+        # 订阅表存的是 source_id（数据库主键），但文章表存的是分类代码/公众号名称
+        # 需要查库将 ID 映射为可比较的值
+        arxiv_category_codes: Set[str] = set()
+        if arxiv_category_ids:
+            from apps.crawler.models.source import ArxivCategory
+            cat_result = await session.execute(
+                select(ArxivCategory.code).where(ArxivCategory.id.in_(arxiv_category_ids))
+            )
+            arxiv_category_codes = {row[0] for row in cat_result.fetchall()}
+
+        wechat_account_names: Set[str] = set()
+        if wechat_account_ids:
+            from apps.crawler.models.source import WechatAccount
+            acct_result = await session.execute(
+                select(WechatAccount.account_name).where(WechatAccount.id.in_(wechat_account_ids))
+            )
+            wechat_account_names = {row[0] for row in acct_result.fetchall()}
 
         # ---- 第三步: 构建文章查询条件 ----
         # 基础条件: 只查询未归档的文章
@@ -132,11 +152,11 @@ async def get_user_subscribed_articles(
         matched_articles = []
         for article in all_articles:
             # Check if article matches any subscription
-            # ArXiv 文章匹配: 检查文章是否属于用户订阅的 ArXiv 分类
-            if article.source_type == "arxiv" and arxiv_categories:
-                # For arxiv, check if category matches
-                # Note: This is simplified - you might need to join with arxiv_categories table
-                if article.category:  # Category code
+            # ArXiv 文章匹配: 检查文章的分类代码是否在用户订阅的分类集合中
+            if article.source_type == "arxiv" and arxiv_category_codes:
+                # 优先使用 arxiv_primary_category，其次使用 source_id（分类代码）
+                article_cat = article.arxiv_primary_category or article.source_id or ""
+                if article_cat in arxiv_category_codes:
                     matched_articles.append(article)
                     continue
             # RSS 文章匹配: 检查文章的源 ID 是否在用户订阅的 RSS 源集合中
@@ -149,10 +169,9 @@ async def get_user_subscribed_articles(
                 except (ValueError, TypeError):
                     # source_id 转换失败时跳过该文章（防御性处理）
                     pass
-            # 微信文章匹配: 检查文章是否来自用户订阅的微信公众号
-            elif article.source_type == "wechat" and wechat_accounts:
-                # For WeChat, check account name match
-                if article.wechat_account_name:
+            # 微信文章匹配: 检查文章的公众号名称是否在用户订阅的公众号集合中
+            elif article.source_type == "wechat" and wechat_account_names:
+                if article.wechat_account_name and article.wechat_account_name in wechat_account_names:
                     matched_articles.append(article)
                     continue
 
@@ -188,6 +207,7 @@ async def send_user_notification_email(
     user_email: str,
     user_id: int,
     articles: List[Dict[str, Any]],
+    session: Any = None,
     date: Optional[str] = None,
 ) -> bool:
     """Send a subscription digest email to a user.
@@ -293,7 +313,7 @@ async def send_user_notification_email(
         <hr>
         <p style="color: #888; font-size: 12px;">
             此邮件由 ResearchPulse v2 自动发送。<br>
-            访问 <a href="https://your-domain/researchpulse/">ResearchPulse</a> 管理您的订阅。
+            访问 <a href="{settings.url_prefix}">ResearchPulse</a> 管理您的订阅。
         </p>
     </body>
     </html>
@@ -315,15 +335,25 @@ async def send_user_notification_email(
     # ---- 发送邮件 ----
     # Send email
     try:
-        ok, error = send_email(
-            subject=subject,
-            body=text_body,
-            to_addrs=[user_email],
-            html_body=html_body,
-            # 使用配置的第一个邮件后端（可能配置多个后端用逗号分隔）
-            backend=settings.email_backend.split(",")[0].strip() or "smtp",
-            from_addr=settings.email_from,
-        )
+        # 优先使用数据库配置的优先级发送（与 verification_service 保持一致）
+        if session is not None:
+            ok, error = await send_email_with_priority(
+                to_addrs=[user_email],
+                subject=subject,
+                body=text_body,
+                session=session,
+                html_body=html_body,
+            )
+        else:
+            # 回退到环境变量配置的发送方式
+            ok, error = send_email(
+                subject=subject,
+                body=text_body,
+                to_addrs=[user_email],
+                html_body=html_body,
+                backend=settings.email_backend.split(",")[0].strip() or "smtp",
+                from_addr=settings.email_from,
+            )
 
         if ok:
             logger.info(f"Email sent to {user_email}: {len(articles)} articles")
@@ -387,11 +417,13 @@ ResearchPulse v2
     # 注意: errors[:5] 最多只展示前5条错误，避免邮件过长
 
     try:
-        # 发送报告邮件到管理员邮箱（使用 email_from 作为管理员收件地址）
+        # 确定管理员收件地址：优先使用超级管理员邮箱，其次使用发件人地址
+        admin_email = settings.superuser_email or settings.email_from
+        # 发送报告邮件到管理员邮箱
         ok, _ = send_email(
             subject=subject,
             body=body,
-            to_addrs=[settings.email_from],
+            to_addrs=[admin_email],
             backend=settings.email_backend.split(",")[0].strip() or "smtp",
             from_addr=settings.email_from,
         )
@@ -429,8 +461,20 @@ async def send_all_user_notifications(
     # 副作用: 发送邮件（可能产生大量 SMTP 网络请求）
 
     # 前置检查: 邮件功能未启用时直接返回
+    # 同时检查 settings.email_enabled（.env 配置）和 feature_config（数据库配置）
+    # 避免调度器注册了任务但 settings 侧未启用导致静默不发送
+    from common.feature_config import feature_config
+    feature_notification_enabled = feature_config.get_bool("feature.email_notification", False)
+
+    if not settings.email_enabled and not feature_notification_enabled:
+        logger.info("Email notifications disabled (both settings.email_enabled and feature.email_notification are off)")
+        return {"sent": 0, "failed": 0, "total": 0}
+
     if not settings.email_enabled:
-        logger.info("Email notifications disabled")
+        logger.warning(
+            "feature.email_notification is enabled but settings.email_enabled is False. "
+            "Notifications will not be sent. Please set EMAIL_ENABLED=true in .env"
+        )
         return {"sent": 0, "failed": 0, "total": 0}
 
     # 默认推送时间范围: 当天零时至当前时刻
@@ -450,16 +494,22 @@ async def send_all_user_notifications(
         from core.models.user import User
 
         # 使用 distinct() 去重，确保每个用户只处理一次（即使有多个订阅）
-        # Get distinct user IDs from subscriptions
+        # 只查询有活跃订阅的用户，避免已取消订阅的用户被纳入通知列表
+        # Get distinct user IDs from active subscriptions
         sub_result = await session.execute(
-            select(UserSubscription.user_id).distinct()
+            select(UserSubscription.user_id).where(
+                UserSubscription.is_active == True
+            ).distinct()
         )
         user_ids = [row[0] for row in sub_result.fetchall()]
 
         results["total"] = len(user_ids)
 
-        # ---- 第二步: 逐用户处理通知 ----
-        # 使用 max_users 限制单次处理的用户数量，防止任务超时
+        # ---- 第二步: 逐用户收集待发送通知 ----
+        # 先顺序完成数据库查询（AsyncSession 不支持并发），
+        # 再并发发送所有邮件
+        pending_notifications = []  # [(user_email, user_id, articles, date_str)]
+
         for i, user_id in enumerate(user_ids[:max_users]):
             try:
                 # 查询用户详细信息
@@ -519,26 +569,43 @@ async def send_all_user_notifications(
                     logger.debug(f"No new articles for user {user_id}")
                     continue
 
-                # ---- 第四步: 发送个性化通知邮件 ----
-                # Send notification
-                ok = await send_user_notification_email(
-                    user_email=user.email,
-                    user_id=user_id,
-                    articles=articles,
-                    date=since.strftime("%Y-%m-%d"),
+                pending_notifications.append(
+                    (user.email, user_id, articles, since.strftime("%Y-%m-%d"))
                 )
 
-                # 更新统计计数
+            except Exception as e:
+                # 单个用户的通知发送失败不影响其他用户，记录错误后继续处理
+                logger.error(f"Error preparing notification for user {user_id}: {e}")
+                results["failed"] += 1
+                results["errors"].append(f"User {user_id}: {str(e)}")
+
+        # ---- 第四步: 并发发送所有通知邮件 ----
+        # 使用信号量限制并发数，避免同时打开过多 SMTP 连接
+        semaphore = asyncio.Semaphore(5)
+
+        async def _send_one(user_email: str, user_id: int, articles: list, date_str: str) -> bool:
+            async with semaphore:
+                try:
+                    return await send_user_notification_email(
+                        user_email=user_email,
+                        user_id=user_id,
+                        articles=articles,
+                        session=session,
+                        date=date_str,
+                    )
+                except Exception as e:
+                    logger.error(f"Error sending notification to user {user_id}: {e}")
+                    return False
+
+        if pending_notifications:
+            send_results = await asyncio.gather(
+                *[_send_one(email, uid, arts, d) for email, uid, arts, d in pending_notifications]
+            )
+            for ok in send_results:
                 if ok:
                     results["sent"] += 1
                 else:
                     results["failed"] += 1
-
-            except Exception as e:
-                # 单个用户的通知发送失败不影响其他用户，记录错误后继续处理
-                logger.error(f"Error notifying user {user_id}: {e}")
-                results["failed"] += 1
-                results["errors"].append(f"User {user_id}: {str(e)}")
 
     logger.info(f"Notifications sent: {results['sent']}/{results['total']}")
     return results

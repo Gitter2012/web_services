@@ -502,6 +502,19 @@ SMTP_USER=your-email@gmail.com
 SMTP_PASSWORD=your-app-password
 ```
 
+验证邮件配置：
+
+```bash
+# 发送测试邮件
+./scripts/email.sh test --to your@email.com
+
+# 手动触发用户通知
+./scripts/email.sh notify
+
+# 发送自定义邮件
+./scripts/email.sh send --to user@example.com --subject "标题" --body "内容"
+```
+
 ### AI / Embedding 配置
 
 ```bash

@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
 import random
 import secrets
@@ -292,7 +293,7 @@ class VerificationService:
             }
 
         # 4. 比对验证码
-        if stored_code != code:
+        if not hmac.compare_digest(stored_code, code):
             # 增加尝试次数
             current_attempts = int(attempts) + 1 if attempts else 1
             cache.set(attempts_key, str(current_attempts), ttl=VerificationService.CODE_EXPIRY_SECONDS)
@@ -346,7 +347,7 @@ class VerificationService:
         token_key = VerificationService._get_token_key(email)
         stored_token = cache.get(token_key)
 
-        if not stored_token or stored_token != token:
+        if not stored_token or not hmac.compare_digest(stored_token, token):
             logger.warning(f"Invalid verification token for email: {email}")
             return False
 
@@ -564,7 +565,7 @@ class VerificationService:
             }
 
         # 4. 比对验证码
-        if stored_code != code:
+        if not hmac.compare_digest(stored_code, code):
             # 增加尝试次数
             current_attempts = int(attempts) + 1 if attempts else 1
             cache.set(attempts_key, str(current_attempts), ttl=VerificationService.CODE_EXPIRY_SECONDS)
@@ -618,7 +619,7 @@ class VerificationService:
         token_key = VerificationService._get_reset_token_key(email)
         stored_token = cache.get(token_key)
 
-        if not stored_token or stored_token != token:
+        if not stored_token or not hmac.compare_digest(stored_token, token):
             logger.warning(f"Invalid password reset token for email: {email}")
             return False
 

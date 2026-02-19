@@ -60,6 +60,11 @@ show_help() {
     echo "              --dry-run      模拟运行"
     echo "              --verbose, -v  详细输出"
     echo ""
+    echo -e "  ${CYAN}email${NC}     邮件工具"
+    echo "              test           发送测试邮件"
+    echo "              notify         触发用户通知"
+    echo "              send           发送自定义邮件"
+    echo ""
     echo -e "  ${CYAN}sync${NC}      同步数据"
     echo "              categories     arXiv 分类"
     echo "              --force, -f    强制同步"
@@ -71,6 +76,8 @@ show_help() {
     echo "  ./scripts/control.sh test coverage --html"
     echo "  ./scripts/control.sh crawl arxiv cs.AI cs.CL"
     echo "  ./scripts/control.sh crawl all --dry-run"
+    echo "  ./scripts/control.sh email test --to admin@example.com"
+    echo "  ./scripts/control.sh email notify"
     echo "  ./scripts/control.sh sync categories --force"
     echo ""
 }
@@ -95,6 +102,7 @@ case "$COMMAND" in
     start|stop|restart|status) "$SCRIPT_DIR/service.sh" "$COMMAND" "$@" ;;
     test)          "$SCRIPT_DIR/test.sh" "$@" ;;
     crawl)         "$SCRIPT_DIR/crawl.sh" "$@" ;;
+    email)         "$SCRIPT_DIR/email.sh" "$@" ;;
     sync)          "$SCRIPT_DIR/sync-categories.sh" "$@" ;;
     logs)          show_logs "$@" ;;
     help|--help|-h) show_help ;;

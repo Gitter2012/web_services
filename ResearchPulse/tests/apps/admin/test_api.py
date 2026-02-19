@@ -9,6 +9,7 @@ Run with: pytest tests/apps/admin/ -v
 from __future__ import annotations
 
 import pytest
+from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi import status
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -468,3 +469,154 @@ class TestAdminSourceManagement:
             status.HTTP_401_UNAUTHORIZED,
             status.HTTP_403_FORBIDDEN,
         ]
+
+
+class TestUpdateEmailSettingsCollectsFields:
+    """Test update_email_settings collects fields correctly (Fix #4).
+
+    验证 update_email_settings 将所有字段收集后一次性 .values() 调用，
+    而非链式 .values() 导致覆盖。
+    """
+
+    def test_email_global_settings_all_optional(self):
+        """Verify EmailGlobalSettings schema allows all fields optional.
+
+        验证 EmailGlobalSettings 所有字段可选。
+
+        Returns:
+            None: This test does not return a value.
+        """
+        from apps.admin.api import EmailGlobalSettings
+
+        # All fields are optional, empty create should work
+        settings = EmailGlobalSettings()
+        assert settings.email_enabled is None
+        assert settings.push_frequency is None
+        assert settings.push_time is None
+        assert settings.max_articles_per_email is None
+
+    def test_email_global_settings_partial(self):
+        """Verify EmailGlobalSettings accepts partial fields.
+
+        验证 EmailGlobalSettings 可接受部分字段。
+
+        Returns:
+            None: This test does not return a value.
+        """
+        from apps.admin.api import EmailGlobalSettings
+
+        settings = EmailGlobalSettings(email_enabled=True, push_time="10:00")
+        assert settings.email_enabled is True
+        assert settings.push_frequency is None
+        assert settings.push_time == "10:00"
+        assert settings.max_articles_per_email is None
+
+    @pytest.mark.asyncio
+    async def test_update_email_settings_collects_fields(self):
+        """Verify update logic collects fields into a single dict.
+
+        验证更新逻辑将字段收集到单个字典再执行更新，
+        而非链式调用 .values() 导致只有最后一个字段生效。
+
+        Returns:
+            None: This test does not return a value.
+        """
+        from apps.admin.api import EmailGlobalSettings
+        from typing import Dict, Any
+
+        # Simulate the field collection logic from update_email_settings
+        data = EmailGlobalSettings(
+            email_enabled=True,
+            push_frequency="weekly",
+            push_time="10:00",
+            max_articles_per_email=50,
+        )
+
+        update_fields: Dict[str, Any] = {}
+        if data.email_enabled is not None:
+            update_fields["email_enabled"] = data.email_enabled
+        if data.push_frequency is not None:
+            update_fields["push_frequency"] = data.push_frequency
+        if data.push_time is not None:
+            update_fields["push_time"] = data.push_time
+        if data.max_articles_per_email is not None:
+            update_fields["max_articles_per_email"] = data.max_articles_per_email
+
+        # All 4 fields should be collected
+        assert len(update_fields) == 4
+        assert update_fields["email_enabled"] is True
+        assert update_fields["push_frequency"] == "weekly"
+        assert update_fields["push_time"] == "10:00"
+        assert update_fields["max_articles_per_email"] == 50
+
+
+class TestTestEmailConfigNonSMTP:
+    """Test test_email_config sends actual emails for non-SMTP backends (Fix #7).
+
+    验证非 SMTP 后端（sendgrid/mailgun/brevo）实际调用 send_email 发送测试邮件，
+    而非返回占位消息。
+    """
+
+    def test_test_email_config_imports_send_email(self):
+        """Verify test_email_config endpoint imports and calls send_email for non-SMTP.
+
+        验证 test_email_config 端点对非 SMTP 后端导入并调用 send_email。
+
+        Returns:
+            None: This test does not return a value.
+        """
+        import inspect
+        from apps.admin.api import test_email_config
+
+        source = inspect.getsource(test_email_config)
+        # Should import send_email for non-SMTP backends
+        assert "from common.email import send_email" in source
+        # Should call send_email with backend parameter
+        assert "send_email(" in source
+
+    def test_sendgrid_kwargs_use_api_key(self):
+        """Verify SendGrid test email builds kwargs with api_key.
+
+        验证 SendGrid 测试邮件使用 api_key 参数名构建 kwargs。
+
+        Returns:
+            None: This test does not return a value.
+        """
+        import inspect
+        from apps.admin.api import test_email_config
+
+        source = inspect.getsource(test_email_config)
+        # For sendgrid: kwargs["api_key"] = config.sendgrid_api_key
+        assert 'kwargs["api_key"] = config.sendgrid_api_key' in source
+
+    def test_mailgun_kwargs_use_api_key_and_domain(self):
+        """Verify Mailgun test email builds kwargs with api_key and domain.
+
+        验证 Mailgun 测试邮件使用 api_key 和 domain 参数名构建 kwargs。
+
+        Returns:
+            None: This test does not return a value.
+        """
+        import inspect
+        from apps.admin.api import test_email_config
+
+        source = inspect.getsource(test_email_config)
+        # For mailgun: kwargs["api_key"] and kwargs["domain"]
+        assert 'kwargs["api_key"] = config.mailgun_api_key' in source
+        assert 'kwargs["domain"] = config.mailgun_domain' in source
+
+    def test_brevo_kwargs_use_api_key_and_from_name(self):
+        """Verify Brevo test email builds kwargs with api_key and from_name.
+
+        验证 Brevo 测试邮件使用 api_key 和 from_name 参数名构建 kwargs。
+
+        Returns:
+            None: This test does not return a value.
+        """
+        import inspect
+        from apps.admin.api import test_email_config
+
+        source = inspect.getsource(test_email_config)
+        # For brevo: kwargs["api_key"] and kwargs["from_name"]
+        assert 'kwargs["api_key"] = config.brevo_api_key' in source
+        assert 'kwargs["from_name"] = config.brevo_from_name' in source

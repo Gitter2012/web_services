@@ -1076,11 +1076,26 @@ docker stats ollama
 #### 8. 邮件发送失败
 
 ```bash
-# 检查邮件配置
+# 推荐：使用邮件工具脚本发送测试邮件
+./scripts/email.sh test --to your@email.com
+
+# 指定后端测试
+./scripts/email.sh test --to your@email.com --backend smtp
+./scripts/email.sh test --to your@email.com --backend sendgrid
+
+# 手动触发用户订阅通知
+./scripts/email.sh notify
+
+# 也可通过 control.sh 调用
+./scripts/control.sh email test --to your@email.com
+```
+
+如需直接测试底层 SMTP 连接：
+
+```bash
 # Gmail 需要使用"应用专用密码"，不是账号密码
 # 参考: https://support.google.com/accounts/answer/185833
 
-# 测试 SMTP 连接
 python -c "
 import smtplib
 server = smtplib.SMTP('smtp.gmail.com', 587)

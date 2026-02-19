@@ -138,6 +138,7 @@ class TestHealthCheck:
         """Verify health endpoint includes database status.
 
         验证健康检查响应包含数据库状态信息。
+        健康检查返回嵌套结构 ``{"status": ..., "components": {"database": ...}}``。
 
         Args:
             client: HTTP client fixture.
@@ -148,7 +149,9 @@ class TestHealthCheck:
         response = client.get("/health")
         assert response.status_code == 200
         data = response.json()
-        assert "database" in data
+        # Health endpoint returns nested structure with components
+        assert "components" in data
+        assert "database" in data["components"]
 
 
 class TestRootPage:

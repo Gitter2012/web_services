@@ -172,8 +172,6 @@ def _send_via_smtp(
                 if attempt < retries - 1:
                     time.sleep(retry_backoff)
         # 当前端口所有重试失败，继续尝试下一个端口
-        if last_tb:
-            continue
     # 所有端口都失败
     return False, last_tb
 
@@ -588,13 +586,15 @@ def send_email_with_fallback(
             (是否成功, 错误信息)
     """
     backends = backends or ["sendgrid", "brevo", "mailgun", "smtp"]
+    last_error = ""
     for bk in backends:
         logger.info(f"→ Attempting email send via '{bk}'...")
         ok, tb = send_email(subject, body, to_addrs, html_body=html_body, backend=bk, **kwargs)
         if ok:
             return True, ""
+        last_error = tb
     # 所有后端均失败
-    msg = "✗ All email backends failed"
+    msg = f"✗ All email backends failed. Last error: {last_error}"
     logger.error(msg)
     return False, msg
 
@@ -657,8 +657,7 @@ async def send_notification_email(
         return False
 
     # 在线程池中执行同步发送操作，避免阻塞异步事件循环
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _send)
+    return await asyncio.to_thread(_send)
 
 
 # ======================
@@ -779,7 +778,7 @@ async def _send_with_config(
                 html_body=html_body,
                 backend="sendgrid",
                 from_addr=from_addr,
-                sendgrid_api_key=config.sendgrid_api_key,
+                api_key=config.sendgrid_api_key,
             )
         elif config.backend_type == "mailgun":
             return send_email(
@@ -789,8 +788,8 @@ async def _send_with_config(
                 html_body=html_body,
                 backend="mailgun",
                 from_addr=from_addr,
-                mailgun_api_key=config.mailgun_api_key,
-                mailgun_domain=config.mailgun_domain,
+                api_key=config.mailgun_api_key,
+                domain=config.mailgun_domain,
             )
         elif config.backend_type == "brevo":
             return send_email(
@@ -800,12 +799,11 @@ async def _send_with_config(
                 html_body=html_body,
                 backend="brevo",
                 from_addr=from_addr,
-                brevo_api_key=config.brevo_api_key,
-                brevo_from_name=config.brevo_from_name,
+                api_key=config.brevo_api_key,
+                from_name=config.brevo_from_name,
             )
         else:
             return False, f"Unknown backend type: {config.backend_type}"
 
     # 在线程池中执行同步发送
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _send)
+    return await asyncio.to_thread(_send)

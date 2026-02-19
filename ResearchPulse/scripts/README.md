@@ -11,6 +11,7 @@
 | `deploy.sh` | 部署 |
 | `init.sh` | 初始化 |
 | `crawl.sh` | 手动爬取触发 |
+| `email.sh` | 手动邮件发送 |
 | `sync-categories.sh` | arXiv 分类同步 |
 
 ## 快速使用
@@ -90,6 +91,54 @@ JWT_SECRET_KEY=your_secret
 - `--dry-run`: 模拟运行，不写入数据库
 - `--verbose, -v`: 显示详细输出
 - `--help, -h`: 显示帮助信息
+
+## 手动邮件发送
+
+使用 `email.sh` 脚本可手动触发邮件发送操作：
+
+```bash
+# 发送测试邮件（验证邮件配置）
+./scripts/email.sh test --to admin@example.com
+
+# 指定后端发送测试邮件
+./scripts/email.sh test --to admin@example.com --backend smtp
+
+# 触发用户订阅通知（过去 24 小时）
+./scripts/email.sh notify
+
+# 触发通知，指定时间范围和用户数
+./scripts/email.sh notify --since 2025-01-01 --max-users 10
+
+# 发送自定义邮件
+./scripts/email.sh send --to user@example.com --subject "标题" --body "内容"
+
+# 从文件读取正文，发送 HTML 邮件
+./scripts/email.sh send --to a@x.com,b@x.com --subject "标题" --body-file msg.html --html
+```
+
+**命令**：`test`（测试邮件）、`notify`（用户通知）、`send`（自定义邮件）
+
+**通用选项**：
+- `--backend <smtp|sendgrid|mailgun|brevo>`: 指定后端（默认按优先级 fallback）
+- `--help, -h`: 显示帮助信息
+
+**notify 选项**：
+- `--since <YYYY-MM-DD>`: 文章时间下限（默认过去 24 小时）
+- `--max-users <n>`: 最大处理用户数（默认 100）
+
+**send 选项**：
+- `--to <email>`: 收件人（多个以逗号分隔）
+- `--subject <text>`: 邮件主题
+- `--body <text>` / `--body-file <path>`: 邮件正文（二选一）
+- `--html`: 将正文视为 HTML 格式
+
+也可通过 `control.sh` 调用：
+
+```bash
+./scripts/control.sh email test --to admin@example.com
+./scripts/control.sh email notify
+./scripts/control.sh email send --to user@example.com --subject "标题" --body "内容"
+```
 
 ## 数据同步
 

@@ -509,6 +509,27 @@ EMAIL_NOTIFICATION_TIME=09:00       # 推送时间（HH:MM 格式）
 EMAIL_MAX_ARTICLES=20               # 每封邮件最大文章数
 ```
 
+### 手动邮件操作
+
+配置完成后，可使用脚本验证和手动触发邮件发送：
+
+```bash
+# 发送测试邮件验证配置
+./scripts/email.sh test --to admin@example.com
+
+# 指定后端测试
+./scripts/email.sh test --to admin@example.com --backend smtp
+
+# 手动触发用户订阅通知
+./scripts/email.sh notify
+./scripts/email.sh notify --since 2025-01-01 --max-users 10
+
+# 发送自定义邮件
+./scripts/email.sh send --to user@example.com --subject "标题" --body "内容"
+```
+
+详见 `scripts/README.md` 中的完整参数说明。
+
 ---
 
 ## 完整 YAML 配置示例
