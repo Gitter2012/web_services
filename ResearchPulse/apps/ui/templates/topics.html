@@ -94,10 +94,6 @@
             <div class="nav" id="nav-menu">
                 <a href="" id="nav-home">首页</a>
                 <a href="" id="nav-subscriptions">订阅管理</a>
-                <a href="" id="nav-events">事件聚类</a>
-                <a href="" class="active" id="nav-topics">话题趋势</a>
-                <a href="" id="nav-actions">行动建议</a>
-                <a href="" id="nav-reports">报告中心</a>
             </div>
             <div class="auth-area" id="auth-area"></div>
         </div>
@@ -121,26 +117,55 @@
         document.getElementById('home-link').href = APP_BASE + '/';
         document.getElementById('nav-home').href = APP_BASE + '/';
         document.getElementById('nav-subscriptions').href = APP_BASE + '/subscriptions';
-        document.getElementById('nav-events').href = APP_BASE + '/events';
-        document.getElementById('nav-topics').href = APP_BASE + '/topics';
-        document.getElementById('nav-actions').href = APP_BASE + '/actions';
-        document.getElementById('nav-reports').href = APP_BASE + '/reports';
 
         let currentPage = 1;
         const pageSize = 50;
         let totalTopics = 0;
 
         async function checkAuth() {
+            // 获取功能开关状态
+            let featureStatus = {};
+            try {
+                const fsRes = await fetch(`${API_BASE}/feature-status`);
+                if (fsRes.ok) featureStatus = await fsRes.json();
+            } catch(e) {}
+
             const token = localStorage.getItem('access_token');
             const area = document.getElementById('auth-area');
+            const navMenu = document.getElementById('nav-menu');
             if (token) {
                 try {
                     const res = await fetch(`${AUTH_BASE}/auth/me`, { headers: { 'Authorization': `Bearer ${token}` }});
                     if (res.ok) {
                         const user = await res.json();
                         area.innerHTML = `<span style="color:#4ecdc4;font-size:14px;">&#128100; ${user.username}</span><a href="#" onclick="logout()">退出</a>`;
+                        // 根据功能开关和用户权限动态显示导航 tab
+                        if (user.is_superuser || featureStatus.event_clustering) {
+                            const link = document.createElement('a');
+                            link.href = APP_BASE + '/events';
+                            link.textContent = '事件聚类';
+                            navMenu.appendChild(link);
+                        }
+                        if (user.is_superuser || featureStatus.topic_radar) {
+                            const link = document.createElement('a');
+                            link.href = APP_BASE + '/topics';
+                            link.textContent = '话题趋势';
+                            link.className = 'active';
+                            navMenu.appendChild(link);
+                        }
+                        if (user.is_superuser || featureStatus.action_items) {
+                            const link = document.createElement('a');
+                            link.href = APP_BASE + '/actions';
+                            link.textContent = '行动建议';
+                            navMenu.appendChild(link);
+                        }
+                        if (user.is_superuser || featureStatus.report_generation) {
+                            const link = document.createElement('a');
+                            link.href = APP_BASE + '/reports';
+                            link.textContent = '报告中心';
+                            navMenu.appendChild(link);
+                        }
                         if (user.is_superuser) {
-                            const navMenu = document.getElementById('nav-menu');
                             const adminLink = document.createElement('a');
                             adminLink.href = APP_BASE + '/admin';
                             adminLink.textContent = '管理后台';

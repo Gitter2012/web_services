@@ -2071,3 +2071,29 @@ async def list_all_feeds_for_subscription(
             for feed in feeds
         ]
     }
+
+
+# ============================================================================
+# Feature Status API Endpoint
+# ============================================================================
+# 公开的功能状态查询 API，供前端导航栏根据功能开关状态动态显示/隐藏 tab
+# 不需要认证，返回各功能模块的启用状态
+
+@router.get("/api/feature-status")
+async def get_feature_status() -> Dict[str, Any]:
+    """Get the enabled/disabled status of major feature toggles.
+
+    返回主要功能模块的启用状态，供前端导航栏判断是否显示对应 tab。
+    此接口无需认证，任何用户均可调用。
+
+    Returns:
+        Dict[str, Any]: Feature status mapping.
+    """
+    from common.feature_config import feature_config
+
+    return {
+        "event_clustering": feature_config.get_bool("feature.event_clustering", False),
+        "topic_radar": feature_config.get_bool("feature.topic_radar", False),
+        "action_items": feature_config.get_bool("feature.action_items", False),
+        "report_generation": feature_config.get_bool("feature.report_generation", False),
+    }

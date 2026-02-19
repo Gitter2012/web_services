@@ -328,10 +328,22 @@
             const mobileNav = document.getElementById('mobile-nav');
             let html = `<a href="${APP_BASE}/">首页</a>`;
             html += `<a href="${APP_BASE}/subscriptions">订阅管理</a>`;
-            if (user && user.is_superuser) {
-                html += `<a href="${APP_BASE}/admin">管理后台</a>`;
-            }
             if (user) {
+                if (user.is_superuser || featureStatus.event_clustering) {
+                    html += `<a href="${APP_BASE}/events">事件聚类</a>`;
+                }
+                if (user.is_superuser || featureStatus.topic_radar) {
+                    html += `<a href="${APP_BASE}/topics">话题趋势</a>`;
+                }
+                if (user.is_superuser || featureStatus.action_items) {
+                    html += `<a href="${APP_BASE}/actions">行动建议</a>`;
+                }
+                if (user.is_superuser || featureStatus.report_generation) {
+                    html += `<a href="${APP_BASE}/reports">报告中心</a>`;
+                }
+                if (user.is_superuser) {
+                    html += `<a href="${APP_BASE}/admin">管理后台</a>`;
+                }
                 html += `<a href="#" onclick="logout(); return false;">退出登录</a>`;
             }
             mobileNav.innerHTML = html;
@@ -342,8 +354,17 @@
             checkAuth();
         });
 
+        // 功能开关状态缓存
+        let featureStatus = {};
+
         // Auth
         async function checkAuth() {
+            // 获取功能开关状态
+            try {
+                const fsRes = await fetch(`${API_BASE}/feature-status`);
+                if (fsRes.ok) featureStatus = await fsRes.json();
+            } catch(e) {}
+
             const token = localStorage.getItem('access_token');
             if (!token) {
                 showLoginModal();
@@ -375,10 +396,22 @@
                 <a href="#" onclick="logout()">退出</a>
             `;
 
-            // 更新导航菜单，仅超级管理员显示管理后台
+            // 更新导航菜单，根据功能开关和用户权限动态显示 tab
             const navMenu = document.getElementById('nav-menu');
             let navHtml = `<a href="${APP_BASE}/">首页</a>`;
             navHtml += `<a href="${APP_BASE}/subscriptions" class="active">订阅管理</a>`;
+            if (currentUser.is_superuser || featureStatus.event_clustering) {
+                navHtml += `<a href="${APP_BASE}/events">事件聚类</a>`;
+            }
+            if (currentUser.is_superuser || featureStatus.topic_radar) {
+                navHtml += `<a href="${APP_BASE}/topics">话题趋势</a>`;
+            }
+            if (currentUser.is_superuser || featureStatus.action_items) {
+                navHtml += `<a href="${APP_BASE}/actions">行动建议</a>`;
+            }
+            if (currentUser.is_superuser || featureStatus.report_generation) {
+                navHtml += `<a href="${APP_BASE}/reports">报告中心</a>`;
+            }
             if (currentUser.is_superuser) {
                 navHtml += `<a href="${APP_BASE}/admin">管理后台</a>`;
             }

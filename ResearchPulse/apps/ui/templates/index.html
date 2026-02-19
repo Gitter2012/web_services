@@ -549,6 +549,7 @@
         let currentSource = '';
         let userStars = new Set();
         let categoryNames = {};  // 分类代码到名称的映射
+        let featureStatus = {};  // 功能开关状态缓存
 
         // Mobile Menu Functions
         function toggleMobileMenu() {
@@ -587,10 +588,19 @@
             let html = `<a href="${APP_BASE}/">首页</a>`;
             if (user) {
                 html += `<a href="${APP_BASE}/subscriptions">订阅管理</a>`;
-                html += `<a href="${APP_BASE}/events">事件聚类</a>`;
-                html += `<a href="${APP_BASE}/topics">话题趋势</a>`;
-                html += `<a href="${APP_BASE}/actions">行动建议</a>`;
-                html += `<a href="${APP_BASE}/reports">报告中心</a>`;
+                // 非 superuser 用户仅在对应功能启用时显示 tab
+                if (user.is_superuser || featureStatus.event_clustering) {
+                    html += `<a href="${APP_BASE}/events">事件聚类</a>`;
+                }
+                if (user.is_superuser || featureStatus.topic_radar) {
+                    html += `<a href="${APP_BASE}/topics">话题趋势</a>`;
+                }
+                if (user.is_superuser || featureStatus.action_items) {
+                    html += `<a href="${APP_BASE}/actions">行动建议</a>`;
+                }
+                if (user.is_superuser || featureStatus.report_generation) {
+                    html += `<a href="${APP_BASE}/reports">报告中心</a>`;
+                }
                 if (user.is_superuser) {
                     html += `<a href="${APP_BASE}/admin">管理后台</a>`;
                 }
@@ -600,6 +610,18 @@
                 html += `<a href="#" onclick="showModal('register'); closeMobileMenu(); return false;">注册</a>`;
             }
             mobileNav.innerHTML = html;
+        }
+
+        // 获取功能开关状态（公开接口，无需认证）
+        async function loadFeatureStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/feature-status`);
+                if (res.ok) {
+                    featureStatus = await res.json();
+                }
+            } catch (e) {
+                featureStatus = {};
+            }
         }
 
         // Initialize
@@ -613,6 +635,8 @@
 
         // Auth Functions
         async function checkAuthState() {
+            // 预加载功能开关状态
+            await loadFeatureStatus();
             const token = localStorage.getItem('access_token');
             if (token) {
                 try {
@@ -658,10 +682,19 @@
                 // 显示订阅管理
                 let navHtml = `<a href="${APP_BASE}/">首页</a>`;
                 navHtml += '<a href="#" onclick="goTo(\'subscriptions\')">订阅管理</a>';
-                navHtml += `<a href="${APP_BASE}/events">事件聚类</a>`;
-                navHtml += `<a href="${APP_BASE}/topics">话题趋势</a>`;
-                navHtml += `<a href="${APP_BASE}/actions">行动建议</a>`;
-                navHtml += `<a href="${APP_BASE}/reports">报告中心</a>`;
+                // 非 superuser 用户仅在对应功能启用时显示 tab
+                if (currentUser.is_superuser || featureStatus.event_clustering) {
+                    navHtml += `<a href="${APP_BASE}/events">事件聚类</a>`;
+                }
+                if (currentUser.is_superuser || featureStatus.topic_radar) {
+                    navHtml += `<a href="${APP_BASE}/topics">话题趋势</a>`;
+                }
+                if (currentUser.is_superuser || featureStatus.action_items) {
+                    navHtml += `<a href="${APP_BASE}/actions">行动建议</a>`;
+                }
+                if (currentUser.is_superuser || featureStatus.report_generation) {
+                    navHtml += `<a href="${APP_BASE}/reports">报告中心</a>`;
+                }
                 // 仅超级管理员显示管理后台
                 if (currentUser.is_superuser) {
                     navHtml += '<a href="#" onclick="goTo(\'admin\')">管理后台</a>';
