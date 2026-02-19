@@ -65,6 +65,17 @@ show_help() {
     echo "              notify         触发用户通知"
     echo "              send           发送自定义邮件"
     echo ""
+    echo -e "  ${CYAN}ai${NC}        AI 流水线"
+    echo "              all            全部阶段"
+    echo "              ai             AI 文章处理"
+    echo "              embedding      向量嵌入计算"
+    echo "              event          事件聚类"
+    echo "              topic          主题发现"
+    echo "              --limit <n>    每阶段处理上限"
+    echo "              --force        忽略功能开关"
+    echo "              --verbose, -v  详细输出"
+    echo "              --json         JSON 格式输出"
+    echo ""
     echo -e "  ${CYAN}sync${NC}      同步数据"
     echo "              categories     arXiv 分类"
     echo "              --force, -f    强制同步"
@@ -78,6 +89,9 @@ show_help() {
     echo "  ./scripts/control.sh crawl all --dry-run"
     echo "  ./scripts/control.sh email test --to admin@example.com"
     echo "  ./scripts/control.sh email notify"
+    echo "  ./scripts/control.sh ai all"
+    echo "  ./scripts/control.sh ai ai embedding --limit 200"
+    echo "  ./scripts/control.sh ai all --force"
     echo "  ./scripts/control.sh sync categories --force"
     echo ""
 }
@@ -103,6 +117,7 @@ case "$COMMAND" in
     test)          "$SCRIPT_DIR/test.sh" "$@" ;;
     crawl)         "$SCRIPT_DIR/crawl.sh" "$@" ;;
     email)         "$SCRIPT_DIR/email.sh" "$@" ;;
+    ai)            "$SCRIPT_DIR/ai-pipeline.sh" "$@" ;;
     sync)          "$SCRIPT_DIR/sync-categories.sh" "$@" ;;
     logs)          show_logs "$@" ;;
     help|--help|-h) show_help ;;
