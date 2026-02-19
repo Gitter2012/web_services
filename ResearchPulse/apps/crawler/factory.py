@@ -142,7 +142,7 @@ class CrawlerFactory:
             config['category'] = source.code
         if hasattr(source, 'feed_url'):
             config['feed_url'] = source.feed_url
-        if hasattr(source, 'id'):
+        if hasattr(source, 'id') and not hasattr(source, 'code'):
             config['feed_id'] = str(source.id)
         if hasattr(source, 'feed_type'):
             config['feed_type'] = source.feed_type
