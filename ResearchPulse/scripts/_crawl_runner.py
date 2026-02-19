@@ -24,6 +24,7 @@ from typing import List, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from apps.crawler import CrawlerRunner, CrawlerRegistry
+from core.database import close_db
 
 # 配置日志
 logging.basicConfig(
@@ -77,18 +78,22 @@ def main():
 
     async def run():
         """Run the crawl."""
-        if args.source == "all":
-            # 运行所有激活的源
-            summary = await runner.run_all()
-        else:
-            # 运行指定类型的源
-            extra_args = args.extra if args.extra else None
-            summary = await runner.run_sources(
-                source_type=args.source,
-                sources=extra_args,
-                dry_run=args.dry_run,
-            )
-        return summary
+        try:
+            if args.source == "all":
+                # 运行所有激活的源
+                summary = await runner.run_all()
+            else:
+                # 运行指定类型的源
+                extra_args = args.extra if args.extra else None
+                summary = await runner.run_sources(
+                    source_type=args.source,
+                    sources=extra_args,
+                    dry_run=args.dry_run,
+                )
+            return summary
+        finally:
+            # 关闭数据库连接，避免事件循环关闭后连接清理报错
+            await close_db()
 
     try:
         summary = asyncio.run(run())
