@@ -158,6 +158,47 @@ class CrawlerFactory:
         return config
 
     @staticmethod
+    async def _iter_active_sources(
+        session: AsyncSession,
+        source_types: List[str],
+    ) -> AsyncGenerator[Tuple[BaseCrawler, Any], None]:
+        """Internal helper: yield crawlers for active sources using an existing session.
+
+        Args:
+            session: An active database session (lifecycle managed by caller).
+            source_types: Source types to iterate over.
+
+        Yields:
+            Tuple of (crawler_instance, source_model_instance)
+        """
+        for source_type in source_types:
+            # 获取该源类型对应的模型类
+            model_class = CrawlerRegistry.get_model_class(source_type)
+            if not model_class:
+                logger.debug(f"No model class for source type: {source_type}")
+                continue
+
+            # 查询激活的数据源
+            try:
+                result = await session.execute(
+                    select(model_class).where(model_class.is_active == True)
+                )
+                sources = result.scalars().all()
+
+                for source in sources:
+                    try:
+                        crawler = await CrawlerFactory.create_from_source(
+                            source_type, source
+                        )
+                        yield crawler, source
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to create crawler for {source_type}/{getattr(source, 'id', 'unknown')}: {e}"
+                        )
+            except Exception as e:
+                logger.error(f"Failed to query sources for {source_type}: {e}")
+
+    @staticmethod
     async def create_for_active_sources(
         source_types: Optional[List[str]] = None,
         session: Optional[AsyncSession] = None,
@@ -177,45 +218,17 @@ class CrawlerFactory:
         # 获取要处理的源类型
         types_to_process = source_types or CrawlerRegistry.list_sources(enabled_only=True)
 
-        # 是否需要管理 session
-        own_session = session is None
-        session_factory = get_session_factory()
-
-        if own_session:
-            session_ctx = session_factory()
-            session = await session_ctx.__aenter__()
-
-        try:
-            for source_type in types_to_process:
-                # 获取该源类型对应的模型类
-                model_class = CrawlerRegistry.get_model_class(source_type)
-                if not model_class:
-                    logger.debug(f"No model class for source type: {source_type}")
-                    continue
-
-                # 查询激活的数据源
-                try:
-                    result = await session.execute(
-                        select(model_class).where(model_class.is_active == True)
-                    )
-                    sources = result.scalars().all()
-
-                    for source in sources:
-                        try:
-                            crawler = await CrawlerFactory.create_from_source(
-                                source_type, source
-                            )
-                            yield crawler, source
-                        except Exception as e:
-                            logger.error(
-                                f"Failed to create crawler for {source_type}/{getattr(source, 'id', 'unknown')}: {e}"
-                            )
-                except Exception as e:
-                    logger.error(f"Failed to query sources for {source_type}: {e}")
-
-        finally:
-            if own_session:
-                await session_ctx.__aexit__(None, None, None)
+        if session is not None:
+            # 调用方提供了 session，直接委托给内部迭代器
+            async for item in CrawlerFactory._iter_active_sources(session, types_to_process):
+                yield item
+        else:
+            # 使用 async with 确保 session 在所有情况下都会正确关闭，
+            # 包括调用方提前终止迭代或抛出异常的场景
+            session_factory = get_session_factory()
+            async with session_factory() as own_session:
+                async for item in CrawlerFactory._iter_active_sources(own_session, types_to_process):
+                    yield item
 
     @staticmethod
     async def get_active_sources_count(
