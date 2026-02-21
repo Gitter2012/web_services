@@ -465,6 +465,14 @@ def send_email(
         return False, msg
 
     # 自动填充发件人地址（按优先级从多个来源获取）
+    # 注意: pydantic-settings 加载 .env 后不会写入 os.environ，
+    # 因此优先从 settings 对象获取，再回退到环境变量
+    if not from_addr:
+        try:
+            from settings import settings as _settings
+            from_addr = _settings.email_from
+        except Exception:
+            pass
     if not from_addr:
         from_addr = (
             kwargs.get("smtp_user")
@@ -481,6 +489,24 @@ def send_email(
 
     try:
         # 根据 backend 参数路由到对应的发送函数
+        # 注意: 所有参数优先从 kwargs 获取，其次从 settings 对象获取，
+        # 最后回退到 os.getenv()（pydantic-settings 不写入 os.environ）
+        try:
+            from settings import settings as _s
+        except Exception:
+            _s = None
+
+        def _cfg(key: str, env_key: str, default: Any = "") -> Any:
+            """从 kwargs → settings → os.environ 依次获取配置值。"""
+            val = kwargs.get(key)
+            if val is not None:
+                return val
+            if _s is not None:
+                val = getattr(_s, key, None)
+                if val is not None:
+                    return val
+            return os.getenv(env_key, default)
+
         if backend == "smtp":
             return _send_via_smtp(
                 subject=subject,
@@ -488,17 +514,17 @@ def send_email(
                 from_addr=from_addr,
                 to_addrs=to_list,
                 html_body=html_body,
-                smtp_host=kwargs.get("smtp_host", os.getenv("SMTP_HOST", "")),
-                smtp_port=int(kwargs.get("smtp_port", os.getenv("SMTP_PORT", 587))),
-                smtp_user=kwargs.get("smtp_user", os.getenv("SMTP_USER", "")),
-                smtp_password=kwargs.get("smtp_password", os.getenv("SMTP_PASSWORD", "")),
+                smtp_host=_cfg("smtp_host", "SMTP_HOST", ""),
+                smtp_port=int(_cfg("smtp_port", "SMTP_PORT", 587)),
+                smtp_user=_cfg("smtp_user", "SMTP_USER", ""),
+                smtp_password=_cfg("smtp_password", "SMTP_PASSWORD", ""),
                 smtp_ports=kwargs.get("smtp_ports"),
                 smtp_ssl_ports=kwargs.get("smtp_ssl_ports"),
-                timeout=float(kwargs.get("timeout", 10.0)),
-                retries=int(kwargs.get("retries", 3)),
-                retry_backoff=float(kwargs.get("retry_backoff", 10.0)),
-                use_tls=bool(kwargs.get("use_tls", True)),
-                use_ssl=bool(kwargs.get("use_ssl", False)),
+                timeout=float(_cfg("smtp_timeout", "SMTP_TIMEOUT", 10.0)),
+                retries=int(_cfg("smtp_retries", "SMTP_RETRIES", 3)),
+                retry_backoff=float(_cfg("smtp_retry_backoff", "SMTP_RETRY_BACKOFF", 10.0)),
+                use_tls=bool(_cfg("smtp_tls", "SMTP_TLS", True)),
+                use_ssl=bool(_cfg("smtp_ssl", "SMTP_SSL", False)),
             )
         if backend == "sendgrid":
             return _send_via_sendgrid(

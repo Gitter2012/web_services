@@ -333,6 +333,9 @@ async def send_user_notification_email(
     # ---- 发送邮件 ----
     # Send email
     try:
+        ok = False
+        error = ""
+
         # 优先使用数据库配置的优先级发送（与 verification_service 保持一致）
         if session is not None:
             ok, error = await send_email_with_priority(
@@ -342,8 +345,9 @@ async def send_user_notification_email(
                 session=session,
                 html_body=html_body,
             )
-        else:
-            # 回退到环境变量配置的发送方式
+
+        # 数据库配置不可用时，回退到环境变量配置的 SMTP 发送
+        if not ok:
             ok, error = send_email(
                 subject=subject,
                 body=text_body,
