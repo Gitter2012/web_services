@@ -20,6 +20,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from settings import settings
+from common.feature_config import feature_config
 from .base import BaseAIProvider, parse_json_response
 
 logger = logging.getLogger(__name__)
@@ -52,10 +53,10 @@ class OpenAIProvider(BaseAIProvider):
         """
         # API 密钥、模型名称、基址URL和超时可通过构造参数或配置文件传入
         self._api_key = api_key or settings.openai_api_key or ""
-        self._model = model or settings.openai_model or "gpt-4o-mini"
+        self._model = model or feature_config.get("ai.openai_model", settings.openai_model) or "gpt-4o-mini"
         # 支持自定义 Base URL，可接入代理、Azure OpenAI 或其他兼容 API
-        self._base_url = (base_url or settings.openai_base_url or "https://api.openai.com/v1").rstrip("/")
-        self._timeout = timeout or settings.openai_timeout or 60
+        self._base_url = (base_url or feature_config.get("ai.openai_base_url", settings.openai_base_url) or "https://api.openai.com/v1").rstrip("/")
+        self._timeout = timeout or feature_config.get_int("ai.openai_timeout", settings.openai_timeout) or 60
         # 持久化 HTTP 客户端，复用 TCP 连接
         self._client: httpx.AsyncClient | None = None
 
@@ -132,12 +133,16 @@ class OpenAIProvider(BaseAIProvider):
             dict: Standardized result payload.
         """
         # 构建 prompt，使用基类方法进行内容截断和模板选择
-        prompt = self.build_prompt(title, content, task_type, settings.ai_max_content_length)
+        prompt = self.build_prompt(title, content, task_type, feature_config.get_int("ai.max_content_length", settings.ai_max_content_length))
 
         # 根据任务类型调整最大输出 token 数
-        # 高价值内容和论文需要更详细的输出（512 tokens）
-        # 低价值内容只需简要信息（256 tokens）
-        max_tokens = 512 if task_type in ("content_high", "paper_full") else 256
+        # 高价值内容和论文需要更详细的输出
+        # 低价值内容只需简要信息
+        max_tokens = (
+            feature_config.get_int("ai.num_predict", 512)
+            if task_type in ("content_high", "paper_full")
+            else feature_config.get_int("ai.num_predict_simple", 256)
+        )
 
         # 构建 OpenAI Chat Completions API 请求头和请求体
         headers = {
@@ -156,8 +161,8 @@ class OpenAIProvider(BaseAIProvider):
         try:
             # 使用 tenacity 重试包装器调用 API，应对网络抖动和临时限流
             retrying_call = retry(
-                stop=stop_after_attempt(settings.ai_max_retries),
-                wait=wait_exponential(multiplier=settings.ai_retry_base_delay, max=10),
+                stop=stop_after_attempt(feature_config.get_int("ai.max_retries", settings.ai_max_retries)),
+                wait=wait_exponential(multiplier=feature_config.get_float("ai.retry_base_delay", settings.ai_retry_base_delay), max=10),
                 retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
                 reraise=True,
             )(self._call_api)

@@ -533,13 +533,29 @@ class Settings(BaseSettings):
     )
     # Ollama API 请求超时时间（秒）
     ollama_timeout: int = Field(
-        default=_ai_config.get("ollama", {}).get("timeout", 120),
+        default=_ai_config.get("ollama", {}).get("timeout", 300),
         validation_alias="OLLAMA_TIMEOUT",
     )
     # Ollama API 密钥（可选，用于有认证要求的远程 Ollama 部署）
     ollama_api_key: str = Field(
         default=_ai_config.get("ollama", {}).get("api_key", ""),
         validation_alias="OLLAMA_API_KEY",
+    )
+    # Ollama 禁用模型内部思考（qwen3 等支持 thinking 的模型）
+    # 开启后在 prompt 前添加 /no_think 指令，减少 token 消耗和推理时间
+    ollama_no_think: bool = Field(
+        default=_ai_config.get("ollama", {}).get("no_think", False),
+        validation_alias="OLLAMA_NO_THINK",
+    )
+    # Ollama 高价值内容/论文的最大生成 token 数
+    ollama_num_predict: int = Field(
+        default=_ai_config.get("ollama", {}).get("num_predict", 512),
+        validation_alias="OLLAMA_NUM_PREDICT",
+    )
+    # Ollama 低价值内容的最大生成 token 数
+    ollama_num_predict_simple: int = Field(
+        default=_ai_config.get("ollama", {}).get("num_predict_simple", 256),
+        validation_alias="OLLAMA_NUM_PREDICT_SIMPLE",
     )
     # AI 结果缓存开关（避免对相同内容重复调用 AI）
     ai_cache_enabled: bool = Field(

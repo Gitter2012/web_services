@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.crawler.models.article import Article
 from core.database import get_session_factory
 from settings import settings
+from common.feature_config import feature_config
 
 from .models import AIProcessingLog
 from .providers.base import BaseAIProvider, get_content_hash
@@ -50,7 +51,7 @@ def get_ai_provider(provider_name: str | None = None) -> BaseAIProvider:
     # 根据配置文件中的 ai_provider 设置选择对应的 AI 提供商
     # 支持 "ollama"（本地部署）和 "openai"（云端 API）
     # 默认回退到 Ollama，适合开发环境使用
-    provider_name = provider_name or settings.ai_provider
+    provider_name = provider_name or feature_config.get("ai.provider", settings.ai_provider)
     if provider_name == "ollama":
         from .providers.ollama_provider import OllamaProvider
         return OllamaProvider()
@@ -87,10 +88,11 @@ class AIProcessorService:
         Returns:
             BaseAIProvider | None: Fallback provider or None.
         """
-        if not settings.ai_fallback_provider:
+        fallback_name = feature_config.get("ai.fallback_provider") or settings.ai_fallback_provider
+        if not fallback_name:
             return None
         if self._fallback_provider is None:
-            self._fallback_provider = get_ai_provider(settings.ai_fallback_provider)
+            self._fallback_provider = get_ai_provider(fallback_name)
         return self._fallback_provider
 
     async def close(self) -> None:
@@ -98,6 +100,20 @@ class AIProcessorService:
         await self.provider.close()
         if self._fallback_provider:
             await self._fallback_provider.close()
+
+    async def warmup(self) -> bool:
+        """Pre-load the AI model to reduce first-request latency.
+
+        委托给底层 Provider 的 warmup() 方法。失败不抛异常。
+
+        Returns:
+            bool: True if warmup succeeded or is not needed.
+        """
+        try:
+            return await self.provider.warmup()
+        except Exception as e:
+            logger.warning(f"Model warmup failed: {e}")
+            return False
 
     async def process_article(
         self, article_id: int, db: AsyncSession, force: bool = False
@@ -192,11 +208,11 @@ class AIProcessorService:
             if fallback:
                 logger.warning(
                     f"Primary provider failed for article {article_id}, "
-                    f"trying fallback: {settings.ai_fallback_provider}"
+                    f"trying fallback: {feature_config.get('ai.fallback_provider') or settings.ai_fallback_provider}"
                 )
                 processing_result = await fallback.process_content(title, content, task_type)
 
-        processing_result["processing_method"] = "ai"
+        processing_result["processing_method"] = "ai" if processing_result.get("success") else "failed"
         await self._save_result(article, processing_result, db)
 
         # 第七步：构建处理日志对象并返回（由调用方统一持久化）
@@ -222,67 +238,122 @@ class AIProcessorService:
         return result_dict
 
     async def batch_process(
-        self, article_ids: list[int], db: AsyncSession, force: bool = False
+        self, article_ids: list[int], force: bool = False
     ) -> dict:
-        """Process multiple articles concurrently.
+        """Process multiple articles, dispatching to serial or concurrent path.
 
-        使用 asyncio.Semaphore 控制并发度，每个并发任务使用独立的 DB session，
-        避免 AsyncSession 的并发安全问题。处理日志统一批量写入。
+        根据 settings.ai_batch_concurrency 配置选择串行或并行处理路径。
+        默认值为 1（串行），可通过 .env 中 AI_BATCH_CONCURRENCY 修改。
         """
         if not article_ids:
             return {"total": 0, "processed": 0, "cached": 0, "failed": 0, "results": []}
 
-        self._batch_mode = True
-        semaphore = asyncio.Semaphore(settings.ai_batch_concurrency)
-        session_factory = get_session_factory()
-        results: list[dict] = [{}] * len(article_ids)
-        log_dicts: list[dict] = []
+        concurrency = feature_config.get_int("ai.batch_concurrency", settings.ai_batch_concurrency)
+        if concurrency > 1:
+            logger.info(
+                f"Batch processing {len(article_ids)} articles "
+                f"with concurrency={concurrency}"
+            )
+            results = await self._batch_process_concurrent(
+                article_ids, force=force, concurrency=concurrency
+            )
+        else:
+            logger.info(f"Batch processing {len(article_ids)} articles serially")
+            results = await self._batch_process_serial(article_ids, force=force)
 
-        async def _process_one(index: int, article_id: int) -> None:
-            """Process a single article within the semaphore-guarded context."""
+        return self._summarize_results(results)
+
+    async def _batch_process_serial(
+        self, article_ids: list[int], force: bool = False
+    ) -> list[dict]:
+        """Process articles one by one, each with an independent DB session.
+
+        串行逐篇处理，每篇文章使用独立 session，安全可靠。
+        """
+        session_factory = get_session_factory()
+        results: list[dict] = []
+
+        for article_id in article_ids:
+            try:
+                async with session_factory() as session:
+                    result = await self.process_article(article_id, session, force=force)
+                    await session.commit()
+                    result.pop("_log", None)
+                    results.append(result)
+            except Exception as e:
+                logger.error(f"Error processing article {article_id}: {e}")
+                await self._mark_article_failed(article_id, e)
+                results.append({
+                    "success": False,
+                    "article_id": article_id,
+                    "error_message": str(e),
+                })
+
+        return results
+
+    async def _batch_process_concurrent(
+        self, article_ids: list[int], force: bool = False, concurrency: int = 3
+    ) -> list[dict]:
+        """Process articles concurrently with independent service instances.
+
+        并行处理文章。每个并发任务创建独立的 AIProcessorService 实例
+        （含独立的 Provider 和 httpx.AsyncClient），彻底避免共享状态。
+        使用 asyncio.Semaphore 控制并发上限。
+        """
+        semaphore = asyncio.Semaphore(concurrency)
+        session_factory = get_session_factory()
+
+        async def _process_one(article_id: int) -> dict:
             async with semaphore:
+                # 每个任务创建独立的 service 实例，避免共享 HTTP 客户端
+                task_service = AIProcessorService()
                 try:
-                    # 每个并发任务使用独立的 session
                     async with session_factory() as session:
-                        result = await self.process_article(article_id, session, force=force)
+                        result = await task_service.process_article(
+                            article_id, session, force=force
+                        )
                         await session.commit()
-                        # 提取日志对象的字段为 dict，避免跨 session 传递 ORM 实例
-                        log = result.pop("_log", None)
-                        if log:
-                            log_dicts.append({
-                                "article_id": log.article_id,
-                                "provider": log.provider,
-                                "model": log.model,
-                                "task_type": log.task_type,
-                                "input_chars": log.input_chars,
-                                "output_chars": log.output_chars,
-                                "duration_ms": log.duration_ms,
-                                "success": log.success,
-                                "error_message": log.error_message,
-                                "cached": log.cached,
-                            })
-                        results[index] = result
+                        result.pop("_log", None)
+                        return result
                 except Exception as e:
                     logger.error(f"Error processing article {article_id}: {e}")
-                    results[index] = {
+                    await self._mark_article_failed(article_id, e)
+                    return {
                         "success": False,
                         "article_id": article_id,
                         "error_message": str(e),
                     }
+                finally:
+                    await task_service.close()
 
-        # 并发执行所有文章处理任务
-        tasks = [
-            _process_one(i, aid) for i, aid in enumerate(article_ids)
-        ]
-        await asyncio.gather(*tasks)
+        tasks = [_process_one(aid) for aid in article_ids]
+        return await asyncio.gather(*tasks)
 
-        self._batch_mode = False
+    async def _mark_article_failed(self, article_id: int, error: Exception) -> None:
+        """Mark an article as failed so it won't block the processing queue.
 
-        # O12: 用收集的 dict 数据批量创建新的 ORM 对象写入外层 session
-        if log_dicts:
-            db.add_all([AIProcessingLog(**d) for d in log_dicts])
+        标记文章为处理失败，避免下次调度时反复处理同一批失败文章。
+        """
+        session_factory = get_session_factory()
+        try:
+            async with session_factory() as err_session:
+                await err_session.execute(
+                    update(Article).where(Article.id == article_id).values(
+                        ai_processed_at=datetime.now(timezone.utc),
+                        processing_method="failed",
+                        ai_summary=f"[处理失败] {str(error)[:200]}",
+                    )
+                )
+                await err_session.commit()
+        except Exception:
+            logger.warning(f"Failed to mark article {article_id} as failed")
 
-        # 统计结果
+    @staticmethod
+    def _summarize_results(results: list[dict]) -> dict:
+        """Aggregate per-article results into batch statistics.
+
+        统计批处理结果：成功、缓存、失败数量。
+        """
         processed = 0
         cached = 0
         failed = 0
@@ -296,7 +367,7 @@ class AIProcessorService:
                 failed += 1
 
         return {
-            "total": len(article_ids),
+            "total": len(results),
             "processed": processed,
             "cached": cached,
             "failed": failed,
@@ -313,13 +384,14 @@ class AIProcessorService:
             select(Article.id)
             .where(Article.ai_processed_at.is_(None))
             .where(Article.is_archived.is_(False))
+            .where(Article.source_type != "aigc")
             .order_by(Article.crawl_time.desc())
             .limit(limit)
         )
         article_ids = [row[0] for row in result.all()]
         if not article_ids:
             return {"total": 0, "processed": 0, "cached": 0, "failed": 0, "results": []}
-        return await self.batch_process(article_ids, db)
+        return await self.batch_process(article_ids)
 
     async def _save_result(
         self, article: Article, result: dict, db: AsyncSession

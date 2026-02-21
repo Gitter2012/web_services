@@ -29,6 +29,7 @@ import logging
 from typing import Optional
 
 from settings import settings
+from common.feature_config import feature_config
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +61,9 @@ class MilvusClient:
             collection_name: Collection name override.
         """
         # 从配置或参数获取 Milvus 连接信息
-        self._host = host or settings.milvus_host
-        self._port = port or settings.milvus_port
-        self._collection_name = collection_name or settings.milvus_collection_name
+        self._host = host or feature_config.get("embedding.milvus_host", settings.milvus_host)
+        self._port = port or feature_config.get_int("embedding.milvus_port", settings.milvus_port)
+        self._collection_name = collection_name or feature_config.get("embedding.milvus_collection", settings.milvus_collection_name)
         self._collection = None       # 缓存的集合对象，避免重复获取
         self._connected = False       # 连接状态标记
 

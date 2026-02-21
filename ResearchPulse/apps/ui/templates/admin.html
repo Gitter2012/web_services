@@ -776,7 +776,7 @@
                             <div class="form-group">
                                 <label class="form-label">
                                     <input type="checkbox" id="ai-thinking-enabled">
-                                    启用思考模式
+                                    启用思考模式（通用）
                                 </label>
                             </div>
                             <div class="form-group">
@@ -784,6 +784,37 @@
                                     <input type="checkbox" id="ai-concurrent-enabled">
                                     启用并发处理
                                 </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <input type="checkbox" id="ai-no-think">
+                                    模型禁用思考 (/no_think)
+                                </label>
+                                <small style="color:#888; display:block; margin-top:2px;">适用于 qwen3 等支持 thinking 的模型，在 prompt 前插入 /no_think 指令以减少 token 消耗</small>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">最大生成 Token 数</label>
+                                <input type="number" class="form-input" id="ai-num-predict" value="512" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">简单任务 Token 数</label>
+                                <input type="number" class="form-input" id="ai-num-predict-simple" value="256" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">最大重试次数</label>
+                                <input type="number" class="form-input" id="ai-max-retries" value="3" min="0">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">重试基础延迟（秒）</label>
+                                <input type="number" class="form-input" id="ai-retry-base-delay" value="1.0" min="0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">批处理并发度</label>
+                                <input type="number" class="form-input" id="ai-batch-concurrency" value="1" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">降级回退 Provider</label>
+                                <input type="text" class="form-input" id="ai-fallback-provider" placeholder="如 openai（留空则不回退）">
                             </div>
                             <button class="btn btn-primary" onclick="saveAIGeneral()">保存设置</button>
                             <button class="btn" onclick="testAIConnection()">测试连接</button>
@@ -798,6 +829,9 @@
                             <h3>Ollama 配置</h3>
                         </div>
                         <div class="card-body">
+                            <p style="color: #888; margin-bottom: 16px;">
+                                API Key 可在此处配置，也可通过环境变量 OLLAMA_API_KEY 设置（推荐）
+                            </p>
                             <div class="form-group">
                                 <label class="form-label">Base URL</label>
                                 <input type="text" class="form-input" id="ai-ollama-url" value="http://localhost:11434">
@@ -814,6 +848,10 @@
                                 <label class="form-label">超时时间（秒）</label>
                                 <input type="number" class="form-input" id="ai-ollama-timeout" value="120">
                             </div>
+                            <div class="form-group">
+                                <label class="form-label">API Key（可选）</label>
+                                <input type="password" class="form-input" id="ai-ollama-api-key" placeholder="留空则不使用认证">
+                            </div>
                             <button class="btn btn-primary" onclick="saveAIOllama()">保存配置</button>
                         </div>
                     </div>
@@ -827,8 +865,12 @@
                         </div>
                         <div class="card-body">
                             <p style="color: #888; margin-bottom: 16px;">
-                                OpenAI API Key 需要在环境变量中设置（OPENAI_API_KEY）
+                                API Key 可在此处配置，也可通过环境变量 OPENAI_API_KEY 设置（推荐）
                             </p>
+                            <div class="form-group">
+                                <label class="form-label">API Key</label>
+                                <input type="password" class="form-input" id="ai-openai-api-key" placeholder="sk-...">
+                            </div>
                             <div class="form-group">
                                 <label class="form-label">主模型</label>
                                 <input type="text" class="form-input" id="ai-openai-model" value="gpt-4o">
@@ -854,8 +896,12 @@
                         </div>
                         <div class="card-body">
                             <p style="color: #888; margin-bottom: 16px;">
-                                Claude API Key 需要在环境变量中设置（ANTHROPIC_API_KEY）
+                                API Key 可在此处配置，也可通过环境变量 ANTHROPIC_API_KEY 设置（推荐）
                             </p>
+                            <div class="form-group">
+                                <label class="form-label">API Key</label>
+                                <input type="password" class="form-input" id="ai-claude-api-key" placeholder="sk-ant-...">
+                            </div>
                             <div class="form-group">
                                 <label class="form-label">主模型</label>
                                 <input type="text" class="form-input" id="ai-claude-model" value="claude-sonnet-4-20250514">
@@ -1185,6 +1231,58 @@
                             <div class="form-group">
                                 <label class="form-label">向量嵌入间隔（小时）</label>
                                 <input type="number" class="form-input" id="config-embedding-interval" value="2">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">事件聚类时间（小时，0-23）</label>
+                                <input type="number" class="form-input" id="config-event-cluster-hour" value="2" min="0" max="23">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">主题发现（星期几）</label>
+                                <select class="form-input" id="config-topic-day">
+                                    <option value="mon">周一</option>
+                                    <option value="tue">周二</option>
+                                    <option value="wed">周三</option>
+                                    <option value="thu">周四</option>
+                                    <option value="fri">周五</option>
+                                    <option value="sat">周六</option>
+                                    <option value="sun">周日</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">主题发现时间（小时，0-23）</label>
+                                <input type="number" class="form-input" id="config-topic-hour" value="1" min="0" max="23">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">行动项提取间隔（小时）</label>
+                                <input type="number" class="form-input" id="config-action-interval" value="2" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">周报生成（星期几）</label>
+                                <select class="form-input" id="config-report-weekly-day">
+                                    <option value="mon">周一</option>
+                                    <option value="tue">周二</option>
+                                    <option value="wed">周三</option>
+                                    <option value="thu">周四</option>
+                                    <option value="fri">周五</option>
+                                    <option value="sat">周六</option>
+                                    <option value="sun">周日</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">周报生成时间（小时，0-23）</label>
+                                <input type="number" class="form-input" id="config-report-weekly-hour" value="6" min="0" max="23">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">月报生成时间（小时，0-23，每月1号）</label>
+                                <input type="number" class="form-input" id="config-report-monthly-hour" value="7" min="0" max="23">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">邮件通知时间（小时，0-23）</label>
+                                <input type="number" class="form-input" id="config-notification-hour" value="9" min="0" max="23">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">邮件通知时间（分钟，0-59）</label>
+                                <input type="number" class="form-input" id="config-notification-minute" value="0" min="0" max="59">
                             </div>
                             <button class="btn btn-primary" onclick="saveConfigGroup('scheduler')">保存配置</button>
                         </div>
@@ -3049,6 +3147,15 @@
                 document.getElementById('config-backup-hour').value = scheduler['scheduler.backup_hour'] || 4;
                 document.getElementById('config-ai-interval').value = scheduler['scheduler.ai_process_interval_hours'] || 1;
                 document.getElementById('config-embedding-interval').value = scheduler['scheduler.embedding_interval_hours'] || 2;
+                document.getElementById('config-event-cluster-hour').value = scheduler['scheduler.event_cluster_hour'] || 2;
+                document.getElementById('config-topic-day').value = scheduler['scheduler.topic_discovery_day'] || 'mon';
+                document.getElementById('config-topic-hour').value = scheduler['scheduler.topic_discovery_hour'] || 1;
+                document.getElementById('config-action-interval').value = scheduler['scheduler.action_extract_interval_hours'] || 2;
+                document.getElementById('config-report-weekly-day').value = scheduler['scheduler.report_weekly_day'] || 'mon';
+                document.getElementById('config-report-weekly-hour').value = scheduler['scheduler.report_weekly_hour'] || 6;
+                document.getElementById('config-report-monthly-hour').value = scheduler['scheduler.report_monthly_hour'] || 7;
+                document.getElementById('config-notification-hour').value = scheduler['scheduler.notification_hour'] || 9;
+                document.getElementById('config-notification-minute').value = scheduler['scheduler.notification_minute'] || 0;
 
                 // Populate advanced settings
                 const cache = allConfigs.cache || {};
@@ -3144,6 +3251,15 @@
                 configs['scheduler.backup_hour'] = document.getElementById('config-backup-hour').value;
                 configs['scheduler.ai_process_interval_hours'] = document.getElementById('config-ai-interval').value;
                 configs['scheduler.embedding_interval_hours'] = document.getElementById('config-embedding-interval').value;
+                configs['scheduler.event_cluster_hour'] = document.getElementById('config-event-cluster-hour').value;
+                configs['scheduler.topic_discovery_day'] = document.getElementById('config-topic-day').value;
+                configs['scheduler.topic_discovery_hour'] = document.getElementById('config-topic-hour').value;
+                configs['scheduler.action_extract_interval_hours'] = document.getElementById('config-action-interval').value;
+                configs['scheduler.report_weekly_day'] = document.getElementById('config-report-weekly-day').value;
+                configs['scheduler.report_weekly_hour'] = document.getElementById('config-report-weekly-hour').value;
+                configs['scheduler.report_monthly_hour'] = document.getElementById('config-report-monthly-hour').value;
+                configs['scheduler.notification_hour'] = document.getElementById('config-notification-hour').value;
+                configs['scheduler.notification_minute'] = document.getElementById('config-notification-minute').value;
             } else if (group === 'advanced') {
                 configs['cache.enabled'] = document.getElementById('config-cache-enabled').checked ? 'true' : 'false';
                 configs['cache.default_ttl'] = document.getElementById('config-cache-ttl').value;
@@ -3437,19 +3553,29 @@
                 document.getElementById('ai-max-title').value = aiConfig.max_title_length || 200;
                 document.getElementById('ai-thinking-enabled').checked = aiConfig.thinking_enabled || false;
                 document.getElementById('ai-concurrent-enabled').checked = aiConfig.concurrent_enabled || false;
+                document.getElementById('ai-no-think').checked = aiConfig.no_think || false;
+                document.getElementById('ai-num-predict').value = aiConfig.num_predict || 512;
+                document.getElementById('ai-num-predict-simple').value = aiConfig.num_predict_simple || 256;
+                document.getElementById('ai-max-retries').value = aiConfig.max_retries || 3;
+                document.getElementById('ai-retry-base-delay').value = aiConfig.retry_base_delay || 1.0;
+                document.getElementById('ai-batch-concurrency').value = aiConfig.batch_concurrency || 1;
+                document.getElementById('ai-fallback-provider').value = aiConfig.fallback_provider || '';
 
                 // Populate Ollama settings
                 document.getElementById('ai-ollama-url').value = aiConfig.ollama_base_url || 'http://localhost:11434';
                 document.getElementById('ai-ollama-model').value = aiConfig.ollama_model || 'qwen3:32b';
                 document.getElementById('ai-ollama-model-light').value = aiConfig.ollama_model_light || '';
                 document.getElementById('ai-ollama-timeout').value = aiConfig.ollama_timeout || 120;
+                document.getElementById('ai-ollama-api-key').value = aiConfig.ollama_api_key === '***' ? '' : (aiConfig.ollama_api_key || '');
 
                 // Populate OpenAI settings
+                document.getElementById('ai-openai-api-key').value = aiConfig.openai_api_key === '***' ? '' : (aiConfig.openai_api_key || '');
                 document.getElementById('ai-openai-model').value = aiConfig.openai_model || 'gpt-4o';
                 document.getElementById('ai-openai-model-light').value = aiConfig.openai_model_light || 'gpt-4o-mini';
                 document.getElementById('ai-openai-timeout').value = aiConfig.openai_timeout || 60;
 
                 // Populate Claude settings
+                document.getElementById('ai-claude-api-key').value = aiConfig.claude_api_key === '***' ? '' : (aiConfig.claude_api_key || '');
                 document.getElementById('ai-claude-model').value = aiConfig.claude_model || 'claude-sonnet-4-20250514';
                 document.getElementById('ai-claude-model-light').value = aiConfig.claude_model_light || 'claude-haiku-4-20250514';
                 document.getElementById('ai-claude-timeout').value = aiConfig.claude_timeout || 60;
@@ -3468,6 +3594,13 @@
                 max_title_length: parseInt(document.getElementById('ai-max-title').value) || 200,
                 thinking_enabled: document.getElementById('ai-thinking-enabled').checked,
                 concurrent_enabled: document.getElementById('ai-concurrent-enabled').checked,
+                no_think: document.getElementById('ai-no-think').checked,
+                num_predict: parseInt(document.getElementById('ai-num-predict').value) || 512,
+                num_predict_simple: parseInt(document.getElementById('ai-num-predict-simple').value) || 256,
+                max_retries: parseInt(document.getElementById('ai-max-retries').value) || 3,
+                retry_base_delay: parseFloat(document.getElementById('ai-retry-base-delay').value) || 1.0,
+                batch_concurrency: parseInt(document.getElementById('ai-batch-concurrency').value) || 1,
+                fallback_provider: document.getElementById('ai-fallback-provider').value,
             };
 
             try {
@@ -3494,6 +3627,8 @@
                 ollama_model_light: document.getElementById('ai-ollama-model-light').value,
                 ollama_timeout: parseInt(document.getElementById('ai-ollama-timeout').value) || 120,
             };
+            const apiKey = document.getElementById('ai-ollama-api-key').value;
+            if (apiKey) config.ollama_api_key = apiKey;
 
             try {
                 const res = await fetch(`${ADMIN_BASE}/ai/config`, {
@@ -3518,6 +3653,8 @@
                 openai_model_light: document.getElementById('ai-openai-model-light').value,
                 openai_timeout: parseInt(document.getElementById('ai-openai-timeout').value) || 60,
             };
+            const openaiKey = document.getElementById('ai-openai-api-key').value;
+            if (openaiKey) config.openai_api_key = openaiKey;
 
             try {
                 const res = await fetch(`${ADMIN_BASE}/ai/config`, {
@@ -3542,6 +3679,8 @@
                 claude_model_light: document.getElementById('ai-claude-model-light').value,
                 claude_timeout: parseInt(document.getElementById('ai-claude-timeout').value) || 60,
             };
+            const claudeKey = document.getElementById('ai-claude-api-key').value;
+            if (claudeKey) config.claude_api_key = claudeKey;
 
             try {
                 const res = await fetch(`${ADMIN_BASE}/ai/config`, {

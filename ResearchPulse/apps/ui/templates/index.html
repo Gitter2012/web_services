@@ -63,6 +63,7 @@
         .source-card .icon.wechat { background: #07c160; }
         .source-card .icon.weibo { background: #e6162d; }
         .source-card .icon.hackernews { background: #ff6600; }
+        .source-card .icon.aigc { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
         .source-card .icon.reddit { background: #ff4500; }
         .source-card .icon.twitter { background: #1da1f2; }
         .source-card .info { flex: 1; }
@@ -375,6 +376,13 @@
                         <div class="info">
                             <div class="name">Twitter</div>
                             <div class="count" id="count-twitter">0 篇</div>
+                        </div>
+                    </div>
+                    <div class="source-card" data-source="aigc" onclick="selectSource('aigc')">
+                        <div class="icon aigc">AI</div>
+                        <div class="info">
+                            <div class="name">AIGC 生成</div>
+                            <div class="count" id="count-aigc">0 篇</div>
                         </div>
                     </div>
                 </div>
@@ -1237,7 +1245,7 @@
         async function loadStats() {
             try {
                 // Load counts for each source
-                const sources = ['', 'arxiv', 'rss', 'wechat', 'weibo', 'hackernews', 'reddit', 'twitter'];
+                const sources = ['', 'arxiv', 'rss', 'wechat', 'weibo', 'hackernews', 'reddit', 'twitter', 'aigc'];
                 for (const src of sources) {
                     const params = new URLSearchParams({ page_size: 1 });
                     if (src) params.append('source_type', src);
@@ -1388,10 +1396,14 @@
                 'weibo': '微博热搜',
                 'hackernews': 'HackerNews',
                 'reddit': 'Reddit',
-                'twitter': 'Twitter'
+                'twitter': 'Twitter',
+                'aigc': 'AIGC'
             };
 
-            if (sourceType === 'rss' && article.source_name) {
+            if (sourceType === 'aigc') {
+                // AIGC 来源：只显示一个 AIGC 标签，不再生成 sourceBadge
+                sourceBadge = '';
+            } else if (sourceType === 'rss' && article.source_name) {
                 sourceBadge = `<span class="source-badge ${sourceType}" title="${escapeHtml(article.source_name)}">${escapeHtml(article.source_name)}</span>`;
             } else if (sourceType === 'wechat' && article.wechat_account_name) {
                 sourceBadge = `<span class="source-badge ${sourceType}" title="${escapeHtml(article.wechat_account_name)}">${escapeHtml(article.wechat_account_name)}</span>`;
@@ -1400,15 +1412,10 @@
                 sourceBadge = `<span class="source-badge ${sourceType}">${displayName}</span>`;
             }
 
-            // AIGC 标记：当文章经过 AI 处理时显示
+            // AIGC 标记：仅当文章来源为 aigc 时显示
             let aigcBadge = '';
-            if (article.ai_processed_at) {
-                const method = article.processing_method || 'ai';
-                const methodNames = { 'ai': 'AI', 'rule': '规则', 'cached': '缓存', 'screen': '筛选' };
-                const methodLabel = methodNames[method] || method;
-                const providerInfo = article.ai_provider ? `${article.ai_provider}` : '';
-                const modelInfo = article.ai_model ? ` / ${article.ai_model}` : '';
-                aigcBadge = `<span class="source-badge aigc" title="AIGC - ${methodLabel}处理 ${providerInfo}${modelInfo}">AIGC</span>`;
+            if (sourceType === 'aigc') {
+                aigcBadge = `<span class="source-badge aigc" title="AI 生成内容">AIGC</span>`;
             }
 
             // 重要性评分指示器

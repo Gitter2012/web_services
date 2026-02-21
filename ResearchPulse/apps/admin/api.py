@@ -1875,10 +1875,12 @@ class AIConfigUpdate(BaseModel):
     openai_model: Optional[str] = None
     openai_model_light: Optional[str] = None
     openai_timeout: Optional[int] = None
+    openai_api_key: Optional[str] = None
     # Claude settings
     claude_model: Optional[str] = None
     claude_model_light: Optional[str] = None
     claude_timeout: Optional[int] = None
+    claude_api_key: Optional[str] = None
     # General settings
     cache_enabled: Optional[bool] = None
     cache_ttl: Optional[int] = None
@@ -1888,6 +1890,13 @@ class AIConfigUpdate(BaseModel):
     concurrent_enabled: Optional[bool] = None
     workers_heavy: Optional[int] = None
     workers_screen: Optional[int] = None
+    no_think: Optional[bool] = None
+    num_predict: Optional[int] = None
+    num_predict_simple: Optional[int] = None
+    max_retries: Optional[int] = None
+    retry_base_delay: Optional[float] = None
+    batch_concurrency: Optional[int] = None
+    fallback_provider: Optional[str] = None
 
 
 @router.get("/ai/config")
@@ -1914,10 +1923,12 @@ async def get_ai_config(
             "openai_model": feature_config.get("ai.openai_model", "gpt-4o"),
             "openai_model_light": feature_config.get("ai.openai_model_light", "gpt-4o-mini"),
             "openai_timeout": feature_config.get_int("ai.openai_timeout", 60),
+            "openai_api_key": "***" if feature_config.get("ai.openai_api_key", "") else "",
             # Claude
             "claude_model": feature_config.get("ai.claude_model", "claude-sonnet-4-20250514"),
             "claude_model_light": feature_config.get("ai.claude_model_light", "claude-haiku-4-20250514"),
             "claude_timeout": feature_config.get_int("ai.claude_timeout", 60),
+            "claude_api_key": "***" if feature_config.get("ai.claude_api_key", "") else "",
             # General
             "cache_enabled": feature_config.get_bool("ai.cache_enabled", True),
             "cache_ttl": feature_config.get_int("ai.cache_ttl", 86400),
@@ -1927,6 +1938,13 @@ async def get_ai_config(
             "concurrent_enabled": feature_config.get_bool("ai.concurrent_enabled", False),
             "workers_heavy": feature_config.get_int("ai.workers_heavy", 2),
             "workers_screen": feature_config.get_int("ai.workers_screen", 4),
+            "no_think": feature_config.get_bool("ai.no_think", False),
+            "num_predict": feature_config.get_int("ai.num_predict", 512),
+            "num_predict_simple": feature_config.get_int("ai.num_predict_simple", 256),
+            "max_retries": feature_config.get_int("ai.max_retries", 3),
+            "retry_base_delay": feature_config.get_float("ai.retry_base_delay", 1.0),
+            "batch_concurrency": feature_config.get_int("ai.batch_concurrency", 1),
+            "fallback_provider": feature_config.get("ai.fallback_provider", ""),
         }
     }
 
@@ -1977,6 +1995,9 @@ async def update_ai_config(
     if update.openai_timeout is not None:
         await feature_config.async_set("ai.openai_timeout", str(update.openai_timeout), updated_by=admin.id)
         updates.append("openai_timeout")
+    if update.openai_api_key is not None:
+        await feature_config.async_set("ai.openai_api_key", update.openai_api_key, updated_by=admin.id)
+        updates.append("openai_api_key")
     if update.claude_model is not None:
         await feature_config.async_set("ai.claude_model", update.claude_model, updated_by=admin.id)
         updates.append("claude_model")
@@ -1986,6 +2007,9 @@ async def update_ai_config(
     if update.claude_timeout is not None:
         await feature_config.async_set("ai.claude_timeout", str(update.claude_timeout), updated_by=admin.id)
         updates.append("claude_timeout")
+    if update.claude_api_key is not None:
+        await feature_config.async_set("ai.claude_api_key", update.claude_api_key, updated_by=admin.id)
+        updates.append("claude_api_key")
     if update.cache_enabled is not None:
         await feature_config.async_set("ai.cache_enabled", "true" if update.cache_enabled else "false", updated_by=admin.id)
         updates.append("cache_enabled")
@@ -2010,6 +2034,27 @@ async def update_ai_config(
     if update.workers_screen is not None:
         await feature_config.async_set("ai.workers_screen", str(update.workers_screen), updated_by=admin.id)
         updates.append("workers_screen")
+    if update.no_think is not None:
+        await feature_config.async_set("ai.no_think", "true" if update.no_think else "false", updated_by=admin.id)
+        updates.append("no_think")
+    if update.num_predict is not None:
+        await feature_config.async_set("ai.num_predict", str(update.num_predict), updated_by=admin.id)
+        updates.append("num_predict")
+    if update.num_predict_simple is not None:
+        await feature_config.async_set("ai.num_predict_simple", str(update.num_predict_simple), updated_by=admin.id)
+        updates.append("num_predict_simple")
+    if update.max_retries is not None:
+        await feature_config.async_set("ai.max_retries", str(update.max_retries), updated_by=admin.id)
+        updates.append("max_retries")
+    if update.retry_base_delay is not None:
+        await feature_config.async_set("ai.retry_base_delay", str(update.retry_base_delay), updated_by=admin.id)
+        updates.append("retry_base_delay")
+    if update.batch_concurrency is not None:
+        await feature_config.async_set("ai.batch_concurrency", str(update.batch_concurrency), updated_by=admin.id)
+        updates.append("batch_concurrency")
+    if update.fallback_provider is not None:
+        await feature_config.async_set("ai.fallback_provider", update.fallback_provider, updated_by=admin.id)
+        updates.append("fallback_provider")
 
     return {"status": "ok", "message": f"AI configuration updated: {', '.join(updates)}"}
 

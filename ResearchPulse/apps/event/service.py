@@ -26,6 +26,7 @@ from sqlalchemy import and_, select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from apps.crawler.models.article import Article
 from settings import settings
+from common.feature_config import feature_config
 from .models import EventCluster, EventMember
 from .clustering import compute_cluster_score
 
@@ -218,14 +219,16 @@ class EventService:
                         best_method = method
 
                 # 如果在同 category 中已找到高分匹配，无需搜索全量
-                threshold_check = 0.35 if best_method in ("model", "entity") else 0.50
+                min_similarity = feature_config.get_float("event.min_similarity", 0.7)
+                threshold_check = min_similarity * 0.5 if best_method in ("model", "entity") else min_similarity * 0.71
                 if best_match and best_score >= threshold_check:
                     break
 
             # 根据匹配方法使用不同的阈值
-            # model 和 entity 匹配的置信度更高，使用较低阈值（0.35）
-            # keyword 和 title 匹配使用较高阈值（0.50）
-            threshold = 0.35 if best_method in ("model", "entity") else 0.50
+            # model 和 entity 匹配的置信度更高，使用较低阈值
+            # keyword 和 title 匹配使用较高阈值
+            min_similarity = feature_config.get_float("event.min_similarity", 0.7)
+            threshold = min_similarity * 0.5 if best_method in ("model", "entity") else min_similarity * 0.71
             if best_match and best_score >= threshold:
                 # 匹配成功：加入已有聚类
                 member = EventMember(

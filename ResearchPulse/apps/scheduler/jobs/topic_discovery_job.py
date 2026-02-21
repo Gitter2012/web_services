@@ -66,6 +66,46 @@ async def run_topic_discovery_job() -> dict:
             min_frequency=settings.topic_min_frequency,
         )
 
+        # 将发现结果保存为 AIGC 文章
+        if suggestions:
+            await _save_topic_aigc_article(session, suggestions)
+            await session.commit()
+
     logger.info(f"Topic discovery job completed: {len(suggestions)} suggestions found")
     # 返回发现的主题建议数量和详细列表
     return {"suggestions_count": len(suggestions), "suggestions": suggestions}
+
+
+async def _save_topic_aigc_article(session, suggestions: list) -> None:
+    """Generate an AIGC summary article for topic discovery results."""
+    from datetime import datetime, timezone
+    from apps.aigc.article_writer import save_aigc_article
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    count = len(suggestions)
+
+    title = f"话题趋势日报 - {today}"
+    lines = [
+        f"# {title}\n",
+        f"本次分析发现 **{count}** 个热门话题：\n",
+        "| 排名 | 话题 | 关键词 | 频率 |",
+        "|------|------|--------|------|",
+    ]
+
+    for i, s in enumerate(suggestions[:20], 1):
+        name = s.get("name", s) if isinstance(s, dict) else str(s)
+        keywords = ", ".join(s.get("keywords", [])) if isinstance(s, dict) else ""
+        freq = s.get("frequency", "") if isinstance(s, dict) else ""
+        lines.append(f"| {i} | {name} | {keywords} | {freq} |")
+
+    lines.append("")
+    content = "\n".join(lines)
+
+    await save_aigc_article(
+        session,
+        source_id="topic_radar",
+        external_id=f"topic_{today}",
+        title=title,
+        content=content,
+        tags=["话题趋势", "AIGC", today],
+    )

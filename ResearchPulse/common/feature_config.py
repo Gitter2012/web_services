@@ -65,6 +65,12 @@ DEFAULT_CONFIGS: Dict[str, tuple[str, str]] = {
     "scheduler.event_cluster_hour": ("2", "Hour of day to run event clustering (0-23)"),
     "scheduler.topic_discovery_day": ("mon", "Day of week for topic discovery"),
     "scheduler.topic_discovery_hour": ("1", "Hour of day for topic discovery (0-23)"),
+    # ---- 行动项提取调度参数 ----
+    "scheduler.action_extract_interval_hours": ("2", "Action item extraction interval in hours"),
+    # ---- 报告生成调度参数 ----
+    "scheduler.report_weekly_day": ("mon", "Day of week for weekly report generation"),
+    "scheduler.report_weekly_hour": ("6", "Hour of day for weekly report generation (0-23)"),
+    "scheduler.report_monthly_hour": ("7", "Hour of day for monthly report generation on 1st (0-23)"),
     # ---- 邮件通知调度参数 ----
     "scheduler.notification_hour": ("9", "Hour of day to send notification emails (0-23)"),
     "scheduler.notification_minute": ("0", "Minute of hour to send notification emails (0-59)"),
@@ -88,9 +94,17 @@ DEFAULT_CONFIGS: Dict[str, tuple[str, str]] = {
     "ai.concurrent_enabled": ("false", "Enable concurrent processing"),
     "ai.workers_heavy": ("2", "Heavy task workers"),
     "ai.workers_screen": ("4", "Screen task workers"),
+    "ai.no_think": ("false", "Disable model thinking (qwen3 etc.)"),
+    "ai.num_predict": ("512", "Max generation tokens for high-value content"),
+    "ai.num_predict_simple": ("256", "Max generation tokens for simple tasks"),
+    "ai.max_retries": ("3", "Max retry attempts for AI API calls"),
+    "ai.retry_base_delay": ("1.0", "Retry base delay seconds (exponential backoff)"),
+    "ai.batch_concurrency": ("1", "Batch concurrency (1=serial)"),
+    "ai.fallback_provider": ("", "Fallback AI provider"),
     # ---- 向量嵌入参数 ----
     "embedding.provider": ("sentence-transformers", "Embedding provider"),
     "embedding.model": ("all-MiniLM-L6-v2", "Embedding model name"),
+    "embedding.dimension": ("384", "Embedding vector dimension"),
     "embedding.similarity_threshold": ("0.85", "Similarity threshold"),
     "embedding.milvus_host": ("localhost", "Milvus server host"),
     "embedding.milvus_port": ("19530", "Milvus server port"),

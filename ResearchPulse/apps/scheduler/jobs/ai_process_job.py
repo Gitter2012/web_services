@@ -58,10 +58,15 @@ async def run_ai_process_job() -> dict:
         # 创建 AI 处理服务实例
         service = AIProcessorService()
         try:
-            # 批量处理未处理的文章，limit=50 控制单次处理量，避免长时间占用资源
-            # batch_process 内部使用独立 session 并发处理每篇文章，
-            # 单篇文章失败不会影响其他文章
-            result = await service.process_unprocessed(session, limit=50)
+            # 预热模型：向 Ollama 发送空请求触发模型加载到内存，
+            # 避免第一篇文章处理时因冷启动（30-120 秒）导致超时失败
+            warmup_ok = await service.warmup()
+            if not warmup_ok:
+                logger.warning("Model warmup did not complete, proceeding anyway")
+
+            # 批量处理未处理的文章，limit=20 控制单次处理量，
+            # 串行处理下每篇约 1 分钟，20 篇约 20 分钟，在 1 小时调度间隔内有充足余量
+            result = await service.process_unprocessed(session, limit=20)
             # 提交事务，持久化批量写入的处理日志
             await session.commit()
         except Exception as e:

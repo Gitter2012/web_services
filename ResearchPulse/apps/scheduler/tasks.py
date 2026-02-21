@@ -244,6 +244,61 @@ async def start_scheduler() -> None:
     else:
         logger.info("Topic discovery job skipped (feature.topic_radar disabled)")
 
+    # ---- 行动项批量提取任务 ----
+    # 功能: 从已 AI 处理的高重要性文章中自动提取行动项
+    # 前置条件: 需要启用 feature.action_items 功能开关
+    # 触发方式: 间隔触发，默认每2小时执行一次
+    # Action item extraction job
+    if feature_config.get_bool("feature.action_items", False):
+        from apps.scheduler.jobs.action_extract_job import run_action_extract_job
+        scheduler.add_job(
+            run_action_extract_job,
+            IntervalTrigger(hours=feature_config.get_int("scheduler.action_extract_interval_hours", 2)),
+            id="action_extract_job",
+            name="Extract action items from articles",
+            replace_existing=True,
+        )
+        logger.info("Action item extraction job registered")
+    else:
+        logger.info("Action item extraction job skipped (feature.action_items disabled)")
+
+    # ---- 周报自动生成任务 ----
+    # 功能: 每周为所有活跃用户自动生成上周的周报
+    # 前置条件: 需要启用 feature.report_generation 功能开关
+    # 触发方式: 每周定时执行（Cron 触发），默认每周一早上6点
+    # Weekly report generation job
+    if feature_config.get_bool("feature.report_generation", False):
+        from apps.scheduler.jobs.report_generate_job import run_weekly_report_job, run_monthly_report_job
+        scheduler.add_job(
+            run_weekly_report_job,
+            CronTrigger(
+                day_of_week=feature_config.get("scheduler.report_weekly_day", "mon"),
+                hour=feature_config.get_int("scheduler.report_weekly_hour", 6),
+                minute=0,
+            ),
+            id="weekly_report_job",
+            name="Generate weekly reports",
+            replace_existing=True,
+        )
+
+        # ---- 月报自动生成任务 ----
+        # 功能: 每月1号为所有活跃用户自动生成上月的月报
+        # Monthly report generation job
+        scheduler.add_job(
+            run_monthly_report_job,
+            CronTrigger(
+                day=1,
+                hour=feature_config.get_int("scheduler.report_monthly_hour", 7),
+                minute=0,
+            ),
+            id="monthly_report_job",
+            name="Generate monthly reports",
+            replace_existing=True,
+        )
+        logger.info("Report generation jobs registered (weekly + monthly)")
+    else:
+        logger.info("Report generation jobs skipped (feature.report_generation disabled)")
+
     # 所有任务注册完毕后，启动调度器开始按计划执行任务
     scheduler.start()
     logger.info("Scheduler started")

@@ -20,6 +20,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from settings import settings
+from common.feature_config import feature_config
 from .base import BaseAIProvider, parse_json_response
 
 logger = logging.getLogger(__name__)
@@ -57,11 +58,11 @@ class OllamaProvider(BaseAIProvider):
             api_key: Optional API key for authenticated Ollama deployments.
         """
         # 从配置或参数获取 Ollama 服务地址、模型名称和超时时间
-        self._base_url = base_url or settings.ollama_base_url
-        self._model = model or settings.ollama_model
-        self._timeout = timeout or settings.ollama_timeout
+        self._base_url = base_url or feature_config.get("ai.ollama_base_url") or settings.ollama_base_url
+        self._model = model or feature_config.get("ai.ollama_model") or settings.ollama_model
+        self._timeout = timeout or feature_config.get_int("ai.ollama_timeout", settings.ollama_timeout)
         # 可选 API 密钥，用于有认证要求的远程 Ollama 部署
-        self._api_key = api_key if api_key is not None else settings.ollama_api_key
+        self._api_key = api_key if api_key is not None else (feature_config.get("ai.ollama_api_key") or settings.ollama_api_key)
         # 持久化 HTTP 客户端，复用 TCP 连接，避免每次请求创建新连接
         self._client: httpx.AsyncClient | None = None
 
@@ -75,7 +76,12 @@ class OllamaProvider(BaseAIProvider):
         """
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
-                timeout=self._timeout,
+                timeout=httpx.Timeout(
+                    connect=10.0,           # 连接超时 10 秒
+                    read=self._timeout,     # 读取超时使用配置值（默认 120 秒），LLM 推理需要较长时间
+                    write=30.0,             # 写入超时 30 秒
+                    pool=10.0,              # 连接池等待超时 10 秒
+                ),
                 limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
             )
         return self._client
@@ -122,6 +128,39 @@ class OllamaProvider(BaseAIProvider):
         except (httpx.RequestError, OSError):
             return False
 
+    async def warmup(self) -> bool:
+        """Pre-load the Ollama model into memory to avoid cold-start latency.
+
+        向 Ollama 发送空 prompt 请求，仅触发模型加载，不生成文本。
+        使用独立的 HTTP 客户端和较长的超时时间（180 秒），
+        因为模型首次加载到 GPU/CPU 内存可能需要 30-120 秒。
+
+        Returns:
+            bool: True if warmup succeeded, False otherwise.
+        """
+        logger.info(f"Warming up Ollama model: {self._model}")
+        payload = {
+            "model": self._model,
+            "prompt": "",
+            "stream": False,
+            "keep_alive": "300s",
+        }
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=10.0)
+            ) as client:
+                response = await client.post(
+                    f"{self._base_url}/api/generate",
+                    headers=self._get_headers(),
+                    json=payload,
+                )
+                response.raise_for_status()
+            logger.info(f"Ollama model warmup completed: {self._model}")
+            return True
+        except Exception as e:
+            logger.warning(f"Ollama model warmup failed: {e}")
+            return False
+
     async def _call_api(self, payload: dict) -> dict:
         """Execute the Ollama API call with retry logic.
 
@@ -163,12 +202,19 @@ class OllamaProvider(BaseAIProvider):
             dict: Standardized result payload.
         """
         # 构建 prompt，内容长度受 ai_max_content_length 配置限制
-        prompt = self.build_prompt(title, content, task_type, settings.ai_max_content_length)
+        prompt = self.build_prompt(title, content, task_type, feature_config.get_int("ai.max_content_length", settings.ai_max_content_length))
 
-        # 根据任务类型调整最大生成 token 数
-        # 高价值内容和论文需要更详细的输出（512 tokens）
-        # 低价值内容只需简要信息（256 tokens）
-        num_predict = 512 if task_type in ("content_high", "paper_full") else 256
+        # 可选：禁用模型内部思考模式（qwen3 等支持 thinking 的模型）
+        # 开启后在 prompt 前添加 /no_think 指令，减少 token 消耗和推理时间
+        if feature_config.get_bool("ai.no_think", settings.ollama_no_think):
+            prompt = f"/no_think\n{prompt}"
+
+        # 根据任务类型选择最大生成 token 数，从配置读取
+        num_predict = (
+            feature_config.get_int("ai.num_predict", settings.ollama_num_predict)
+            if task_type in ("content_high", "paper_full")
+            else feature_config.get_int("ai.num_predict_simple", settings.ollama_num_predict_simple)
+        )
 
         # 构建 Ollama API 请求体
         payload = {
@@ -187,8 +233,8 @@ class OllamaProvider(BaseAIProvider):
         try:
             # 使用 tenacity 重试包装器调用 API，应对网络抖动和临时限流
             retrying_call = retry(
-                stop=stop_after_attempt(settings.ai_max_retries),
-                wait=wait_exponential(multiplier=settings.ai_retry_base_delay, max=10),
+                stop=stop_after_attempt(feature_config.get_int("ai.max_retries", settings.ai_max_retries)),
+                wait=wait_exponential(multiplier=feature_config.get_float("ai.retry_base_delay", settings.ai_retry_base_delay), max=10),
                 retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
                 reraise=True,
             )(self._call_api)

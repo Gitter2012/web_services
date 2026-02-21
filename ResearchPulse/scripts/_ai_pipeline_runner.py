@@ -83,20 +83,21 @@ logging.getLogger().addFilter(_pool_gc_filter)
 RED = "\033[0;31m"
 GREEN = "\033[0;32m"
 YELLOW = "\033[1;33m"
-BLUE = "\033[0;34m"
 CYAN = "\033[0;36m"
 NC = "\033[0m"
 
 # ---------------------------------------------------------------------------
 # 流水线阶段定义（按依赖顺序）
 # ---------------------------------------------------------------------------
-STAGES = ("ai", "embedding", "event", "topic")
+STAGES = ("ai", "embedding", "event", "topic", "action", "report")
 
 STAGE_DESCRIPTIONS = {
     "ai": "AI 文章处理（摘要/分类/评分）",
     "embedding": "向量嵌入计算",
     "event": "事件聚类",
     "topic": "主题发现",
+    "action": "行动项提取",
+    "report": "报告生成",
 }
 
 STAGE_FEATURES = {
@@ -104,6 +105,8 @@ STAGE_FEATURES = {
     "embedding": "feature.embedding",
     "event": "feature.event_clustering",
     "topic": "feature.topic_radar",
+    "action": "feature.action_items",
+    "report": "feature.report_generation",
 }
 
 
@@ -124,18 +127,21 @@ async def _run_ai(limit: int, verbose: bool) -> dict:
     from apps.ai_processor.service import AIProcessorService
 
     session_factory = get_session_factory()
-    async with session_factory() as session:
-        service = AIProcessorService()
-        try:
+    service = AIProcessorService()
+    try:
+        # 预热模型，避免首次请求因冷启动超时
+        warmup_ok = await service.warmup()
+        if not warmup_ok:
+            _print("[ai] 模型预热未完成，继续处理", "warn")
+
+        async with session_factory() as session:
             result = await service.process_unprocessed(session, limit=limit)
-            await session.commit()
             return result
-        except Exception as e:
-            logger.error(f"AI processing failed: {e}", exc_info=verbose)
-            await session.rollback()
-            return {"error": str(e), "processed": 0, "cached": 0, "failed": 0, "total": 0}
-        finally:
-            await service.close()
+    except Exception as e:
+        logger.error(f"AI processing failed: {e}", exc_info=verbose)
+        return {"error": str(e), "processed": 0, "cached": 0, "failed": 0, "total": 0}
+    finally:
+        await service.close()
 
 
 async def _run_embedding(limit: int, verbose: bool) -> dict:
@@ -146,9 +152,14 @@ async def _run_embedding(limit: int, verbose: bool) -> dict:
     session_factory = get_session_factory()
     async with session_factory() as session:
         service = EmbeddingService()
-        result = await service.compute_uncomputed(session, limit=limit)
-        await session.commit()
-        return result
+        try:
+            result = await service.compute_uncomputed(session, limit=limit)
+            await session.commit()
+            return result
+        except Exception as e:
+            logger.error(f"Embedding computation failed: {e}", exc_info=verbose)
+            await session.rollback()
+            return {"error": str(e), "computed": 0, "skipped": 0, "failed": 0, "total": 0}
 
 
 async def _run_event(limit: int, verbose: bool) -> dict:
@@ -159,9 +170,21 @@ async def _run_event(limit: int, verbose: bool) -> dict:
     session_factory = get_session_factory()
     async with session_factory() as session:
         service = EventService()
-        result = await service.cluster_articles(session, limit=limit)
-        await session.commit()
-        return result
+        try:
+            result = await service.cluster_articles(session, limit=limit)
+            # 保存 AIGC 汇总文章
+            if result.get("clustered", 0) > 0 or result.get("new_clusters", 0) > 0:
+                try:
+                    from apps.scheduler.jobs.event_cluster_job import _save_event_aigc_article
+                    await _save_event_aigc_article(session, result)
+                except Exception as e:
+                    logger.warning(f"Failed to save event AIGC article: {e}")
+            await session.commit()
+            return result
+        except Exception as e:
+            logger.error(f"Event clustering failed: {e}", exc_info=verbose)
+            await session.rollback()
+            return {"error": str(e), "clustered": 0, "new_clusters": 0, "total_processed": 0}
 
 
 async def _run_topic(limit: int, verbose: bool) -> dict:
@@ -172,12 +195,158 @@ async def _run_topic(limit: int, verbose: bool) -> dict:
     session_factory = get_session_factory()
     async with session_factory() as session:
         service = TopicService()
-        suggestions = await service.discover(
-            session,
-            days=settings.topic_lookback_days,
-            min_frequency=settings.topic_min_frequency,
-        )
-        return {"suggestions_count": len(suggestions), "suggestions": suggestions}
+        try:
+            suggestions = await service.discover(
+                session,
+                days=settings.topic_lookback_days,
+                min_frequency=settings.topic_min_frequency,
+            )
+            # 保存 AIGC 汇总文章
+            if suggestions:
+                try:
+                    from apps.scheduler.jobs.topic_discovery_job import _save_topic_aigc_article
+                    await _save_topic_aigc_article(session, suggestions)
+                    await session.commit()
+                except Exception as e:
+                    logger.warning(f"Failed to save topic AIGC article: {e}")
+            return {"suggestions_count": len(suggestions), "suggestions": suggestions}
+        except Exception as e:
+            logger.error(f"Topic discovery failed: {e}", exc_info=verbose)
+            await session.rollback()
+            return {"error": str(e), "suggestions_count": 0}
+
+
+async def _run_action(limit: int, verbose: bool) -> dict:
+    """Run action item extraction stage."""
+    from core.database import get_session_factory
+    from apps.scheduler.jobs.action_extract_job import run_action_extract_job
+
+    # action extract job manages its own session; limit is unused here
+    try:
+        result = await run_action_extract_job()
+        # Strip the "skipped" results when running with --force
+        if result.get("skipped"):
+            # Force mode: run the extraction directly
+            from sqlalchemy import and_, select
+            from core.models.user import User
+            import core.models.permission  # noqa: F401
+            from apps.crawler.models.article import Article
+            from apps.action.models import ActionItem
+            from apps.action.extractor import extract_actions_from_article
+
+            session_factory = get_session_factory()
+            extracted_total = 0
+            articles_processed = 0
+            async with session_factory() as session:
+                user_result = await session.execute(
+                    select(User.id).where(User.is_superuser.is_(True)).limit(1)
+                )
+                system_user_id = user_result.scalar()
+                if not system_user_id:
+                    return {"articles_processed": 0, "extracted": 0}
+
+                art_result = await session.execute(
+                    select(Article.id)
+                    .outerjoin(ActionItem, Article.id == ActionItem.article_id)
+                    .where(
+                        and_(
+                            ActionItem.id.is_(None),
+                            Article.ai_processed_at.isnot(None),
+                            Article.is_archived.is_(False),
+                            Article.importance_score >= 6,
+                            Article.actionable_items.isnot(None),
+                        )
+                    )
+                    .order_by(Article.crawl_time.desc())
+                    .limit(limit)
+                )
+                article_ids = [row[0] for row in art_result.all()]
+                for article_id in article_ids:
+                    try:
+                        actions = await extract_actions_from_article(article_id, system_user_id, session)
+                        extracted_total += len(actions)
+                        articles_processed += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to extract actions from article {article_id}: {e}")
+                # 保存 AIGC 汇总文章
+                if extracted_total > 0:
+                    try:
+                        from apps.scheduler.jobs.action_extract_job import _save_action_aigc_article
+                        await _save_action_aigc_article(session, articles_processed, extracted_total)
+                    except Exception as e:
+                        logger.warning(f"Failed to save action AIGC article: {e}")
+                await session.commit()
+            return {"articles_processed": articles_processed, "extracted": extracted_total}
+        return result
+    except Exception as e:
+        logger.error(f"Action extraction failed: {e}", exc_info=verbose)
+        return {"error": str(e), "articles_processed": 0, "extracted": 0}
+
+
+async def _run_report(limit: int, verbose: bool) -> dict:
+    """Run report generation stage (weekly)."""
+    from apps.scheduler.jobs.report_generate_job import run_weekly_report_job
+
+    try:
+        result = await run_weekly_report_job()
+        if result.get("skipped"):
+            # Force mode: run directly
+            from core.database import get_session_factory
+            from sqlalchemy import and_, select
+            from core.models.user import User
+            import core.models.permission  # noqa: F401
+            from apps.report.models import Report
+            from apps.report.service import ReportService
+            from datetime import datetime, timedelta, timezone
+
+            session_factory = get_session_factory()
+            generated = 0
+            skipped = 0
+            async with session_factory() as session:
+                user_result = await session.execute(
+                    select(User.id).where(User.is_active.is_(True))
+                )
+                user_ids = [row[0] for row in user_result.all()]
+                if not user_ids:
+                    return {"generated": 0, "skipped": 0}
+
+                service = ReportService()
+                today = datetime.now(timezone.utc)
+                last_week_start = today - timedelta(days=today.weekday() + 7)
+                last_week_start = last_week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+                period_start_str = last_week_start.strftime("%Y-%m-%d")
+
+                for user_id in user_ids:
+                    existing = await session.execute(
+                        select(Report.id).where(
+                            and_(
+                                Report.user_id == user_id,
+                                Report.type == "weekly",
+                                Report.period_start == period_start_str,
+                            )
+                        ).limit(1)
+                    )
+                    if existing.scalar():
+                        skipped += 1
+                        continue
+                    try:
+                        await service.generate_weekly(user_id, session, weeks_ago=1)
+                        generated += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to generate report for user {user_id}: {e}")
+                # 保存 AIGC 汇总文章
+                if generated > 0:
+                    try:
+                        from apps.scheduler.jobs.report_generate_job import _save_report_aigc_article
+                        await _save_report_aigc_article(session, "weekly", period_start_str, generated, skipped)
+                    except Exception as e:
+                        logger.warning(f"Failed to save report AIGC article: {e}")
+                await session.commit()
+            return {"generated": generated, "skipped": skipped}
+        return result
+    except Exception as e:
+        logger.error(f"Report generation failed: {e}", exc_info=verbose)
+        return {"error": str(e), "generated": 0, "skipped": 0}
 
 
 STAGE_RUNNERS = {
@@ -185,6 +354,8 @@ STAGE_RUNNERS = {
     "embedding": _run_embedding,
     "event": _run_event,
     "topic": _run_topic,
+    "action": _run_action,
+    "report": _run_report,
 }
 
 
@@ -219,6 +390,16 @@ def _format_result(stage: str, result: dict) -> str:
         )
     elif stage == "topic":
         return f"  发现主题: {result.get('suggestions_count', 0)}"
+    elif stage == "action":
+        return (
+            f"  文章: {result.get('articles_processed', 0)} | "
+            f"提取行动项: {result.get('extracted', 0)}"
+        )
+    elif stage == "report":
+        return (
+            f"  生成: {result.get('generated', 0)} | "
+            f"跳过: {result.get('skipped', 0)}"
+        )
     else:
         return f"  {json.dumps(result, ensure_ascii=False)}"
 
@@ -265,7 +446,7 @@ async def run_pipeline(
             if not enabled and not skip_disabled:
                 _print(
                     f"[{stage}] 功能未启用 ({feature_key}=false)，"
-                    f"使用 --force 强制运行",
+                    f"--force 模式下强制运行",
                     "warn",
                 )
 
@@ -403,13 +584,7 @@ def main():
 
     # JSON 输出
     if args.json_output:
-        # 移除不可序列化的 suggestions 详情
-        safe = {}
-        for k, v in results.items():
-            if "suggestions" in v and isinstance(v["suggestions"], list):
-                v = {**v, "suggestions": f"[{len(v['suggestions'])} items]"}
-            safe[k] = v
-        print(json.dumps(safe, ensure_ascii=False, indent=2))
+        print(json.dumps(results, ensure_ascii=False, indent=2))
         sys.exit(0)
 
     # 汇总

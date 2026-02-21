@@ -303,6 +303,17 @@ class BaseAIProvider(ABC):
         """
         pass
 
+    async def warmup(self) -> bool:
+        """Pre-load the model to reduce first-request latency.
+
+        预加载模型以减少首次请求延迟。子类按需覆写。
+        默认实现为空操作，直接返回 True。
+
+        Returns:
+            bool: True if warmup succeeded or is not needed.
+        """
+        return True
+
     @abstractmethod
     async def is_available(self) -> bool:
         """Check if the provider is available.

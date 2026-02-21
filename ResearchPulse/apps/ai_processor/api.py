@@ -70,12 +70,11 @@ async def process_article(
 async def batch_process(
     request: BatchProcessRequest,
     user=Depends(require_permissions("ai:process")),
-    db: AsyncSession = Depends(get_session),
 ):
     """Batch process multiple articles."""
     service = AIProcessorService()
     # force 参数控制是否对已处理的文章进行重新处理
-    result = await service.batch_process(request.article_ids, db, force=request.force)
+    result = await service.batch_process(request.article_ids, force=request.force)
     # 构造批量处理响应，包含总数、已处理、缓存命中和失败数
     return BatchProcessResponse(
         total=result["total"],

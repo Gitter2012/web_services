@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.crawler.models.article import Article
 from settings import settings
+from common.feature_config import feature_config
 
 from .models import ArticleEmbedding
 from .milvus_client import MilvusClient
@@ -49,12 +50,12 @@ def get_embedding_provider() -> BaseEmbeddingProvider:
     # 根据配置选择嵌入提供商
     # "openai": 使用 OpenAI API，质量高但有成本
     # 其他（默认）: 使用本地 sentence-transformers，免费且数据不离开本机
-    if settings.embedding_provider == "openai":
+    if feature_config.get("embedding.provider", settings.embedding_provider) == "openai":
         from .providers.openai_provider import OpenAIEmbeddingProvider
         return OpenAIEmbeddingProvider()
     else:
         from .providers.sentence_transformer import SentenceTransformerProvider
-        return SentenceTransformerProvider(model_name=settings.embedding_model)
+        return SentenceTransformerProvider(model_name=feature_config.get("embedding.model", settings.embedding_model))
 
 
 # -----------------------------------------------------------------------------
@@ -167,8 +168,8 @@ class EmbeddingService:
         meta = ArticleEmbedding(
             article_id=article_id,
             milvus_id=milvus_id,
-            provider=settings.embedding_provider,
-            model_name=settings.embedding_model,
+            provider=feature_config.get("embedding.provider", settings.embedding_provider),
+            model_name=feature_config.get("embedding.model", settings.embedding_model),
             dimension=dimension,
             computed_at=datetime.now(timezone.utc),
         )
@@ -177,8 +178,8 @@ class EmbeddingService:
         return {
             "success": True,
             "article_id": article_id,
-            "provider": settings.embedding_provider,
-            "model": settings.embedding_model,
+            "provider": feature_config.get("embedding.provider", settings.embedding_provider),
+            "model": feature_config.get("embedding.model", settings.embedding_model),
             "dimension": dimension,
         }
 
@@ -259,15 +260,15 @@ class EmbeddingService:
                 logger.warning(f"Milvus batch insert failed: {e}")
 
         # 第六步：批量创建 MySQL 元数据记录
-        dimension = len(embeddings[0]) if embeddings else settings.embedding_dimension
+        dimension = len(embeddings[0]) if embeddings else feature_config.get_int("embedding.dimension", settings.embedding_dimension)
         now = datetime.now(timezone.utc)
         meta_records = []
         for aid in to_encode_ids:
             meta_records.append(ArticleEmbedding(
                 article_id=aid,
                 milvus_id=milvus_ids_map.get(aid),
-                provider=settings.embedding_provider,
-                model_name=settings.embedding_model,
+                provider=feature_config.get("embedding.provider", settings.embedding_provider),
+                model_name=feature_config.get("embedding.model", settings.embedding_model),
                 dimension=dimension,
                 computed_at=now,
             ))
@@ -306,6 +307,7 @@ class EmbeddingService:
                     ArticleEmbedding.id.is_(None),       # 没有嵌入记录
                     Article.is_archived.is_(False),       # 未归档
                     Article.ai_processed_at.isnot(None),  # 已经过 AI 处理（确保有摘要可用）
+                    Article.source_type != "aigc",        # 排除 AIGC 生成的文章
                 )
             )
             .order_by(Article.crawl_time.desc())
@@ -361,7 +363,7 @@ class EmbeddingService:
 
         # 第四步：批量查询匹配文章的标题信息
         # 过滤掉相似度过低的结果（低于阈值的 50%）
-        min_score = settings.embedding_similarity_threshold * 0.5
+        min_score = feature_config.get_float("embedding.similarity_threshold", settings.embedding_similarity_threshold) * 0.5
         valid_matches = [
             (mid, score) for mid, score in matches if score >= min_score
         ]
@@ -415,9 +417,9 @@ class EmbeddingService:
 
         return {
             "total_embeddings": total,
-            "provider": settings.embedding_provider,
-            "model": settings.embedding_model,
-            "dimension": settings.embedding_dimension,
+            "provider": feature_config.get("embedding.provider", settings.embedding_provider),
+            "model": feature_config.get("embedding.model", settings.embedding_model),
+            "dimension": feature_config.get_int("embedding.dimension", settings.embedding_dimension),
             "milvus_connected": milvus_connected,
             "collection_count": collection_count,
         }

@@ -60,6 +60,11 @@ async def run_event_cluster_job() -> dict:
         # 批量处理待聚类的文章，limit=200（聚类任务每日执行一次，
         # 因此单次处理量较大，覆盖一天内新增的文章）
         result = await service.cluster_articles(session, limit=200)
+
+        # 将聚类结果保存为 AIGC 文章
+        if result.get("clustered", 0) > 0 or result.get("new_clusters", 0) > 0:
+            await _save_event_aigc_article(session, result)
+
         # 提交事务，持久化聚类结果（新事件簇和文章-事件关联关系）
         await session.commit()
 
@@ -70,3 +75,53 @@ async def run_event_cluster_job() -> dict:
         f"out of {result['total_processed']}"
     )
     return result
+
+
+async def _save_event_aigc_article(session, result: dict) -> None:
+    """Generate an AIGC summary article for the event clustering run."""
+    from datetime import datetime, timezone
+    from apps.aigc.article_writer import save_aigc_article
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    clustered = result.get("clustered", 0)
+    new_clusters = result.get("new_clusters", 0)
+    total = result.get("total_processed", 0)
+
+    title = f"事件聚类日报 - {today}"
+    lines = [
+        f"# {title}\n",
+        f"本次聚类处理了 **{total}** 篇文章，",
+        f"成功归入事件簇 **{clustered}** 篇，",
+        f"新建事件簇 **{new_clusters}** 个。\n",
+    ]
+
+    # Try to include new cluster details
+    try:
+        from sqlalchemy import select
+        from apps.event.models import EventCluster
+        recent = await session.execute(
+            select(EventCluster)
+            .where(EventCluster.is_active.is_(True))
+            .order_by(EventCluster.last_updated_at.desc())
+            .limit(10)
+        )
+        clusters = recent.scalars().all()
+        if clusters:
+            lines.append("## 最近活跃事件\n")
+            for i, c in enumerate(clusters, 1):
+                lines.append(
+                    f"{i}. **{c.title}** ({c.article_count} 篇文章)"
+                )
+            lines.append("")
+    except Exception:
+        pass
+
+    content = "\n".join(lines)
+    await save_aigc_article(
+        session,
+        source_id="event_clustering",
+        external_id=f"event_{today}",
+        title=title,
+        content=content,
+        tags=["事件聚类", "AIGC", today],
+    )
