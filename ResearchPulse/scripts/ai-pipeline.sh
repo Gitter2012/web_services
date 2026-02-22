@@ -10,12 +10,17 @@
 #   event     事件聚类
 #   topic     主题发现
 #
+# 重处理（独立子命令）:
+#   reprocess 对已有文章重新运行 AI 分析流程
+#
 # 示例:
 #   ./scripts/ai-pipeline.sh all                   # 运行全部阶段
 #   ./scripts/ai-pipeline.sh ai                    # 仅运行 AI 处理
 #   ./scripts/ai-pipeline.sh ai embedding          # 运行 AI 处理 + 嵌入计算
 #   ./scripts/ai-pipeline.sh all --limit 200       # 每阶段最多处理 200 条
 #   ./scripts/ai-pipeline.sh all --force            # 忽略功能开关，强制运行
+#   ./scripts/ai-pipeline.sh reprocess --debug      # Debug 模式重处理 3 篇
+#   ./scripts/ai-pipeline.sh reprocess --limit 100  # 批量重处理 100 篇
 # =============================================================================
 
 set -e
@@ -33,6 +38,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$PROJECT_DIR/.env"
 PYTHON_SCRIPT="$PROJECT_DIR/scripts/_ai_pipeline_runner.py"
+REPROCESS_SCRIPT="$PROJECT_DIR/scripts/reprocess_articles.py"
 
 # 显示帮助
 show_help() {
@@ -47,6 +53,14 @@ show_help() {
     echo -e "  ${CYAN}event${NC}       事件聚类                         [feature.event_clustering]"
     echo -e "  ${CYAN}topic${NC}       主题发现                         [feature.topic_radar]"
     echo ""
+    echo "子命令:"
+    echo -e "  ${CYAN}reprocess${NC}   对已有文章重新运行 AI 分析流程"
+    echo "              --debug, -d        打印完整输入输出（默认处理 3 篇）"
+    echo "              --limit <n>        处理数量上限"
+    echo "              --ids <id...>      指定文章 ID"
+    echo "              --unprocessed      仅处理未处理的文章"
+    echo "              --source-type <t>  按来源类型筛选"
+    echo ""
     echo "选项:"
     echo "  --limit <n>    每阶段最多处理的文章数 (默认: 50)"
     echo "  --force        忽略功能开关，强制运行所有指定阶段"
@@ -58,20 +72,20 @@ show_help() {
     echo -e "  ${GREEN}# 运行完整的 AI 流水线${NC}"
     echo "  ./scripts/ai-pipeline.sh all"
     echo ""
-    echo -e "  ${GREEN}# 仅运行 AI 处理阶段${NC}"
-    echo "  ./scripts/ai-pipeline.sh ai"
+    echo -e "  ${GREEN}# Debug 模式重处理（打印 AI prompt 和完整输出）${NC}"
+    echo "  ./scripts/ai-pipeline.sh reprocess --debug"
     echo ""
-    echo -e "  ${GREEN}# 运行 AI 处理 + 嵌入计算${NC}"
-    echo "  ./scripts/ai-pipeline.sh ai embedding"
+    echo -e "  ${GREEN}# 重处理指定文章${NC}"
+    echo "  ./scripts/ai-pipeline.sh reprocess --ids 12188 12189 --debug"
+    echo ""
+    echo -e "  ${GREEN}# 批量重处理 100 篇${NC}"
+    echo "  ./scripts/ai-pipeline.sh reprocess --limit 100"
     echo ""
     echo -e "  ${GREEN}# 每阶段最多处理 200 条文章${NC}"
     echo "  ./scripts/ai-pipeline.sh all --limit 200"
     echo ""
     echo -e "  ${GREEN}# 忽略功能开关，强制运行${NC}"
     echo "  ./scripts/ai-pipeline.sh all --force"
-    echo ""
-    echo -e "  ${GREEN}# 仅运行嵌入到主题发现（跳过 AI 处理）${NC}"
-    echo "  ./scripts/ai-pipeline.sh embedding event topic"
     echo ""
     echo "流水线依赖关系:"
     echo "  ai → embedding → event → topic"
@@ -117,6 +131,7 @@ check_python() {
 STAGES=()
 OPTIONS=()
 SHOW_HELP=false
+IS_REPROCESS=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -124,7 +139,11 @@ while [[ $# -gt 0 ]]; do
             SHOW_HELP=true
             shift
             ;;
-        --limit|--force|--verbose|-v|--json)
+        reprocess)
+            IS_REPROCESS=true
+            shift
+            ;;
+        --limit|--force|--verbose|-v|--json|--trigger)
             OPTIONS+=("$1")
             # --limit 需要带参数值
             if [ "$1" = "--limit" ] && [ -n "$2" ]; then
@@ -133,7 +152,29 @@ while [[ $# -gt 0 ]]; do
             fi
             shift
             ;;
-        all|ai|embedding|event|topic)
+        # reprocess 专用参数
+        --debug|-d|--unprocessed)
+            OPTIONS+=("$1")
+            shift
+            ;;
+        --ids)
+            OPTIONS+=("$1")
+            shift
+            # 收集后续所有数字参数作为 ID
+            while [[ $# -gt 0 ]] && [[ "$1" =~ ^[0-9]+$ ]]; do
+                OPTIONS+=("$1")
+                shift
+            done
+            ;;
+        --source-type)
+            OPTIONS+=("$1")
+            if [ -n "$2" ]; then
+                shift
+                OPTIONS+=("$1")
+            fi
+            shift
+            ;;
+        all|ai|embedding|event|topic|action|report)
             STAGES+=("$1")
             shift
             ;;
@@ -147,7 +188,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # 显示帮助
-if [ "$SHOW_HELP" = true ] || [ ${#STAGES[@]} -eq 0 ]; then
+if [ "$SHOW_HELP" = true ] || { [ "$IS_REPROCESS" = false ] && [ ${#STAGES[@]} -eq 0 ]; }; then
     show_help
     exit 0
 fi
@@ -155,6 +196,34 @@ fi
 # 检查环境
 check_env
 check_python
+
+# ---- reprocess 子命令 ----
+if [ "$IS_REPROCESS" = true ]; then
+    if [ ! -f "$REPROCESS_SCRIPT" ]; then
+        echo -e "${RED}错误: 重处理脚本不存在: ${REPROCESS_SCRIPT}${NC}"
+        exit 1
+    fi
+
+    echo -e "${BLUE}============================================${NC}"
+    echo -e "${BLUE}ResearchPulse v2 文章重处理${NC}"
+    echo -e "${BLUE}============================================${NC}"
+    echo ""
+
+    cd "$PROJECT_DIR"
+    python3 "${REPROCESS_SCRIPT}" "${OPTIONS[@]}"
+
+    EXIT_CODE=$?
+
+    echo ""
+    echo -e "${BLUE}--------------------------------------------${NC}"
+    if [ $EXIT_CODE -eq 0 ]; then
+        echo -e "${GREEN}重处理完毕${NC}"
+    else
+        echo -e "${RED}重处理失败 (退出码: $EXIT_CODE)${NC}"
+    fi
+
+    exit $EXIT_CODE
+fi
 
 # 构建参数
 PYTHON_ARGS=("${STAGES[@]}" "${OPTIONS[@]}")

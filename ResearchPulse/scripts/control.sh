@@ -76,6 +76,13 @@ show_help() {
     echo "              --verbose, -v  详细输出"
     echo "              --json         JSON 格式输出"
     echo ""
+    echo -e "  ${CYAN}reprocess${NC} 文章重处理（刷库）"
+    echo "              --debug, -d        打印完整 AI 输入输出"
+    echo "              --limit <n>        处理数量上限"
+    echo "              --ids <id...>      指定文章 ID"
+    echo "              --unprocessed      仅处理未处理的文章"
+    echo "              --source-type <t>  按来源类型筛选"
+    echo ""
     echo -e "  ${CYAN}sync${NC}      同步数据"
     echo "              categories     arXiv 分类"
     echo "              --force, -f    强制同步"
@@ -92,6 +99,9 @@ show_help() {
     echo "  ./scripts/control.sh ai all"
     echo "  ./scripts/control.sh ai ai embedding --limit 200"
     echo "  ./scripts/control.sh ai all --force"
+    echo "  ./scripts/control.sh reprocess --debug"
+    echo "  ./scripts/control.sh reprocess --ids 12188 12189 --debug"
+    echo "  ./scripts/control.sh reprocess --limit 100"
     echo "  ./scripts/control.sh sync categories --force"
     echo ""
 }
@@ -118,6 +128,7 @@ case "$COMMAND" in
     crawl)         "$SCRIPT_DIR/crawl.sh" "$@" ;;
     email)         "$SCRIPT_DIR/email.sh" "$@" ;;
     ai)            "$SCRIPT_DIR/ai-pipeline.sh" "$@" ;;
+    reprocess)     "$SCRIPT_DIR/ai-pipeline.sh" reprocess "$@" ;;
     sync)          "$SCRIPT_DIR/sync-categories.sh" "$@" ;;
     logs)          show_logs "$@" ;;
     help|--help|-h) show_help ;;
