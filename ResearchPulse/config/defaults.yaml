@@ -180,6 +180,15 @@ ai_processor:
     ttl: 86400
   max_content_length: 1500
   max_title_length: 200
+  # Provider 公用参数
+  no_think: false            # 禁用模型内部思考（qwen3, o1/o3 等）
+  num_predict: 512           # 高价值内容最大生成 token 数
+  num_predict_simple: 256    # 低价值内容最大生成 token 数
+  max_retries: 3
+  retry_base_delay: 1.0
+  batch_concurrency: 1
+  fallback_provider: ""
+  translate_max_tokens: 4096
 
 # Embedding Configuration (with Milvus)
 embedding:

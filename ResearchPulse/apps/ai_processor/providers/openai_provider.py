@@ -169,9 +169,9 @@ class OpenAIProvider(BaseAIProvider):
         # 高价值内容和论文需要更详细的输出
         # 低价值内容只需简要信息
         max_tokens = (
-            feature_config.get_int("ai.num_predict", 512)
+            feature_config.get_int("ai.num_predict", settings.ai_num_predict)
             if task_type in ("content_high", "paper_full")
-            else feature_config.get_int("ai.num_predict_simple", 256)
+            else feature_config.get_int("ai.num_predict_simple", settings.ai_num_predict_simple)
         )
 
         # 构建 OpenAI Chat Completions API 请求头和请求体

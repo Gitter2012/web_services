@@ -1157,6 +1157,13 @@ INSERT INTO `system_config` (`config_key`, `config_value`, `description`, `is_se
 ('ai.concurrent_enabled', 'false', 'Enable concurrent AI processing', 0),
 ('ai.workers_heavy', '2', 'Number of workers for heavy AI tasks', 0),
 ('ai.workers_screen', '4', 'Number of workers for screening tasks', 0),
+('ai.no_think', 'false', 'Disable model thinking (qwen3, o1/o3 etc.)', 0),
+('ai.num_predict', '512', 'Max generation tokens for high-value content', 0),
+('ai.num_predict_simple', '256', 'Max generation tokens for simple tasks', 0),
+('ai.max_retries', '3', 'Max retry attempts for AI API calls', 0),
+('ai.retry_base_delay', '1.0', 'Retry base delay seconds (exponential backoff)', 0),
+('ai.batch_concurrency', '1', 'Batch concurrency (1=serial)', 0),
+('ai.fallback_provider', '', 'Fallback AI provider', 0),
 -- Embedding 配置
 ('embedding.provider', 'sentence-transformers', 'Embedding provider', 0),
 ('embedding.model', 'all-MiniLM-L6-v2', 'Embedding model name', 0),
@@ -1189,12 +1196,28 @@ INSERT INTO `system_config` (`config_key`, `config_value`, `description`, `is_se
 ('scheduler.topic_discovery_hour', '1', 'Hour of day for topic discovery (0-23)', 0),
 ('scheduler.backup_hour', '4', 'Hour of day to run backup (0-23)', 0),
 ('scheduler.cleanup_hour', '3', 'Hour of day to run cleanup (0-23)', 0),
+('scheduler.action_extract_interval_hours', '2', 'Action item extraction interval in hours', 0),
+('scheduler.report_weekly_day', 'mon', 'Day of week for weekly report generation', 0),
+('scheduler.report_weekly_hour', '6', 'Hour of day for weekly report generation (0-23)', 0),
+('scheduler.report_monthly_hour', '7', 'Hour of day for monthly report generation on 1st (0-23)', 0),
+('scheduler.notification_hour', '9', 'Hour of day to send notification emails (0-23)', 0),
+('scheduler.notification_minute', '0', 'Minute of hour to send notification emails (0-59)', 0),
 -- Pipeline batch limits
 ('pipeline.ai_batch_limit', '200', 'AI processing batch limit per run', 0),
 ('pipeline.embedding_batch_limit', '500', 'Embedding computation batch limit per run', 0),
 ('pipeline.event_batch_limit', '500', 'Event clustering batch limit per run', 0),
 ('pipeline.action_batch_limit', '200', 'Action extraction batch limit per run', 0),
-('pipeline.worker_interval_minutes', '10', 'Pipeline worker polling interval in minutes', 0);
+('pipeline.worker_interval_minutes', '10', 'Pipeline worker polling interval in minutes', 0),
+-- Retention 配置
+('retention.active_days', '7', 'Article active retention days', 0),
+('retention.archive_days', '30', 'Archive retention days', 0),
+('retention.backup_enabled', 'true', 'Enable automatic backup', 0),
+-- Cache 配置
+('cache.enabled', 'false', 'Enable caching', 0),
+('cache.default_ttl', '300', 'Default cache TTL in seconds', 0),
+-- JWT 配置
+('jwt.access_token_expire_minutes', '1440', 'Access token expiration in minutes (default: 1 day)', 0),
+('jwt.refresh_token_expire_days', '7', 'Refresh token expiration in days', 0);
 
 -- =============================================================================
 -- Superuser 配置说明

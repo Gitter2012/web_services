@@ -16,6 +16,8 @@ from __future__ import annotations
 import logging
 import time
 
+import re
+
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
@@ -24,6 +26,18 @@ from common.feature_config import feature_config
 from .base import BaseAIProvider, parse_json_response
 
 logger = logging.getLogger(__name__)
+
+# 匹配 <think>...</think> 思维链标签（含跨行内容）
+_THINK_TAG_RE = re.compile(r"<think>[\s\S]*?</think>\s*", re.DOTALL)
+
+
+def _strip_think_tags(text: str) -> str:
+    """Remove <think>...</think> blocks from model output.
+
+    部分模型（如 qwen3）即使在 /no_think 模式下也可能偶尔输出思维链标签，
+    此函数作为兜底清洗确保最终结果干净。
+    """
+    return _THINK_TAG_RE.sub("", text).strip()
 
 
 # -----------------------------------------------------------------------------
@@ -190,6 +204,8 @@ class OllamaProvider(BaseAIProvider):
         """Translate English text to Chinese using Ollama.
 
         复用 _call_api() 发送翻译请求。
+        对支持 thinking 的模型（如 qwen3）自动添加 /no_think 指令，
+        并清洗可能残留的 <think> 标签内容，避免思维链泄露到翻译结果中。
 
         Args:
             text: English text to translate.
@@ -198,15 +214,23 @@ class OllamaProvider(BaseAIProvider):
             str | None: Translated Chinese text, or None on failure.
         """
         from .base import TRANSLATE_PROMPT
+        prompt = TRANSLATE_PROMPT.format(text=text)
+
+        # 翻译任务始终禁用模型思考模式，避免思维链污染翻译结果
+        if feature_config.get_bool("ai.no_think", settings.ai_no_think):
+            prompt = f"/no_think\n{prompt}"
+
         payload = {
             "model": self._model,
-            "prompt": TRANSLATE_PROMPT.format(text=text),
+            "prompt": prompt,
             "stream": False,
             "options": {"temperature": 0.1, "num_predict": feature_config.get_int("ai.translate_max_tokens", 4096)},
         }
         try:
             result = await self._call_api(payload)
             translated = result.get("response", "").strip()
+            # 兜底清洗：移除模型可能输出的 <think>...</think> 思维链标签
+            translated = _strip_think_tags(translated)
             return translated if translated else None
         except Exception as e:
             logger.warning(f"Translation failed: {e}")
@@ -232,14 +256,14 @@ class OllamaProvider(BaseAIProvider):
 
         # 可选：禁用模型内部思考模式（qwen3 等支持 thinking 的模型）
         # 开启后在 prompt 前添加 /no_think 指令，减少 token 消耗和推理时间
-        if feature_config.get_bool("ai.no_think", settings.ollama_no_think):
+        if feature_config.get_bool("ai.no_think", settings.ai_no_think):
             prompt = f"/no_think\n{prompt}"
 
         # 根据任务类型选择最大生成 token 数，从配置读取
         num_predict = (
-            feature_config.get_int("ai.num_predict", settings.ollama_num_predict)
+            feature_config.get_int("ai.num_predict", settings.ai_num_predict)
             if task_type in ("content_high", "paper_full")
-            else feature_config.get_int("ai.num_predict_simple", settings.ollama_num_predict_simple)
+            else feature_config.get_int("ai.num_predict_simple", settings.ai_num_predict_simple)
         )
 
         # 构建 Ollama API 请求体

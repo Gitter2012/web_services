@@ -869,7 +869,7 @@ async def trigger_job(
 # 前端管理界面可以利用分组功能按模块展示和编辑配置
 
 # 配置分组前缀列表，不属于这些分组的配置归入 "other"
-_CONFIG_GROUPS = ["feature", "scheduler", "ai", "embedding", "event"]
+_CONFIG_GROUPS = ["feature", "scheduler", "ai", "embedding", "event", "pipeline", "retention", "cache", "jwt"]
 
 
 @router.get("/config/groups")
@@ -1897,6 +1897,7 @@ class AIConfigUpdate(BaseModel):
     retry_base_delay: Optional[float] = None
     batch_concurrency: Optional[int] = None
     fallback_provider: Optional[str] = None
+    translate_max_tokens: Optional[int] = None
 
 
 @router.get("/ai/config")
@@ -1945,6 +1946,7 @@ async def get_ai_config(
             "retry_base_delay": feature_config.get_float("ai.retry_base_delay", 1.0),
             "batch_concurrency": feature_config.get_int("ai.batch_concurrency", 1),
             "fallback_provider": feature_config.get("ai.fallback_provider", ""),
+            "translate_max_tokens": feature_config.get_int("ai.translate_max_tokens", 4096),
         }
     }
 
@@ -2055,6 +2057,9 @@ async def update_ai_config(
     if update.fallback_provider is not None:
         await feature_config.async_set("ai.fallback_provider", update.fallback_provider, updated_by=admin.id)
         updates.append("fallback_provider")
+    if update.translate_max_tokens is not None:
+        await feature_config.async_set("ai.translate_max_tokens", str(update.translate_max_tokens), updated_by=admin.id)
+        updates.append("translate_max_tokens")
 
     return {"status": "ok", "message": f"AI configuration updated: {', '.join(updates)}"}
 

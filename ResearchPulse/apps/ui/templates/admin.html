@@ -816,6 +816,19 @@
                                 <label class="form-label">降级回退 Provider</label>
                                 <input type="text" class="form-input" id="ai-fallback-provider" placeholder="如 openai（留空则不回退）">
                             </div>
+                            <div class="form-group">
+                                <label class="form-label">重型任务 Worker 数</label>
+                                <input type="number" class="form-input" id="ai-workers-heavy" value="2" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">筛选任务 Worker 数</label>
+                                <input type="number" class="form-input" id="ai-workers-screen" value="4" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">翻译最大 Token 数</label>
+                                <input type="number" class="form-input" id="ai-translate-max-tokens" value="4096" min="1">
+                                <small style="color:#888; display:block; margin-top:2px;">英文摘要自动翻译为中文时的最大输出 token 限制</small>
+                            </div>
                             <button class="btn btn-primary" onclick="saveAIGeneral()">保存设置</button>
                             <button class="btn" onclick="testAIConnection()">测试连接</button>
                         </div>
@@ -1595,6 +1608,38 @@
                         <div class="toggle-list" id="pipeline-feature-toggles">
                             <div style="text-align:center;color:#888;padding:20px;">加载中...</div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Pipeline Batch Config -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>批处理配置</h3>
+                    </div>
+                    <div class="card-body">
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                            <div class="form-group">
+                                <label class="form-label">AI 批次上限</label>
+                                <input type="number" class="form-input" id="pl-ai-batch-limit" value="200" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Embedding 批次上限</label>
+                                <input type="number" class="form-input" id="pl-embedding-batch-limit" value="500" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Event 批次上限</label>
+                                <input type="number" class="form-input" id="pl-event-batch-limit" value="500" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Action 批次上限</label>
+                                <input type="number" class="form-input" id="pl-action-batch-limit" value="200" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Worker 轮询间隔（分钟）</label>
+                                <input type="number" class="form-input" id="pl-worker-interval" value="10" min="1">
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" style="margin-top:12px;" onclick="savePipelineBatchConfig()">保存配置</button>
                     </div>
                 </div>
             </div>
@@ -3560,6 +3605,9 @@
                 document.getElementById('ai-retry-base-delay').value = aiConfig.retry_base_delay || 1.0;
                 document.getElementById('ai-batch-concurrency').value = aiConfig.batch_concurrency || 1;
                 document.getElementById('ai-fallback-provider').value = aiConfig.fallback_provider || '';
+                document.getElementById('ai-workers-heavy').value = aiConfig.workers_heavy || 2;
+                document.getElementById('ai-workers-screen').value = aiConfig.workers_screen || 4;
+                document.getElementById('ai-translate-max-tokens').value = aiConfig.translate_max_tokens || 4096;
 
                 // Populate Ollama settings
                 document.getElementById('ai-ollama-url').value = aiConfig.ollama_base_url || 'http://localhost:11434';
@@ -3601,6 +3649,9 @@
                 retry_base_delay: parseFloat(document.getElementById('ai-retry-base-delay').value) || 1.0,
                 batch_concurrency: parseInt(document.getElementById('ai-batch-concurrency').value) || 1,
                 fallback_provider: document.getElementById('ai-fallback-provider').value,
+                workers_heavy: parseInt(document.getElementById('ai-workers-heavy').value) || 2,
+                workers_screen: parseInt(document.getElementById('ai-workers-screen').value) || 4,
+                translate_max_tokens: parseInt(document.getElementById('ai-translate-max-tokens').value) || 4096,
             };
 
             try {
@@ -4964,6 +5015,7 @@
                 loadTokenStats(),
                 loadProcessingLogs(),
                 loadPipelineFeatureToggles(),
+                loadPipelineBatchConfig(),
             ]);
         }
 
@@ -5153,6 +5205,49 @@
                 container.innerHTML = html || '<div style="color:#999;text-align:center;padding:20px;">无可用功能开关</div>';
             } catch(e) {
                 container.innerHTML = '<div style="color:#dc2626;text-align:center;padding:20px;">网络错误，无法加载功能开关</div>';
+            }
+        }
+
+        async function loadPipelineBatchConfig() {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/config/groups`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const pipeline = (data.groups || {}).pipeline || {};
+                document.getElementById('pl-ai-batch-limit').value = pipeline['pipeline.ai_batch_limit'] || 200;
+                document.getElementById('pl-embedding-batch-limit').value = pipeline['pipeline.embedding_batch_limit'] || 500;
+                document.getElementById('pl-event-batch-limit').value = pipeline['pipeline.event_batch_limit'] || 500;
+                document.getElementById('pl-action-batch-limit').value = pipeline['pipeline.action_batch_limit'] || 200;
+                document.getElementById('pl-worker-interval').value = pipeline['pipeline.worker_interval_minutes'] || 10;
+            } catch (e) {
+                console.error('Failed to load pipeline batch config:', e);
+            }
+        }
+
+        async function savePipelineBatchConfig() {
+            const token = localStorage.getItem('access_token');
+            const configs = {
+                'pipeline.ai_batch_limit': document.getElementById('pl-ai-batch-limit').value,
+                'pipeline.embedding_batch_limit': document.getElementById('pl-embedding-batch-limit').value,
+                'pipeline.event_batch_limit': document.getElementById('pl-event-batch-limit').value,
+                'pipeline.action_batch_limit': document.getElementById('pl-action-batch-limit').value,
+                'pipeline.worker_interval_minutes': document.getElementById('pl-worker-interval').value,
+            };
+            try {
+                const res = await fetch(`${ADMIN_BASE}/config/batch`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ configs }),
+                });
+                if (res.ok) alert('批处理配置已保存');
+                else alert('保存失败');
+            } catch (e) {
+                alert('保存失败');
             }
         }
 
