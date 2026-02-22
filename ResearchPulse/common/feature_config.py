@@ -100,6 +100,7 @@ DEFAULT_CONFIGS: Dict[str, tuple[str, str]] = {
     "ai.max_retries": ("3", "Max retry attempts for AI API calls"),
     "ai.retry_base_delay": ("1.0", "Retry base delay seconds (exponential backoff)"),
     "ai.batch_concurrency": ("1", "Batch concurrency (1=serial)"),
+    "ai.translate_max_tokens": ("4096", "Max output tokens for translation"),
     "ai.fallback_provider": ("", "Fallback AI provider"),
     # ---- 向量嵌入参数 ----
     "embedding.provider": ("sentence-transformers", "Embedding provider"),
@@ -113,6 +114,12 @@ DEFAULT_CONFIGS: Dict[str, tuple[str, str]] = {
     "event.rule_weight": ("0.4", "Rule-based weight for clustering"),
     "event.semantic_weight": ("0.6", "Semantic weight for clustering"),
     "event.min_similarity": ("0.7", "Minimum similarity threshold"),
+    # ---- 流水线批处理参数 ----
+    "pipeline.ai_batch_limit": ("200", "AI processing batch limit per run"),
+    "pipeline.embedding_batch_limit": ("500", "Embedding computation batch limit per run"),
+    "pipeline.event_batch_limit": ("500", "Event clustering batch limit per run"),
+    "pipeline.action_batch_limit": ("200", "Action extraction batch limit per run"),
+    "pipeline.worker_interval_minutes": ("10", "Pipeline worker polling interval in minutes"),
     # ---- 数据保留参数 ----
     "retention.active_days": ("7", "Article active retention days"),
     "retention.archive_days": ("30", "Archive retention days"),
@@ -152,6 +159,8 @@ class FeatureConfigService:
         self._cache: Dict[str, str] = {}
         # 缓存最后刷新时间戳（monotonic clock）
         self._cache_ts: float = 0.0
+        # 冻结标志：为 True 时跳过缓存刷新，适用于长时间批处理场景
+        self._frozen: bool = False
 
     # ------------------------------------------------------------------
     # 公开读取方法
@@ -244,7 +253,7 @@ class FeatureConfigService:
         """Write a config value to the database and update cache.
 
         同步写入配置值到数据库并立即更新内存缓存。
-        如果当前处于异步事件循环中，会通过线程池执行数据库操作。
+        使用同步引擎执行数据库操作，避免创建第二个事件循环。
 
         Args:
             key: Configuration key.
@@ -264,15 +273,8 @@ class FeatureConfigService:
             loop = None
 
         if loop is not None and loop.is_running():
-            # 当前在异步上下文中（如 FastAPI 请求处理中）
-            # 不能直接调用 asyncio.run()，需要在新线程中执行
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                pool.submit(
-                    asyncio.run,
-                    self._async_set(key, value, description, updated_by),
-                ).result()
+            # 在 async 上下文中，使用同步引擎避免跨事件循环问题
+            self._sync_set(key, value, description, updated_by)
         else:
             asyncio.run(self._async_set(key, value, description, updated_by))
 
@@ -336,6 +338,23 @@ class FeatureConfigService:
         """
         self._cache_ts = 0.0
         await self._async_refresh_cache()
+
+    def freeze(self) -> None:
+        """Freeze the cache, preventing automatic refreshes.
+
+        冻结缓存：在长时间批处理场景中调用，避免处理过程中反复查库。
+        调用前应确保缓存已是最新状态（如先调用 reload / async_reload）。
+        """
+        self._frozen = True
+        logger.debug("Feature config cache frozen")
+
+    def unfreeze(self) -> None:
+        """Unfreeze the cache, allowing automatic refreshes again.
+
+        解冻缓存：批处理完成后调用，恢复正常的 TTL 刷新机制。
+        """
+        self._frozen = False
+        logger.debug("Feature config cache unfrozen")
 
     # ------------------------------------------------------------------
     # 默认值种子方法
@@ -416,36 +435,25 @@ class FeatureConfigService:
     # ------------------------------------------------------------------
 
     def _maybe_refresh_cache(self) -> None:
-        """Refresh cache if stale (sync wrapper).
+        """Refresh cache if stale (sync path).
 
-        检查缓存是否过期，过期则从数据库重新加载。
-        这是同步包装器，内部处理异步事件循环的兼容问题。
+        检查缓存是否过期，过期则通过同步引擎从数据库重新加载。
+        使用独立的同步引擎避免在 async 上下文中创建第二个事件循环。
 
         Side Effects:
             - Loads latest data when stale.
             - Falls back to defaults if DB is unavailable.
         """
+        # 冻结模式下跳过刷新
+        if self._frozen and self._cache:
+            return
+
         # 缓存未过期且非空时直接返回
         if time.monotonic() - self._cache_ts < _CACHE_TTL and self._cache:
             return
 
         try:
-            import asyncio
-
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-
-            if loop is not None and loop.is_running():
-                # 在 FastAPI 的异步事件循环中，不能直接调用 asyncio.run()
-                # 通过线程池在新的事件循环中执行异步数据库查询
-                import concurrent.futures
-
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    pool.submit(asyncio.run, self._async_refresh_cache()).result()
-            else:
-                asyncio.run(self._async_refresh_cache())
+            self._sync_refresh_cache()
         except Exception:
             # 数据库尚未就绪（如应用启动早期阶段）
             # 回退到硬编码的默认值，保证服务可用
@@ -453,6 +461,30 @@ class FeatureConfigService:
                 logger.debug("DB not ready, using in-memory defaults")
                 self._cache = {k: v for k, (v, _) in DEFAULT_CONFIGS.items()}
                 self._cache_ts = time.monotonic()
+
+    def _sync_refresh_cache(self) -> None:
+        """Load all config rows from DB using the sync engine.
+
+        通过同步引擎直接读取 system_config 表，不涉及 asyncio 事件循环，
+        从而避免跨事件循环污染连接池的问题。
+
+        Side Effects:
+            - Replaces the cache dictionary.
+            - Updates cache timestamp.
+        """
+        from sqlalchemy import text as sa_text
+
+        from core.database import get_sync_engine
+
+        engine = get_sync_engine()
+        with engine.connect() as conn:
+            result = conn.execute(
+                sa_text("SELECT config_key, config_value FROM system_config")
+            )
+            rows = result.all()
+
+        self._cache = {row[0]: row[1] for row in rows}
+        self._cache_ts = time.monotonic()
 
     async def _async_refresh_cache(self) -> None:
         """Load all config rows from DB into the in-memory cache.
@@ -552,6 +584,66 @@ class FeatureConfigService:
             except Exception:
                 await session.rollback()
                 raise
+
+    def _sync_set(
+        self,
+        key: str,
+        value: str,
+        description: Optional[str] = None,
+        updated_by: Optional[int] = None,
+    ) -> None:
+        """Upsert a single config row using the sync engine.
+
+        通过同步引擎执行 upsert，避免在 async 上下文中创建第二个事件循环。
+
+        Args:
+            key: Configuration key.
+            value: Configuration value.
+            description: Optional description.
+            updated_by: Optional updater user ID.
+        """
+        from sqlalchemy import text as sa_text
+
+        from core.database import get_sync_engine
+
+        engine = get_sync_engine()
+        with engine.begin() as conn:
+            result = conn.execute(
+                sa_text(
+                    "SELECT config_key FROM system_config WHERE config_key = :key"
+                ),
+                {"key": key},
+            )
+            if result.scalar():
+                params: dict[str, Any] = {"key": key, "value": value}
+                set_parts = ["config_value = :value"]
+                if description is not None:
+                    set_parts.append("description = :description")
+                    params["description"] = description
+                if updated_by is not None:
+                    set_parts.append("updated_by = :updated_by")
+                    params["updated_by"] = updated_by
+                conn.execute(
+                    sa_text(
+                        f"UPDATE system_config SET {', '.join(set_parts)} "
+                        "WHERE config_key = :key"
+                    ),
+                    params,
+                )
+            else:
+                conn.execute(
+                    sa_text(
+                        "INSERT INTO system_config (config_key, config_value, description, is_sensitive, updated_by) "
+                        "VALUES (:key, :value, :description, :sensitive, :updated_by)"
+                    ),
+                    {
+                        "key": key,
+                        "value": value,
+                        "description": description or "",
+                        "sensitive": False,
+                        "updated_by": updated_by,
+                    },
+                )
 
 
 # 模块级单例实例

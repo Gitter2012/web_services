@@ -50,6 +50,8 @@ from apps.action import router as action_router
 from apps.report import router as report_router
 # 定时任务调度器的启动和停止函数
 from apps.scheduler import start_scheduler, stop_scheduler
+# Pipeline models — imported to ensure table is registered with Base.metadata
+import apps.pipeline.models  # noqa: F401
 # 日志系统初始化
 from common.logger import setup_logging
 # 全局配置单例

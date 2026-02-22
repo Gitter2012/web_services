@@ -117,6 +117,36 @@ class OpenAIProvider(BaseAIProvider):
         response.raise_for_status()
         return response.json()
 
+    async def translate(self, text: str) -> str | None:
+        """Translate English text to Chinese using OpenAI.
+
+        复用 _call_api() 发送翻译请求。
+
+        Args:
+            text: English text to translate.
+
+        Returns:
+            str | None: Translated Chinese text, or None on failure.
+        """
+        from .base import TRANSLATE_PROMPT
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self._model,
+            "messages": [{"role": "user", "content": TRANSLATE_PROMPT.format(text=text)}],
+            "temperature": 0.1,
+            "max_tokens": feature_config.get_int("ai.translate_max_tokens", 4096),
+        }
+        try:
+            result = await self._call_api(headers, payload)
+            translated = result["choices"][0]["message"]["content"].strip()
+            return translated if translated else None
+        except Exception as e:
+            logger.warning(f"Translation failed: {e}")
+            return None
+
     async def process_content(
         self, title: str, content: str, task_type: str = "content_high"
     ) -> dict:

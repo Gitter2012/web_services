@@ -58,57 +58,70 @@ async def run_action_extract_job() -> dict:
                 logger.warning("No superuser found, skipping action extraction")
                 return {"skipped": True, "reason": "no superuser"}
 
-            # 查询已 AI 处理、重要性 >= 6、尚未提取行动项的文章
+            # 延迟导入
             from apps.crawler.models.article import Article
             from apps.action.models import ActionItem
-
-            result = await session.execute(
-                select(Article.id)
-                .outerjoin(ActionItem, Article.id == ActionItem.article_id)
-                .where(
-                    and_(
-                        ActionItem.id.is_(None),
-                        Article.ai_processed_at.isnot(None),
-                        Article.is_archived.is_(False),
-                        Article.importance_score >= 6,
-                        Article.actionable_items.isnot(None),
-                    )
-                )
-                .order_by(Article.crawl_time.desc())
-                .limit(50)
-            )
-            article_ids = [row[0] for row in result.all()]
-
-            if not article_ids:
-                logger.info("No articles pending action extraction")
-                return {"articles_processed": 0, "extracted": 0}
-
-            # 逐篇提取行动项
             from apps.action.extractor import extract_actions_from_article
 
-            for article_id in article_ids:
-                try:
-                    actions = await extract_actions_from_article(
-                        article_id, system_user_id, session
+            batch_limit = feature_config.get_int("pipeline.action_batch_limit", 200)
+
+            # 循环处理：每次取 batch_limit 篇文章，直到没有待处理文章为止
+            while True:
+                result = await session.execute(
+                    select(Article.id)
+                    .outerjoin(ActionItem, Article.id == ActionItem.article_id)
+                    .where(
+                        and_(
+                            ActionItem.id.is_(None),
+                            Article.ai_processed_at.isnot(None),
+                            Article.is_archived.is_(False),
+                            Article.importance_score >= 6,
+                            Article.actionable_items.isnot(None),
+                        )
                     )
-                    extracted_total += len(actions)
-                    articles_processed += 1
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to extract actions from article {article_id}: {e}"
-                    )
+                    .order_by(Article.crawl_time.desc())
+                    .limit(batch_limit)
+                )
+                article_ids = [row[0] for row in result.all()]
+
+                if not article_ids:
+                    break
+
+                # 逐篇提取行动项
+                for article_id in article_ids:
+                    try:
+                        actions = await extract_actions_from_article(
+                            article_id, system_user_id, session
+                        )
+                        extracted_total += len(actions)
+                        articles_processed += 1
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to extract actions from article {article_id}: {e}"
+                        )
+
+                # 每批次提交一次，避免长事务
+                await session.commit()
+
+                if len(article_ids) < batch_limit:
+                    break
+
+                logger.info(
+                    f"Action extraction batch done ({len(article_ids)} articles), "
+                    f"continuing next batch..."
+                )
 
             # 将提取结果保存为 AIGC 文章
             if extracted_total > 0:
                 await _save_action_aigc_article(
                     session, articles_processed, extracted_total
                 )
+                await session.commit()
 
-            await session.commit()
         except Exception as e:
             logger.error(f"Action extraction job failed: {e}", exc_info=True)
             await session.rollback()
-            return {"error": str(e), "articles_processed": 0, "extracted": 0}
+            return {"error": str(e), "articles_processed": articles_processed, "extracted": extracted_total}
 
     logger.info(
         f"Action extraction job completed: "

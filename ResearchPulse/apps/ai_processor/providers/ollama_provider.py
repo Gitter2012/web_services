@@ -186,6 +186,32 @@ class OllamaProvider(BaseAIProvider):
         response.raise_for_status()
         return response.json()
 
+    async def translate(self, text: str) -> str | None:
+        """Translate English text to Chinese using Ollama.
+
+        复用 _call_api() 发送翻译请求。
+
+        Args:
+            text: English text to translate.
+
+        Returns:
+            str | None: Translated Chinese text, or None on failure.
+        """
+        from .base import TRANSLATE_PROMPT
+        payload = {
+            "model": self._model,
+            "prompt": TRANSLATE_PROMPT.format(text=text),
+            "stream": False,
+            "options": {"temperature": 0.1, "num_predict": feature_config.get_int("ai.translate_max_tokens", 4096)},
+        }
+        try:
+            result = await self._call_api(payload)
+            translated = result.get("response", "").strip()
+            return translated if translated else None
+        except Exception as e:
+            logger.warning(f"Translation failed: {e}")
+            return None
+
     async def process_content(
         self, title: str, content: str, task_type: str = "content_high"
     ) -> dict:

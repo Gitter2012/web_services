@@ -385,6 +385,16 @@ topic:
 | `scheduler.topic_discovery_day` | mon | 话题发现执行星期几 | CronTrigger |
 | `scheduler.topic_discovery_hour` | 1 | 话题发现执行小时 | CronTrigger |
 
+### 流水线批处理配置键
+
+| 配置键名 | 默认值 | 说明 |
+|---------|--------|------|
+| `pipeline.ai_batch_limit` | 200 | AI 处理每次批处理上限 |
+| `pipeline.embedding_batch_limit` | 500 | 向量嵌入每次批处理上限 |
+| `pipeline.event_batch_limit` | 500 | 事件聚类每次批处理上限 |
+| `pipeline.action_batch_limit` | 200 | 行动项提取每次批处理上限 |
+| `pipeline.worker_interval_minutes` | 10 | Pipeline Worker 轮询间隔（分钟） |
+
 ### AI 配置键（运行时可调）
 
 | 配置键名 | 默认值 | 说明 |

@@ -262,6 +262,21 @@ async def start_scheduler() -> None:
     else:
         logger.info("Action item extraction job skipped (feature.action_items disabled)")
 
+    # ---- 流水线任务队列 Worker ----
+    # 功能: 轮询 pipeline_tasks 表，消费执行待处理的流水线任务
+    # 无 feature flag 门控 —— worker 通过委托给各 job 函数继承其 feature flag
+    # Pipeline task queue worker
+    from apps.pipeline.worker import run_pipeline_worker
+    worker_interval = feature_config.get_int("pipeline.worker_interval_minutes", 10)
+    scheduler.add_job(
+        run_pipeline_worker,
+        IntervalTrigger(minutes=worker_interval),
+        id="pipeline_worker",
+        name="Pipeline task queue worker",
+        replace_existing=True,
+    )
+    logger.info("Pipeline worker job registered (interval=%d min)", worker_interval)
+
     # ---- 周报自动生成任务 ----
     # 功能: 每周为所有活跃用户自动生成上周的周报
     # 前置条件: 需要启用 feature.report_generation 功能开关

@@ -42,6 +42,17 @@ from .processors.rule_classifier import (
 logger = logging.getLogger(__name__)
 
 
+def _is_english(text: str) -> bool:
+    """Check if text is primarily English by ASCII letter ratio."""
+    if not text or len(text) < 20:
+        return False
+    ascii_letters = sum(1 for c in text if c.isascii() and c.isalpha())
+    total_letters = sum(1 for c in text if c.isalpha())
+    if total_letters == 0:
+        return False
+    return ascii_letters / total_letters > 0.5
+
+
 def get_ai_provider(provider_name: str | None = None) -> BaseAIProvider:
     """Get an AI provider by name.
 
@@ -213,6 +224,16 @@ class AIProcessorService:
                 processing_result = await fallback.process_content(title, content, task_type)
 
         processing_result["processing_method"] = "ai" if processing_result.get("success") else "failed"
+
+        # 英文 summary 翻译：检测后请求 AI 翻译，成功则存入 content
+        if processing_result.get("success") and _is_english(article.summary or ""):
+            try:
+                translated = await self.provider.translate(article.summary)
+                if translated:
+                    processing_result["_translated_content"] = translated
+            except Exception as e:
+                logger.debug(f"Translation skipped for article {article_id}: {e}")
+
         await self._save_result(article, processing_result, db)
 
         # 第七步：构建处理日志对象并返回（由调用方统一持久化）
@@ -400,20 +421,25 @@ class AIProcessorService:
         # 将 AI 处理结果更新到文章记录中
         # 包括摘要、分类、重要性评分、一句话总结、关键要点、影响评估、行动项等
         # 同时记录处理时间和使用的 provider/model 信息
+        values = dict(
+            ai_summary=result.get("summary", ""),
+            ai_category=result.get("category", "其他"),
+            importance_score=result.get("importance_score", 5),
+            one_liner=result.get("one_liner", ""),
+            key_points=result.get("key_points"),
+            impact_assessment=result.get("impact_assessment"),
+            actionable_items=result.get("actionable_items"),
+            ai_processed_at=datetime.now(timezone.utc),
+            ai_provider=result.get("provider", ""),
+            ai_model=result.get("model", ""),
+            processing_method=result.get("processing_method", ""),
+        )
+        translated_content = result.get("_translated_content")
+        if translated_content:
+            values["content"] = translated_content
+
         await db.execute(
             update(Article)
             .where(Article.id == article.id)
-            .values(
-                ai_summary=result.get("summary", ""),
-                ai_category=result.get("category", "其他"),
-                importance_score=result.get("importance_score", 5),
-                one_liner=result.get("one_liner", ""),
-                key_points=result.get("key_points"),
-                impact_assessment=result.get("impact_assessment"),
-                actionable_items=result.get("actionable_items"),
-                ai_processed_at=datetime.now(timezone.utc),
-                ai_provider=result.get("provider", ""),
-                ai_model=result.get("model", ""),
-                processing_method=result.get("processing_method", ""),
-            )
+            .values(**values)
         )

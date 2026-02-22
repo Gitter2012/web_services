@@ -25,6 +25,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
+from sqlalchemy import Engine, create_engine
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -43,6 +44,11 @@ _engine: AsyncEngine | None = None
 # 模块级全局变量：异步会话工厂实例（单例模式）
 # 初始为 None，首次调用 get_session_factory() 时惰性创建
 _session_factory: async_sessionmaker[AsyncSession] | None = None
+
+# 模块级全局变量：同步数据库引擎实例（单例模式）
+# 仅供 feature_config 等需要在同步上下文中执行 DB 查询的模块使用，
+# 避免在 async 上下文中通过 asyncio.run() 创建第二个事件循环
+_sync_engine: Engine | None = None
 
 
 def get_engine() -> AsyncEngine:
@@ -105,6 +111,31 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
+def get_sync_engine() -> Engine:
+    """Get or create a lightweight synchronous database engine.
+
+    Used by ``feature_config`` (and similar modules) that need to execute DB
+    queries from synchronous code without spawning a second event-loop.  The
+    engine uses a small pool (pool_size=2) because it only serves low-frequency
+    config reads/writes.
+
+    Returns:
+        Engine: A shared synchronous engine bound to ``settings.database_url_sync``.
+    """
+    global _sync_engine
+    if _sync_engine is None:
+        from settings import settings
+
+        _sync_engine = create_engine(
+            settings.database_url_sync,
+            pool_size=2,
+            max_overflow=0,
+            pool_recycle=1800,
+        )
+        logger.info("Sync database engine created (for feature_config)")
+    return _sync_engine
+
+
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """Yield an async database session for FastAPI dependencies.
 
@@ -159,7 +190,7 @@ async def close_db() -> None:
     This releases pooled connections and resets module-level singletons so
     that a new engine/factory can be created on the next call.
     """
-    global _engine, _session_factory
+    global _engine, _session_factory, _sync_engine
     if _engine:
         # 释放连接池中的所有连接资源
         await _engine.dispose()
@@ -167,6 +198,10 @@ async def close_db() -> None:
         _engine = None
         _session_factory = None
         logger.info("Database connections closed")
+    if _sync_engine:
+        _sync_engine.dispose()
+        _sync_engine = None
+        logger.info("Sync database engine closed")
 
 
 async def check_db_connection() -> bool:

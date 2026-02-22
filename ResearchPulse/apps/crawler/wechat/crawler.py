@@ -219,9 +219,9 @@ def _parse_wechat_rss_entry(entry: feedparser.FeedParserDict, account_name: str)
     digest = re.sub(r"<[^>]+>", " ", digest)  # 移除 HTML 标签
     digest = unescape(digest)                   # 反转义 HTML 实体
     digest = " ".join(digest.split()).strip()   # 压缩空白字符
-    # 摘要超过 300 字符时截断并添加省略号
-    if len(digest) > 300:
-        digest = digest[:297] + "..."
+    # 摘要超过 500 字符时截断并添加省略号
+    if len(digest) > 500:
+        digest = digest[:497] + "..."
 
     # ---- 提取作者 ----
     # Extract author

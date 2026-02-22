@@ -109,6 +109,9 @@ actionable_items: 仅importance>=7时提取
 标题：{title}
 摘要/正文：{content}"""
 
+# 翻译 Prompt —— 用于将英文内容翻译为中文
+TRANSLATE_PROMPT = "将以下英文翻译成中文，只返回翻译结果，不要解释或添加额外内容：\n\n{text}"
+
 
 def normalize_category(category: str) -> str:
     """Normalize category to a valid value.
@@ -295,6 +298,10 @@ class BaseAIProvider(ABC):
             dict: Structured result.
         """
         ...
+
+    async def translate(self, text: str) -> str | None:
+        """Translate text to Chinese. Returns None if not implemented."""
+        return None
 
     async def close(self) -> None:
         """Release resources held by the provider.

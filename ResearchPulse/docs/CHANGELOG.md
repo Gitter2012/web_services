@@ -11,6 +11,21 @@
 
 ### 新增
 
+- **Pipeline 任务队列** (`apps/pipeline/`)
+  - `pipeline_tasks` 数据库表：持久化流水线任务，进程重启不丢失
+  - DAG 触发链：AI 完成 → 自动入队 Embedding + Action → Embedding 完成 → 入队 Event
+  - Worker 轮询机制：每 10 分钟（可配置）消费 pending 任务，使用 `SELECT FOR UPDATE SKIP LOCKED`
+  - 失败重试：默认最多 3 次重试，超过后标记 failed
+  - CLI trigger 模式：`--trigger` 参数将阶段任务入队而非直接执行
+
+- **配置化批处理限制** (`pipeline.*` 配置项)
+  - `pipeline.ai_batch_limit`: AI 批处理上限，默认 200（原硬编码 20）
+  - `pipeline.embedding_batch_limit`: 嵌入批处理上限，默认 500（原硬编码 100）
+  - `pipeline.event_batch_limit`: 事件聚类批处理上限，默认 500（原硬编码 200）
+  - `pipeline.action_batch_limit`: 行动项提取批处理上限，默认 200（原硬编码 50）
+  - `pipeline.worker_interval_minutes`: Worker 轮询间隔，默认 10 分钟
+  - 所有配置项可通过管理后台 API 运行时动态调整
+
 - **手动邮件发送脚本** (`scripts/email.sh`, `scripts/_email_runner.py`)
   - `test`: 发送测试邮件，验证邮件后端配置是否正常
   - `notify`: 手动触发用户订阅通知（等同于定时任务 `run_notification_job`）

@@ -50,6 +50,9 @@ async def run_event_cluster_job() -> dict:
 
     logger.info("Starting event clustering job")
 
+    # 累计统计
+    accumulated = {"total_processed": 0, "clustered": 0, "new_clusters": 0}
+
     session_factory = get_session_factory()
     async with session_factory() as session:
         # 延迟导入事件聚类服务，仅在功能启用且实际执行时才加载
@@ -57,13 +60,30 @@ async def run_event_cluster_job() -> dict:
 
         # 创建事件聚类服务实例
         service = EventService()
-        # 批量处理待聚类的文章，limit=200（聚类任务每日执行一次，
-        # 因此单次处理量较大，覆盖一天内新增的文章）
-        result = await service.cluster_articles(session, limit=200)
 
-        # 将聚类结果保存为 AIGC 文章
-        if result.get("clustered", 0) > 0 or result.get("new_clusters", 0) > 0:
-            await _save_event_aigc_article(session, result)
+        # 循环处理：每次取 batch_limit 篇文章，直到没有待处理文章为止
+        batch_limit = feature_config.get_int("pipeline.event_batch_limit", 500)
+        while True:
+            result = await service.cluster_articles(session, limit=batch_limit)
+
+            batch_total = result.get("total_processed", 0)
+            accumulated["total_processed"] += batch_total
+            accumulated["clustered"] += result.get("clustered", 0)
+            accumulated["new_clusters"] += result.get("new_clusters", 0)
+
+            if batch_total < batch_limit:
+                break
+
+            # 每批次提交一次，避免长事务
+            await session.commit()
+            logger.info(
+                f"Event clustering batch done ({batch_total} items), "
+                f"continuing next batch..."
+            )
+
+        # 将聚类累计结果保存为 AIGC 文章
+        if accumulated["clustered"] > 0 or accumulated["new_clusters"] > 0:
+            await _save_event_aigc_article(session, accumulated)
 
         # 提交事务，持久化聚类结果（新事件簇和文章-事件关联关系）
         await session.commit()
@@ -71,10 +91,10 @@ async def run_event_cluster_job() -> dict:
     # 输出详细的聚类统计日志
     logger.info(
         f"Event clustering job completed: "
-        f"{result['clustered']} clustered ({result['new_clusters']} new) "
-        f"out of {result['total_processed']}"
+        f"{accumulated['clustered']} clustered ({accumulated['new_clusters']} new) "
+        f"out of {accumulated['total_processed']}"
     )
-    return result
+    return accumulated
 
 
 async def _save_event_aigc_article(session, result: dict) -> None:

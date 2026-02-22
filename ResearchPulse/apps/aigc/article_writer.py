@@ -80,7 +80,7 @@ async def save_aigc_article(
         title=title,
         url="",
         author="ResearchPulse AI",
-        summary=summary or content[:200],
+        summary=summary or content[:500],
         content=content,
         category=category,
         tags=tags or [],

@@ -289,7 +289,7 @@ class TwitterCrawler(BaseCrawler):
                 "title": title,
                 "url": url,
                 "author": f"@{username}",
-                "summary": text[:280] if text else "",  # Twitter 字符限制
+                "summary": text[:500] if text else "",
                 "content": text,
                 "publish_time": publish_time,
                 "category": "tweet",

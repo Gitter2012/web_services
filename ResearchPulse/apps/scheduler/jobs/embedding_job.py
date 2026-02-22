@@ -50,6 +50,9 @@ async def run_embedding_job() -> dict:
 
     logger.info("Starting embedding computation job")
 
+    # 累计统计
+    accumulated = {"computed": 0, "skipped": 0, "failed": 0, "total": 0}
+
     session_factory = get_session_factory()
     async with session_factory() as session:
         # 延迟导入嵌入服务，仅在功能启用且实际执行时才加载
@@ -58,16 +61,40 @@ async def run_embedding_job() -> dict:
 
         # 创建嵌入计算服务实例
         service = EmbeddingService()
-        # 批量计算未生成嵌入的文章，limit=100（比 AI 处理的 limit=50 大，
-        # 因为嵌入计算通常比 AI 处理更快速且资源消耗更少）
-        result = await service.compute_uncomputed(session, limit=100)
-        # 提交事务，持久化嵌入计算结果
-        await session.commit()
+
+        # 循环处理：每次取 batch_limit 篇文章，直到没有待处理文章为止
+        batch_limit = feature_config.get_int("pipeline.embedding_batch_limit", 500)
+        while True:
+            result = await service.compute_uncomputed(session, limit=batch_limit)
+            await session.commit()
+
+            batch_total = result.get("total", 0)
+            accumulated["computed"] += result.get("computed", 0)
+            accumulated["skipped"] += result.get("skipped", 0)
+            accumulated["failed"] += result.get("failed", 0)
+            accumulated["total"] += batch_total
+
+            if batch_total < batch_limit:
+                break
+
+            logger.info(
+                f"Embedding batch done ({batch_total} items), "
+                f"continuing next batch..."
+            )
+
+    # 入队下游任务（使用独立 session，与主事务隔离）
+    try:
+        from apps.pipeline.triggers import enqueue_downstream_after_embedding
+        async with session_factory() as enqueue_session:
+            await enqueue_downstream_after_embedding(enqueue_session, accumulated, trigger_source="embedding_job")
+            await enqueue_session.commit()
+    except Exception as trigger_err:
+        logger.warning(f"Failed to enqueue downstream tasks: {trigger_err}")
 
     # 输出详细的计算统计日志
     logger.info(
         f"Embedding job completed: "
-        f"{result['computed']} computed, {result['skipped']} skipped, "
-        f"{result['failed']} failed out of {result['total']}"
+        f"{accumulated['computed']} computed, {accumulated['skipped']} skipped, "
+        f"{accumulated['failed']} failed out of {accumulated['total']}"
     )
-    return result
+    return accumulated

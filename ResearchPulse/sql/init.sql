@@ -637,6 +637,29 @@ CREATE TABLE `email_configs` (
   INDEX `idx_is_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='邮件推送配置表（支持多后端多配置）';
 
+-- -----------------------------------------------------------------------------
+-- pipeline_tasks 表 - 流水线任务队列
+-- -----------------------------------------------------------------------------
+DROP TABLE IF EXISTS `pipeline_tasks`;
+CREATE TABLE `pipeline_tasks` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `stage` VARCHAR(32) NOT NULL COMMENT '阶段: ai, embedding, event, action',
+  `status` VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '状态: pending, running, completed, failed',
+  `priority` INT NOT NULL DEFAULT 0 COMMENT '优先级（越大越优先）',
+  `payload` JSON DEFAULT NULL COMMENT '任务载荷',
+  `result` JSON DEFAULT NULL COMMENT '执行结果',
+  `error_message` TEXT DEFAULT NULL COMMENT '错误信息',
+  `retry_count` INT NOT NULL DEFAULT 0 COMMENT '已重试次数',
+  `max_retries` INT NOT NULL DEFAULT 3 COMMENT '最大重试次数',
+  `started_at` DATETIME DEFAULT NULL COMMENT '开始执行时间',
+  `completed_at` DATETIME DEFAULT NULL COMMENT '完成时间',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `ix_pipeline_tasks_poll` (`status`, `priority`, `created_at`),
+  KEY `ix_pipeline_tasks_stage` (`stage`, `status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='流水线任务队列表';
+
 -- =============================================================================
 -- 初始化数据
 -- =============================================================================
@@ -1125,6 +1148,7 @@ INSERT INTO `system_config` (`config_key`, `config_value`, `description`, `is_se
 ('ai.claude_model', 'claude-sonnet-4-20250514', 'Claude model name', 0),
 ('ai.claude_model_light', 'claude-haiku-4-20250514', 'Claude light model name', 0),
 ('ai.claude_timeout', '60', 'Claude request timeout in seconds', 0),
+('ai.translate_max_tokens', '4096', 'Max output tokens for translation', 0),
 ('ai.cache_enabled', 'true', 'Enable AI result caching', 0),
 ('ai.cache_ttl', '86400', 'AI cache TTL in seconds', 0),
 ('ai.max_content_length', '1500', 'Max content length for AI processing', 0),
@@ -1164,7 +1188,13 @@ INSERT INTO `system_config` (`config_key`, `config_value`, `description`, `is_se
 ('scheduler.topic_discovery_day', 'mon', 'Day of week for topic discovery', 0),
 ('scheduler.topic_discovery_hour', '1', 'Hour of day for topic discovery (0-23)', 0),
 ('scheduler.backup_hour', '4', 'Hour of day to run backup (0-23)', 0),
-('scheduler.cleanup_hour', '3', 'Hour of day to run cleanup (0-23)', 0);
+('scheduler.cleanup_hour', '3', 'Hour of day to run cleanup (0-23)', 0),
+-- Pipeline batch limits
+('pipeline.ai_batch_limit', '200', 'AI processing batch limit per run', 0),
+('pipeline.embedding_batch_limit', '500', 'Embedding computation batch limit per run', 0),
+('pipeline.event_batch_limit', '500', 'Event clustering batch limit per run', 0),
+('pipeline.action_batch_limit', '200', 'Action extraction batch limit per run', 0),
+('pipeline.worker_interval_minutes', '10', 'Pipeline worker polling interval in minutes', 0);
 
 -- =============================================================================
 -- Superuser 配置说明

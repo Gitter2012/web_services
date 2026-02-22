@@ -164,6 +164,9 @@ JWT_SECRET_KEY=your_secret
 # 忽略功能开关，强制运行所有阶段
 ./scripts/ai-pipeline.sh all --force
 
+# 队列模式：将阶段任务入队到 pipeline_tasks 表，由 Worker 异步执行
+./scripts/ai-pipeline.sh all --trigger --force
+
 # 以 JSON 格式输出结果
 ./scripts/ai-pipeline.sh all --json
 ```
@@ -176,10 +179,13 @@ JWT_SECRET_KEY=your_secret
 | `embedding` | 向量嵌入计算 | `feature.embedding` |
 | `event` | 事件聚类 | `feature.event_clustering` |
 | `topic` | 主题发现 | `feature.topic_radar` |
+| `action` | 行动项提取 | `feature.action_items` |
+| `report` | 报告生成 | `feature.report_generation` |
 
 **选项**：
 - `--limit <n>`: 每阶段最多处理的文章数（默认 50）
 - `--force`: 忽略功能开关，强制运行所有指定阶段
+- `--trigger`: 队列模式，将任务入队到 `pipeline_tasks` 表由 Worker 异步消费（CLI 优先级 5，高于自动触发）
 - `--verbose, -v`: 显示详细输出（包含完整错误栈）
 - `--json`: 以 JSON 格式输出结果
 - `--help, -h`: 显示帮助信息

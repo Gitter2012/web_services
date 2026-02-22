@@ -57,6 +57,9 @@ async def run_ai_process_job() -> dict:
 
         # 创建 AI 处理服务实例
         service = AIProcessorService()
+        # 累计统计
+        accumulated = {"processed": 0, "cached": 0, "failed": 0, "total": 0}
+
         try:
             # 预热模型：向 Ollama 发送空请求触发模型加载到内存，
             # 避免第一篇文章处理时因冷启动（30-120 秒）导致超时失败
@@ -64,15 +67,39 @@ async def run_ai_process_job() -> dict:
             if not warmup_ok:
                 logger.warning("Model warmup did not complete, proceeding anyway")
 
-            # 批量处理未处理的文章，limit=20 控制单次处理量，
-            # 串行处理下每篇约 1 分钟，20 篇约 20 分钟，在 1 小时调度间隔内有充足余量
-            result = await service.process_unprocessed(session, limit=20)
-            # 提交事务，持久化批量写入的处理日志
-            await session.commit()
+            # 循环处理：每次取 batch_limit 篇文章，直到没有待处理文章为止
+            batch_limit = feature_config.get_int("pipeline.ai_batch_limit", 200)
+            while True:
+                result = await service.process_unprocessed(session, limit=batch_limit)
+                await session.commit()
+
+                batch_total = result.get("total", 0)
+                accumulated["processed"] += result.get("processed", 0)
+                accumulated["cached"] += result.get("cached", 0)
+                accumulated["failed"] += result.get("failed", 0)
+                accumulated["total"] += batch_total
+
+                if batch_total < batch_limit:
+                    break
+
+                logger.info(
+                    f"AI processing batch done ({batch_total} items), "
+                    f"continuing next batch..."
+                )
+
+            # 入队下游任务（使用独立 session，与主事务隔离）
+            try:
+                from apps.pipeline.triggers import enqueue_downstream_after_ai
+                async with session_factory() as enqueue_session:
+                    await enqueue_downstream_after_ai(enqueue_session, accumulated, trigger_source="ai_process_job")
+                    await enqueue_session.commit()
+            except Exception as trigger_err:
+                logger.warning(f"Failed to enqueue downstream tasks: {trigger_err}")
+
         except Exception as e:
             logger.error(f"AI processing job failed: {e}", exc_info=True)
             await session.rollback()
-            return {"error": str(e), "processed": 0, "cached": 0, "failed": 0, "total": 0}
+            return {"error": str(e), "processed": accumulated["processed"], "cached": accumulated["cached"], "failed": accumulated["failed"], "total": accumulated["total"]}
         finally:
             # 确保释放 Provider 持有的 HTTP 连接池资源
             await service.close()
@@ -80,7 +107,7 @@ async def run_ai_process_job() -> dict:
     # 输出详细的处理统计日志
     logger.info(
         f"AI processing job completed: "
-        f"{result['processed']} processed, {result['cached']} cached, "
-        f"{result['failed']} failed out of {result['total']}"
+        f"{accumulated['processed']} processed, {accumulated['cached']} cached, "
+        f"{accumulated['failed']} failed out of {accumulated['total']}"
     )
-    return result
+    return accumulated

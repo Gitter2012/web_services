@@ -121,7 +121,12 @@ ResearchPulse/
 │   │       ├── ai_process_job.py   # AI 分析任务
 │   │       ├── embedding_job.py    # 向量嵌入任务
 │   │       ├── event_cluster_job.py # 事件聚类任务
+│   │       ├── action_extract_job.py # 行动项提取任务
 │   │       └── topic_discovery_job.py # 话题发现任务
+│   ├── pipeline/                   # 流水线任务队列
+│   │   ├── models.py               # PipelineTask ORM 模型
+│   │   ├── triggers.py             # 下游任务入队触发函数
+│   │   └── worker.py               # 任务队列轮询 Worker
 │   └── ui/                         # 前端界面
 │       ├── api.py                  # UI 路由与模板渲染
 │       └── templates/              # Jinja2 模板
@@ -463,13 +468,15 @@ curl -X PUT http://localhost:8000/api/v1/admin/features/feature.ai_processor \
 | 任务 | 触发器 | 功能开关 | 单次处理量 | 说明 |
 |------|--------|---------|-----------|------|
 | crawl_job | 每 6 小时 | `feature.crawler` | 全部活跃源 | 爬取所有数据源 |
-| ai_process_job | 每 1 小时 | `feature.ai_processor` | 50 篇 | AI 分析新文章 |
-| embedding_job | 每 2 小时 | `feature.embedding` | 100 篇 | 计算文章向量嵌入 |
-| event_cluster_job | 每天 02:00 | `feature.event_clustering` | 200 篇 | 聚类文章为事件 |
+| ai_process_job | 每 1 小时 | `feature.ai_processor` | 200 篇（可配置） | AI 分析新文章 |
+| embedding_job | 每 2 小时 | `feature.embedding` | 500 篇（可配置） | 计算文章向量嵌入 |
+| event_cluster_job | 每天 02:00 | `feature.event_clustering` | 500 篇（可配置） | 聚类文章为事件 |
+| action_extract_job | 每 2 小时 | `feature.action_items` | 200 篇（可配置） | 提取行动项 |
 | topic_discovery_job | 每周一 01:00 | `feature.topic_radar` | - | 发现新兴话题 |
 | cleanup_job | 每天 03:00 | `feature.cleanup` | - | 清理过期数据 |
 | backup_job | 每天 04:00 | `feature.backup` | - | 备份文章数据 |
 | notification_job | 爬取完成后 | `feature.email_notification` | - | 推送用户订阅 |
+| pipeline_worker | 每 10 分钟 | 无（继承各 job） | 按需 | 消费流水线任务队列 |
 
 所有调度参数可通过管理 API 动态调整。
 

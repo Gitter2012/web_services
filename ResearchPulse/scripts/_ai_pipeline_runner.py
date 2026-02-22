@@ -15,6 +15,7 @@ Usage:
     python scripts/_ai_pipeline_runner.py ai embedding
     python scripts/_ai_pipeline_runner.py embedding event topic
     python scripts/_ai_pipeline_runner.py all --limit 100 --verbose
+    python scripts/_ai_pipeline_runner.py all --trigger --force
 """
 
 from __future__ import annotations
@@ -360,6 +361,31 @@ STAGE_RUNNERS = {
 
 
 # ---------------------------------------------------------------------------
+# 队列触发模式
+# ---------------------------------------------------------------------------
+
+async def _trigger_stage(stage: str, limit: int) -> dict:
+    """Enqueue a pipeline task instead of executing directly.
+
+    CLI trigger mode uses priority=5 (higher than auto-triggered 0-1).
+    """
+    from core.database import get_session_factory
+    from apps.pipeline.triggers import enqueue_task
+
+    # Only enqueue stages that the pipeline worker can handle
+    supported = ("ai", "embedding", "event", "action")
+    if stage not in supported:
+        return {"skipped": True, "reason": f"stage '{stage}' not supported in trigger mode"}
+
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        payload = {"trigger_source": "cli", "limit": limit}
+        task = await enqueue_task(session, stage, payload=payload, priority=5)
+        await session.commit()
+        return {"enqueued": True, "task_id": task.id, "stage": stage}
+
+
+# ---------------------------------------------------------------------------
 # 结果格式化
 # ---------------------------------------------------------------------------
 
@@ -367,6 +393,9 @@ def _format_result(stage: str, result: dict) -> str:
     """Format stage result as a human-readable line."""
     if "error" in result:
         return f"  错误: {result['error']}"
+
+    if result.get("enqueued"):
+        return f"  已入队: task_id={result.get('task_id')}"
 
     if stage == "ai":
         return (
@@ -413,6 +442,7 @@ async def run_pipeline(
     limit: int,
     skip_disabled: bool,
     verbose: bool,
+    trigger_mode: bool = False,
 ) -> dict[str, dict]:
     """Run the specified pipeline stages sequentially.
 
@@ -421,6 +451,7 @@ async def run_pipeline(
         limit: Per-stage batch size limit.
         skip_disabled: Whether to skip feature-disabled stages.
         verbose: Enable verbose output.
+        trigger_mode: If True, enqueue tasks instead of executing directly.
 
     Returns:
         dict mapping stage name to its result dict.
@@ -430,6 +461,8 @@ async def run_pipeline(
     # 预热 feature_config 缓存（避免事件循环冲突）
     from common.feature_config import feature_config
     await feature_config.async_reload()
+    # 冻结缓存：长批处理期间避免反复查库触发跨事件循环问题
+    feature_config.freeze()
 
     results: dict[str, dict] = {}
 
@@ -451,11 +484,17 @@ async def run_pipeline(
                 )
 
             desc = STAGE_DESCRIPTIONS.get(stage, stage)
-            _print(f"[{stage}] 开始: {desc} (limit={limit})")
+            if trigger_mode:
+                _print(f"[{stage}] 入队: {desc}")
+            else:
+                _print(f"[{stage}] 开始: {desc} (limit={limit})")
 
             t0 = time.time()
             try:
-                result = await STAGE_RUNNERS[stage](limit, verbose)
+                if trigger_mode:
+                    result = await _trigger_stage(stage, limit)
+                else:
+                    result = await STAGE_RUNNERS[stage](limit, verbose)
             except Exception as e:
                 logger.error(f"Stage '{stage}' failed: {e}", exc_info=verbose)
                 result = {"error": str(e)}
@@ -466,11 +505,14 @@ async def run_pipeline(
             # 打印阶段结果
             if "error" in result:
                 _print(f"[{stage}] 失败 ({elapsed:.1f}s)", "error")
+            elif result.get("enqueued"):
+                _print(f"[{stage}] 已入队 ({elapsed:.1f}s)", "success")
             else:
                 _print(f"[{stage}] 完成 ({elapsed:.1f}s)", "success")
             print(_format_result(stage, result))
             print()
     finally:
+        feature_config.unfreeze()
         await close_db()
 
     return results
@@ -488,13 +530,16 @@ def main():
   %(prog)s ai embedding          # 运行 AI 处理 + 嵌入计算
   %(prog)s embedding event topic # 运行嵌入 → 事件 → 主题
   %(prog)s all --limit 200       # 每阶段最多处理 200 条
-  %(prog)s all --force            # 忽略功能开关，强制运行所有阶段
+  %(prog)s all --force           # 忽略功能开关，强制运行所有阶段
+  %(prog)s all --trigger --force # 将所有阶段任务入队，由 worker 异步执行
 
 阶段说明:
   ai        AI 文章处理（摘要/分类/评分）   [feature.ai_processor]
   embedding 向量嵌入计算                     [feature.embedding]
   event     事件聚类                         [feature.event_clustering]
   topic     主题发现                         [feature.topic_radar]
+  action    行动项提取                       [feature.action_items]
+  report    报告生成                         [feature.report_generation]
 """,
     )
 
@@ -514,6 +559,11 @@ def main():
         "--force",
         action="store_true",
         help="忽略功能开关，强制运行所有指定阶段",
+    )
+    parser.add_argument(
+        "--trigger",
+        action="store_true",
+        help="队列模式: 将阶段任务入队到 pipeline_tasks 表，由 worker 异步执行",
     )
     parser.add_argument(
         "--verbose", "-v",
@@ -554,6 +604,8 @@ def main():
     _print("=" * 50, "info")
     print(f"阶段: {' → '.join(stages)}")
     print(f"Limit: {args.limit}")
+    if args.trigger:
+        print(f"{CYAN}模式: 队列触发 (入队到 pipeline_tasks){NC}")
     if args.force:
         print(f"{YELLOW}模式: 强制运行 (忽略功能开关){NC}")
     _print("-" * 50, "info")
@@ -568,6 +620,7 @@ def main():
                 limit=args.limit,
                 skip_disabled=not args.force,
                 verbose=args.verbose,
+                trigger_mode=args.trigger,
             )
         )
     except KeyboardInterrupt:
@@ -600,6 +653,8 @@ def main():
         elif "error" in r:
             status = f"{RED}失败{NC}"
             has_error = True
+        elif r.get("enqueued"):
+            status = f"{CYAN}已入队{NC}"
         else:
             status = f"{GREEN}成功{NC}"
         desc = STAGE_DESCRIPTIONS.get(stage, stage)

@@ -102,13 +102,15 @@ ResearchPulse 采用分层架构设计，从上到下分为用户界面层、API
 | 阶段 | 定时任务 | 功能开关 | 单次处理量 | 说明 |
 |------|---------|---------|-----------|------|
 | Crawl | 每 6 小时 | `feature.crawler` | 全部活跃源 | 从 7 种数据源抓取文章 |
-| AI Process | 每 1 小时 | `feature.ai_processor` | 50 篇 | AI 生成摘要、分类、评分 |
-| Embed | 每 2 小时 | `feature.embedding` | 100 篇 | 计算文章向量嵌入到 Milvus |
-| Cluster | 每天凌晨 2 点 | `feature.event_clustering` | 200 篇 | 基于相似度聚类文章为事件 |
+| AI Process | 每 1 小时 | `feature.ai_processor` | 200 篇（可配置） | AI 生成摘要、分类、评分 |
+| Embed | 每 2 小时 | `feature.embedding` | 500 篇（可配置） | 计算文章向量嵌入到 Milvus |
+| Cluster | 每天凌晨 2 点 | `feature.event_clustering` | 500 篇（可配置） | 基于相似度聚类文章为事件 |
 | Topic | 每周一凌晨 1 点 | `feature.topic_radar` | - | 发现和追踪话题趋势 |
-| Action | 随 AI 处理产出 | `feature.action_items` | - | 提取可执行行动项 |
+| Action | 每 2 小时 | `feature.action_items` | 200 篇（可配置） | 提取可执行行动项 |
 | Report | 用户触发 | `feature.report_generation` | - | 生成周报/月报 |
 | Email | 爬取完成后 | `feature.email_notification` | - | 推送用户订阅文章 |
+
+> 批处理限制通过 `pipeline.*` 配置项管理，可在管理后台运行时动态调整。
 
 ## 模块设计
 
@@ -439,10 +441,16 @@ scheduler/
     ├── cleanup_job.py        # 清理任务（过期数据）
     ├── backup_job.py         # 备份任务（MySQL dump）
     ├── notification_job.py   # 通知任务（邮件推送）
-    ├── ai_process_job.py     # AI 分析任务（50 篇/次）
-    ├── embedding_job.py      # 向量嵌入任务（100 篇/次）
-    ├── event_cluster_job.py  # 事件聚类任务（200 篇/次）
+    ├── ai_process_job.py     # AI 分析任务（200 篇/次，可配置）
+    ├── embedding_job.py      # 向量嵌入任务（500 篇/次，可配置）
+    ├── event_cluster_job.py  # 事件聚类任务（500 篇/次，可配置）
+    ├── action_extract_job.py # 行动项提取任务（200 篇/次，可配置）
     └── topic_discovery_job.py # 话题发现任务
+
+pipeline/
+├── models.py                 # PipelineTask ORM 模型
+├── triggers.py               # 下游任务入队触发函数
+└── worker.py                 # 任务队列轮询 Worker
 ```
 
 **任务调度详情：**
@@ -453,10 +461,12 @@ scheduler/
 | cleanup_job | CronTrigger(hour=3) | feature.cleanup | - | 日志记录 |
 | backup_job | CronTrigger(hour=4) | feature.backup | - | 日志记录 |
 | notification_job | 事件触发 | feature.email_notification | - | 失败重试 |
-| ai_process_job | IntervalTrigger(1h) | feature.ai_processor | 50 篇 | 跳过失败，继续处理 |
-| embedding_job | IntervalTrigger(2h) | feature.embedding | 100 篇 | 跳过失败，继续处理 |
-| event_cluster_job | CronTrigger(hour=2) | feature.event_clustering | 200 篇 | 日志记录 |
+| ai_process_job | IntervalTrigger(1h) | feature.ai_processor | 200 篇（可配置） | 跳过失败，继续处理 |
+| embedding_job | IntervalTrigger(2h) | feature.embedding | 500 篇（可配置） | 跳过失败，继续处理 |
+| event_cluster_job | CronTrigger(hour=2) | feature.event_clustering | 500 篇（可配置） | 日志记录 |
+| action_extract_job | IntervalTrigger(2h) | feature.action_items | 200 篇（可配置） | 跳过失败，继续处理 |
 | topic_discovery_job | CronTrigger(day=mon, hour=1) | feature.topic_radar | - | 日志记录 |
+| pipeline_worker | IntervalTrigger(10min) | 无（继承各 job） | 1 条/轮 | 重试 3 次后标记失败 |
 
 ### 10. 功能开关模块 (common/feature_config.py)
 
