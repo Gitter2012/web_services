@@ -1,0 +1,11 @@
+# Client SDK 依赖
+
+# HTTP 请求
+requests>=2.31.0
+aiohttp>=3.9.0
+
+# OpenAI SDK（可选，用于兼容示例）
+openai>=1.0.0
+
+# 类型提示
+typing-extensions>=4.8.0
