@@ -52,7 +52,7 @@
         .filter-input { width: 100%; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; transition: border-color 0.2s; }
         .filter-input:focus { outline: none; border-color: #4ecdc4; }
 
-        /* Source Filter Cards */
+        /* Source Filter Cards - Legacy */
         .source-cards { display: flex; flex-direction: column; gap: 8px; }
         .source-card { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
         .source-card:hover { border-color: #4ecdc4; background: #f8fffe; }
@@ -70,6 +70,59 @@
         .source-card .name { font-size: 14px; font-weight: 500; color: #333; }
         .source-card .count { font-size: 12px; color: #888; }
         .source-card .check { color: #4ecdc4; font-size: 18px; }
+
+        /* Source Groups - New Collapsible Design */
+        .source-groups { display: flex; flex-direction: column; gap: 2px; }
+        .source-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 10px; border-radius: 6px;
+            cursor: pointer; transition: all 0.15s;
+        }
+        .source-item:hover { background: #f0f0f0; }
+        .source-item.active { background: #e8fbf9; }
+        .source-item.active .source-name { color: #4ecdc4; font-weight: 500; }
+        .source-icon {
+            width: 22px; height: 22px; border-radius: 4px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 9px; font-weight: 600; color: white; flex-shrink: 0;
+        }
+        .source-name { flex: 1; font-size: 13px; color: #333; }
+        .source-count { font-size: 11px; color: #999; min-width: 30px; text-align: right; }
+
+        /* Group Header */
+        .source-group-header {
+            display: flex; align-items: center; gap: 6px;
+            padding: 6px 10px; cursor: pointer;
+            font-size: 12px; color: #888; font-weight: 500;
+            border-radius: 6px; margin-top: 4px;
+            user-select: none;
+        }
+        .source-group-header:hover { background: #f5f5f5; }
+        .source-group-header .arrow {
+            transition: transform 0.2s; font-size: 8px;
+            width: 14px; display: flex; justify-content: center;
+        }
+        .source-group-header.expanded .arrow { transform: rotate(90deg); }
+        .source-group-header .group-name { flex: 1; }
+        .source-group-header .group-count { color: #aaa; }
+
+        /* Group Items Container */
+        .source-group-items {
+            display: none; padding-left: 8px;
+            max-height: 0; overflow: hidden;
+            transition: max-height 0.2s ease-out;
+        }
+        .source-group-items.expanded {
+            display: block;
+            max-height: 500px;
+        }
+
+        /* "All" source special style */
+        .source-all { 
+            border-bottom: 1px solid #eee; 
+            margin-bottom: 4px; 
+            padding-bottom: 10px;
+        }
 
         /* Category Tags */
         .category-tags { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -276,6 +329,13 @@
             }
             .sidebar.open { left: 0; }
 
+            /* 来源分组移动端适配 */
+            .source-item { padding: 10px 12px; }
+            .source-icon { width: 26px; height: 26px; font-size: 10px; }
+            .source-name { font-size: 14px; }
+            .source-group-header { padding: 10px 12px; font-size: 13px; }
+            .source-all { padding: 12px; }
+
             .main-container { padding: 16px; }
 
             .stats-bar { flex-direction: column; gap: 12px; align-items: flex-start; }
@@ -334,70 +394,14 @@
         <div class="sidebar">
             <div class="sidebar-section">
                 <div class="sidebar-title">来源筛选</div>
-                <div class="source-cards" id="source-cards">
-                    <div class="source-card active" data-source="" onclick="selectSource('')">
-                        <div class="icon" style="background: #1a1a2e;">ALL</div>
-                        <div class="info">
-                            <div class="name">全部来源</div>
-                            <div class="count" id="count-all">0 篇</div>
-                        </div>
+                <div class="source-groups" id="source-groups">
+                    <!-- "全部来源" 独立显示在顶部 -->
+                    <div class="source-item source-all" data-source="" onclick="selectSource('')">
+                        <div class="source-icon" style="background: #1a1a2e;">ALL</div>
+                        <span class="source-name">全部来源</span>
+                        <span class="source-count" id="count-all">0</span>
                     </div>
-                    <div class="source-card" data-source="arxiv" onclick="selectSource('arxiv')">
-                        <div class="icon arxiv">AX</div>
-                        <div class="info">
-                            <div class="name">arXiv</div>
-                            <div class="count" id="count-arxiv">0 篇</div>
-                        </div>
-                    </div>
-                    <div class="source-card" data-source="rss" onclick="selectSource('rss')">
-                        <div class="icon rss">RSS</div>
-                        <div class="info">
-                            <div class="name">RSS 订阅</div>
-                            <div class="count" id="count-rss">0 篇</div>
-                        </div>
-                    </div>
-                    <div class="source-card" data-source="wechat" onclick="selectSource('wechat')">
-                        <div class="icon wechat">微</div>
-                        <div class="info">
-                            <div class="name">微信</div>
-                            <div class="count" id="count-wechat">0 篇</div>
-                        </div>
-                    </div>
-                    <div class="source-card" data-source="weibo" onclick="selectSource('weibo')">
-                        <div class="icon weibo">微</div>
-                        <div class="info">
-                            <div class="name">微博热搜</div>
-                            <div class="count" id="count-weibo">0 篇</div>
-                        </div>
-                    </div>
-                    <div class="source-card" data-source="hackernews" onclick="selectSource('hackernews')">
-                        <div class="icon hackernews">HN</div>
-                        <div class="info">
-                            <div class="name">HackerNews</div>
-                            <div class="count" id="count-hackernews">0 篇</div>
-                        </div>
-                    </div>
-                    <div class="source-card" data-source="reddit" onclick="selectSource('reddit')">
-                        <div class="icon reddit">RD</div>
-                        <div class="info">
-                            <div class="name">Reddit</div>
-                            <div class="count" id="count-reddit">0 篇</div>
-                        </div>
-                    </div>
-                    <div class="source-card" data-source="twitter" onclick="selectSource('twitter')">
-                        <div class="icon twitter">TW</div>
-                        <div class="info">
-                            <div class="name">Twitter</div>
-                            <div class="count" id="count-twitter">0 篇</div>
-                        </div>
-                    </div>
-                    <div class="source-card" data-source="aigc" onclick="selectSource('aigc')">
-                        <div class="icon aigc">AI</div>
-                        <div class="info">
-                            <div class="name">AIGC 生成</div>
-                            <div class="count" id="count-aigc">0 篇</div>
-                        </div>
-                    </div>
+                    <!-- 分组由 JavaScript 动态生成 -->
                 </div>
             </div>
 
@@ -567,10 +571,136 @@
         let pageSize = 20;
         let totalArticles = 0;
         let currentUser = null;
-        let currentSource = '';
+        let currentSource = 'rss';
         let userStars = new Set();
         let categoryNames = {};  // 分类代码到名称的映射
         let featureStatus = {};  // 功能开关状态缓存
+
+        // ========== 来源分组配置 ==========
+        const sourceGroups = [
+            {
+                id: 'academic',
+                name: '学术来源',
+                sources: ['arxiv'],
+                defaultExpanded: true
+            },
+            {
+                id: 'content',
+                name: '内容平台',
+                sources: ['rss', 'wechat', 'weibo'],
+                defaultExpanded: true
+            },
+            {
+                id: 'social',
+                name: '社交媒体',
+                sources: ['hackernews', 'reddit', 'twitter'],
+                defaultExpanded: false
+            },
+            {
+                id: 'ai',
+                name: 'AI 生成',
+                sources: ['aigc'],
+                defaultExpanded: false
+            }
+        ];
+
+        // 来源元信息配置
+        const sourceMeta = {
+            'arxiv': { name: 'ArXiv', icon: 'AX', color: '#b31b1b' },
+            'rss': { name: 'RSS', icon: 'RSS', color: '#f39c12' },
+            'wechat': { name: '微信', icon: '微', color: '#07c160' },
+            'weibo': { name: '微博', icon: '微', color: '#e6162d' },
+            'hackernews': { name: 'HN', icon: 'HN', color: '#ff6600' },
+            'reddit': { name: 'Reddit', icon: 'RD', color: '#ff4500' },
+            'twitter': { name: 'Twitter', icon: 'TW', color: '#1da1f2' },
+            'aigc': { name: 'AIGC', icon: 'AI', color: '#667eea' }
+        };
+
+        // 分组状态存储
+        let groupExpandState = {};
+
+        // 初始化来源分组 UI
+        function initSourceGroups() {
+            const container = document.getElementById('source-groups');
+            if (!container) return;
+
+            // 从 localStorage 恢复展开状态
+            const savedState = localStorage.getItem('sourceGroupExpandState');
+            if (savedState) {
+                try {
+                    groupExpandState = JSON.parse(savedState);
+                } catch (e) {
+                    groupExpandState = {};
+                }
+            }
+
+            // 渲染分组
+            sourceGroups.forEach(group => {
+                const isExpanded = groupExpandState.hasOwnProperty(group.id)
+                    ? groupExpandState[group.id]
+                    : group.defaultExpanded;
+
+                // 创建分组标题
+                const header = document.createElement('div');
+                header.className = 'source-group-header' + (isExpanded ? ' expanded' : '');
+                header.id = `group-header-${group.id}`;
+                header.onclick = () => toggleGroup(group.id);
+                header.innerHTML = `
+                    <span class="arrow">▶</span>
+                    <span class="group-name">${group.name}</span>
+                    <span class="group-count" id="group-count-${group.id}">0</span>
+                `;
+
+                // 创建分组内容容器
+                const items = document.createElement('div');
+                items.className = 'source-group-items' + (isExpanded ? ' expanded' : '');
+                items.id = `group-items-${group.id}`;
+
+                // 渲染分组内的来源项
+                group.sources.forEach(source => {
+                    const meta = sourceMeta[source];
+                    if (!meta) return;
+
+                    const item = document.createElement('div');
+                    item.className = 'source-item' + (currentSource === source ? ' active' : '');
+                    item.dataset.source = source;
+                    item.onclick = () => selectSource(source);
+                    item.innerHTML = `
+                        <div class="source-icon" style="background: ${meta.color};">${meta.icon}</div>
+                        <span class="source-name">${meta.name}</span>
+                        <span class="source-count" id="count-${source}">0</span>
+                    `;
+                    items.appendChild(item);
+                });
+
+                container.appendChild(header);
+                container.appendChild(items);
+            });
+
+            // 设置初始选中状态
+            updateActiveSourceItem();
+        }
+
+        // 切换分组展开/折叠
+        function toggleGroup(groupId) {
+            const header = document.getElementById(`group-header-${groupId}`);
+            const items = document.getElementById(`group-items-${groupId}`);
+            if (!header || !items) return;
+
+            const isExpanded = header.classList.toggle('expanded');
+            items.classList.toggle('expanded', isExpanded);
+
+            // 保存状态
+            groupExpandState[groupId] = isExpanded;
+            localStorage.setItem('sourceGroupExpandState', JSON.stringify(groupExpandState));
+        }
+
+        // 更新选中状态
+        function updateActiveSourceItem() {
+            document.querySelectorAll('.source-item').forEach(item => {
+                item.classList.toggle('active', item.dataset.source === currentSource);
+            });
+        }
 
         // Mobile Menu Functions
         function toggleMobileMenu() {
@@ -647,9 +777,10 @@
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
+            initSourceGroups();  // 初始化来源分组 UI
             checkAuthState();
             loadCategoryNames();  // 预加载分类名称映射
-            loadCategories();
+            loadCategories('rss');
             loadStats();
             // loadArticles() 在 checkAuthState 成功后调用
         });
@@ -1200,9 +1331,8 @@
         // Filter Functions
         function selectSource(source) {
             currentSource = source;
-            document.querySelectorAll('.source-card').forEach(card => {
-                card.classList.toggle('active', card.dataset.source === source);
-            });
+            // 更新新 UI 的选中状态
+            updateActiveSourceItem();
             currentPage = 1;
             // Reset category when source changes
             document.getElementById('category-select').innerHTML = '<option value="">全部分类</option>';
@@ -1259,14 +1389,32 @@
             try {
                 // Load counts for each source
                 const sources = ['', 'arxiv', 'rss', 'wechat', 'weibo', 'hackernews', 'reddit', 'twitter', 'aigc'];
+                const counts = {};
+
                 for (const src of sources) {
                     const params = new URLSearchParams({ page_size: 1 });
                     if (src) params.append('source_type', src);
                     const res = await fetch(`${API_BASE}/articles?${params}`);
                     const data = await res.json();
+                    counts[src || 'all'] = data.total;
+
+                    // 更新单个来源计数
                     const el = document.getElementById(src ? `count-${src}` : 'count-all');
-                    if (el) el.textContent = `${data.total} 篇`;
+                    if (el) el.textContent = data.total;
                 }
+
+                // 更新分组计数
+                sourceGroups.forEach(group => {
+                    let groupTotal = 0;
+                    group.sources.forEach(src => {
+                        groupTotal += counts[src] || 0;
+                    });
+                    const groupEl = document.getElementById(`group-count-${group.id}`);
+                    if (groupEl) groupEl.textContent = groupTotal;
+                });
+
+                // 更新总数显示
+                document.getElementById('total-count').textContent = counts['all'] || 0;
             } catch (e) {
                 console.error('Failed to load stats:', e);
             }

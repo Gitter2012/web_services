@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, HttpUrl, field_validator
-from sqlalchemy import desc, select, func, update, delete
+from sqlalchemy import desc, select, func, update, delete, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from apscheduler.triggers.cron import CronTrigger
@@ -154,14 +154,20 @@ class UserRoleUpdate(BaseModel):
 async def list_users(
     page: int = 1,            # 当前页码，默认第 1 页
     page_size: int = 20,      # 每页显示条数，默认 20 条
+    search: Optional[str] = None,  # 搜索用户名或邮箱
+    role: Optional[str] = None,    # 按角色筛选
+    is_active: Optional[bool] = None,  # 按状态筛选
     admin: Superuser = None,  # 超级管理员身份校验
     session: AsyncSession = Depends(get_session),
 ) -> UserListResponse:
-    """List users with pagination (admin only).
+    """List users with pagination and filtering (admin only).
 
     Args:
         page: Page number, starting from 1.
         page_size: Number of items per page (max 100).
+        search: Search by username or email (case-insensitive).
+        role: Filter by role name.
+        is_active: Filter by active status.
         admin: Superuser dependency injected by FastAPI.
         session: Async database session.
 
@@ -171,14 +177,38 @@ async def list_users(
     # 分页参数安全约束：限制每页最大条数
     MAX_PAGE_SIZE = 100
     page_size = min(max(1, page_size), MAX_PAGE_SIZE)
-    # 先查询用户总数，用于前端分页计算
-    count_result = await session.execute(select(func.count(User.id)))
+
+    # 构建基础查询
+    base_query = select(User)
+
+    # 应用筛选条件
+    if search:
+        search_term = f"%{search}%"
+        base_query = base_query.where(
+            or_(
+                User.username.ilike(search_term),
+                User.email.ilike(search_term)
+            )
+        )
+
+    if is_active is not None:
+        base_query = base_query.where(User.is_active == is_active)
+
+    if role:
+        # 通过角色名称筛选
+        from core.models.role import Role
+        from sqlalchemy.orm import joinedload
+        base_query = base_query.join(User.roles).where(Role.name == role)
+
+    # 查询用户总数
+    count_query = select(func.count()).select_from(base_query.subquery())
+    count_result = await session.execute(count_query)
     total = count_result.scalar() or 0
 
     # 按创建时间倒序获取当前页的用户列表
     # 使用 selectinload 预加载 roles 关系，避免 N+1 查询
     result = await session.execute(
-        select(User)
+        base_query
         .options(selectinload(User.roles))
         .order_by(desc(User.created_at))
         .offset((page - 1) * page_size)
@@ -899,12 +929,186 @@ async def list_config_groups(
     return {"groups": groups}
 
 
+# ============================================================================
+# Scheduler Config Hot Reload Helper
+# ============================================================================
+# 调度配置热更新辅助函数：当 scheduler.* 配置变更时，自动重新调度相关任务
+
+# 配置 key 到 (job_id, trigger_type) 的映射
+# trigger_type: "interval" 表示间隔触发，"cron" 表示定时触发，"interval_base" 表示基准时间变更
+_SCHEDULER_CONFIG_MAP = {
+    "scheduler.crawl_interval_hours": ("crawl_job", "interval"),
+    "scheduler.crawl_base_hour": ("crawl_job", "interval_base"),
+    "scheduler.ai_process_interval_hours": ("ai_process_job", "interval"),
+    "scheduler.ai_process_base_hour": ("ai_process_job", "interval_base"),
+    "scheduler.embedding_interval_hours": ("embedding_job", "interval"),
+    "scheduler.embedding_base_hour": ("embedding_job", "interval_base"),
+    "scheduler.action_extract_interval_hours": ("action_extract_job", "interval"),
+    "scheduler.action_extract_base_hour": ("action_extract_job", "interval_base"),
+    "scheduler.cleanup_hour": ("cleanup_job", "cron"),
+    "scheduler.backup_hour": ("backup_job", "cron"),
+    "scheduler.event_cluster_hour": ("event_cluster_job", "cron"),
+    "scheduler.topic_discovery_hour": ("topic_discovery_job", "cron"),
+    "scheduler.topic_discovery_day": ("topic_discovery_job", "cron_day"),
+    "scheduler.notification_hour": ("notification_job", "cron"),
+    "scheduler.notification_minute": ("notification_job", "cron_minute"),
+    "scheduler.report_weekly_day": ("weekly_report_job", "cron_day"),
+    "scheduler.report_weekly_hour": ("weekly_report_job", "cron"),
+    "scheduler.report_monthly_hour": ("monthly_report_job", "cron"),
+}
+
+
+def _calculate_start_date_for_interval(base_hour: int) -> "datetime":
+    """Calculate the start date for interval-triggered jobs.
+
+    计算间隔任务的基准开始时间，用于 IntervalTrigger 的 start_date 参数。
+
+    Args:
+        base_hour: Base hour (0-23), e.g., 23 means 23:00.
+
+    Returns:
+        datetime: Timezone-aware start_date for IntervalTrigger.
+    """
+    import pytz
+    from datetime import timedelta
+    from settings import settings
+
+    tz = pytz.timezone(settings.scheduler_timezone)
+    now = datetime.now(tz)
+    today_base = now.replace(hour=base_hour, minute=0, second=0, microsecond=0)
+
+    if now >= today_base:
+        return today_base
+    else:
+        return today_base - timedelta(days=1)
+
+
+async def _reschedule_jobs_for_config_keys(config_keys: List[str], updated_by: int) -> List[str]:
+    """Reschedule jobs based on changed scheduler configuration keys.
+
+    根据变更的 scheduler.* 配置键，自动重新调度相关的调度任务。
+    这确保了配置变更能够立即生效，而无需重启服务。
+
+    Args:
+        config_keys: List of changed configuration keys (e.g., ["scheduler.crawl_interval_hours"]).
+        updated_by: User ID who made the change (for audit logging).
+
+    Returns:
+        List[str]: List of job IDs that were rescheduled.
+    """
+    from apps.scheduler.tasks import get_scheduler
+
+    scheduler = get_scheduler()
+    rescheduled = []
+
+    for key in config_keys:
+        mapping = _SCHEDULER_CONFIG_MAP.get(key)
+        if not mapping:
+            continue
+
+        job_id, trigger_type = mapping
+        job = scheduler.get_job(job_id)
+
+        # 任务可能不存在（如功能开关未启用），跳过
+        if not job:
+            logger.warning(
+                "Scheduler config '%s' changed but job '%s' not found (feature may be disabled)",
+                key, job_id
+            )
+            continue
+
+        try:
+            if trigger_type == "interval":
+                # 间隔触发器：从配置读取小时数和基准时间
+                hours = feature_config.get_int(key, 1)
+                # 获取对应的基准时间配置
+                base_key = key.replace("_interval_hours", "_base_hour")
+                base_hour = feature_config.get_int(base_key, 0)
+                start_date = _calculate_start_date_for_interval(base_hour)
+                scheduler.reschedule_job(
+                    job_id,
+                    trigger=IntervalTrigger(hours=hours, start_date=start_date)
+                )
+                logger.info("Rescheduled job '%s' with interval=%d hours, base_hour=%d",
+                            job_id, hours, base_hour)
+
+            elif trigger_type == "interval_base":
+                # 基准时间变更：需要同时读取间隔和基准时间，重新构造触发器
+                interval_key_map = {
+                    "crawl_job": "scheduler.crawl_interval_hours",
+                    "ai_process_job": "scheduler.ai_process_interval_hours",
+                    "embedding_job": "scheduler.embedding_interval_hours",
+                    "action_extract_job": "scheduler.action_extract_interval_hours",
+                }
+                base_key_map = {
+                    "crawl_job": "scheduler.crawl_base_hour",
+                    "ai_process_job": "scheduler.ai_process_base_hour",
+                    "embedding_job": "scheduler.embedding_base_hour",
+                    "action_extract_job": "scheduler.action_extract_base_hour",
+                }
+                interval_key = interval_key_map.get(job_id)
+                base_key = base_key_map.get(job_id)
+                if interval_key and base_key:
+                    hours = feature_config.get_int(interval_key, 1)
+                    base_hour = feature_config.get_int(base_key, 0)
+                    start_date = _calculate_start_date_for_interval(base_hour)
+                    scheduler.reschedule_job(
+                        job_id,
+                        trigger=IntervalTrigger(hours=hours, start_date=start_date)
+                    )
+                    logger.info("Rescheduled job '%s' with interval=%d hours, base_hour=%d",
+                                job_id, hours, base_hour)
+
+            elif trigger_type == "cron":
+                # Cron 触发器：从配置读取小时
+                hour = feature_config.get_int(key, 0)
+                scheduler.reschedule_job(job_id, trigger=CronTrigger(hour=hour, minute=0))
+                logger.info("Rescheduled job '%s' with cron hour=%d", job_id, hour)
+
+            elif trigger_type == "cron_day":
+                # 特殊处理：带星期几的 cron（如 topic_discovery_day）
+                if job_id == "topic_discovery_job":
+                    day = feature_config.get("scheduler.topic_discovery_day", "mon")
+                    hour = feature_config.get_int("scheduler.topic_discovery_hour", 1)
+                    scheduler.reschedule_job(
+                        job_id,
+                        trigger=CronTrigger(day_of_week=day, hour=hour, minute=0)
+                    )
+                    logger.info("Rescheduled job '%s' with day=%s hour=%d", job_id, day, hour)
+                elif job_id == "weekly_report_job":
+                    day = feature_config.get("scheduler.report_weekly_day", "mon")
+                    hour = feature_config.get_int("scheduler.report_weekly_hour", 6)
+                    scheduler.reschedule_job(
+                        job_id,
+                        trigger=CronTrigger(day_of_week=day, hour=hour, minute=0)
+                    )
+                    logger.info("Rescheduled job '%s' with day=%s hour=%d", job_id, day, hour)
+
+            elif trigger_type == "cron_minute":
+                # 特殊处理：同时包含小时和分钟的 cron（如 notification_job）
+                if job_id == "notification_job":
+                    hour = feature_config.get_int("scheduler.notification_hour", 9)
+                    minute = feature_config.get_int("scheduler.notification_minute", 0)
+                    scheduler.reschedule_job(
+                        job_id,
+                        trigger=CronTrigger(hour=hour, minute=minute)
+                    )
+                    logger.info("Rescheduled job '%s' with hour=%d minute=%d", job_id, hour, minute)
+
+            rescheduled.append(job_id)
+
+        except Exception as e:
+            logger.error("Failed to reschedule job '%s' for config '%s': %s", job_id, key, e)
+
+    return rescheduled
+
+
 # 批量配置更新请求体：键值对字典
 class BatchConfigUpdate(BaseModel):
     configs: Dict[str, str]  # key -> value 的映射
 
 
-@router.put("/config/batch")
+@router.put("/batch-config")
 async def batch_update_config(
     body: BatchConfigUpdate,
     admin: Superuser = None,
@@ -916,7 +1120,7 @@ async def batch_update_config(
         admin: Superuser dependency.
 
     Returns:
-        Dict[str, Any]: Updated keys and count.
+        Dict[str, Any]: Updated keys and count, plus rescheduled jobs if any.
     """
     updated = []
     # 逐个更新配置项，每个 key 都会写入数据库并更新内存缓存
@@ -924,7 +1128,18 @@ async def batch_update_config(
         await feature_config.async_set(key, value, updated_by=admin.id)
         updated.append(key)
 
-    return {"status": "ok", "updated": updated, "count": len(updated)}
+    # 检测 scheduler.* 配置变更，自动重新调度相关任务
+    rescheduled = []
+    scheduler_keys = [k for k in updated if k.startswith("scheduler.")]
+    if scheduler_keys:
+        rescheduled = await _reschedule_jobs_for_config_keys(scheduler_keys, admin.id)
+
+    result = {"status": "ok", "updated": updated, "count": len(updated)}
+    if rescheduled:
+        # 去重后返回
+        result["rescheduled_jobs"] = list(set(rescheduled))
+
+    return result
 
 
 # ============================================================================
@@ -2261,6 +2476,68 @@ async def recompute_embeddings(
     except Exception as e:
         logger.error(f"Failed to schedule embedding job: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to schedule embedding job: {str(e)}")
+
+
+# ============================================================================
+# AI Processing Logs
+# ============================================================================
+# AI 处理日志 —— 查看最近的 AI 处理记录
+
+@router.get("/ai-logs")
+async def get_ai_processing_logs(
+    limit: int = 20,
+    task_type: Optional[str] = None,
+    provider: Optional[str] = None,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> List[Dict[str, Any]]:
+    """Get recent AI processing logs.
+
+    Args:
+        limit: Maximum number of logs to return (max 100).
+        task_type: Filter by task type (content_high, content_low, paper_full, screen).
+        provider: Filter by AI provider (ollama, openai, etc.).
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        List[Dict[str, Any]]: List of recent AI processing log entries.
+    """
+    from apps.ai_processor.models import AIProcessingLog
+
+    # Limit check
+    limit = min(limit, 100)
+
+    # Build query
+    query = select(AIProcessingLog).order_by(AIProcessingLog.created_at.desc())
+
+    if task_type:
+        query = query.where(AIProcessingLog.task_type == task_type)
+    if provider:
+        query = query.where(AIProcessingLog.provider == provider)
+
+    query = query.limit(limit)
+
+    result = await session.execute(query)
+    logs = result.scalars().all()
+
+    return [
+        {
+            "id": log.id,
+            "article_id": log.article_id,
+            "provider": log.provider,
+            "model": log.model,
+            "task_type": log.task_type,
+            "duration_ms": log.duration_ms,
+            "success": log.success,
+            "cached": log.cached,
+            "input_chars": log.input_chars,
+            "output_chars": log.output_chars,
+            "error_message": log.error_message,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+        }
+        for log in logs
+    ]
 
 
 # ============================================================================

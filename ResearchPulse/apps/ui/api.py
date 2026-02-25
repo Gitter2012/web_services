@@ -92,7 +92,14 @@ def init_templates(template_dir: str) -> None:
     # 该函数在应用启动时由 main.py 调用
     global _templates
     from pathlib import Path
-    _templates = Jinja2Templates(directory=Path(template_dir))
+    from jinja2 import Environment, FileSystemLoader
+    
+    # 创建禁用缓存的 Environment（开发环境友好）
+    env = Environment(
+        loader=FileSystemLoader(Path(template_dir)),
+        cache_size=0,  # 禁用模板缓存
+    )
+    _templates = Jinja2Templates(env=env)
 
 
 # ============================================================================

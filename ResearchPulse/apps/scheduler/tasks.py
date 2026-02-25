@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta
 from typing import Optional
 
 # APScheduler 异步调度器及触发器
@@ -23,6 +24,7 @@ from typing import Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+import pytz
 
 from settings import settings
 
@@ -30,6 +32,39 @@ logger = logging.getLogger(__name__)
 
 # 模块级别的调度器单例变量，确保整个应用只有一个调度器实例
 _scheduler: Optional[AsyncIOScheduler] = None
+
+
+def _calculate_interval_start_date(base_hour: int) -> datetime:
+    """Calculate the start date for interval-triggered jobs.
+
+    计算间隔任务的基准开始时间，用于 IntervalTrigger 的 start_date 参数。
+    这确保任务从固定的时间点开始按间隔执行，而不是从服务启动时间开始。
+
+    Args:
+        base_hour: Base hour (0-23), e.g., 23 means 23:00.
+                   任务将从此时间点开始按间隔计算执行时间。
+
+    Returns:
+        datetime: Timezone-aware start_date for IntervalTrigger.
+
+    Examples:
+        base_hour=23, interval=1 -> 执行时间: 23:00, 00:00, 01:00, ...
+        base_hour=0, interval=6 -> 执行时间: 00:00, 06:00, 12:00, 18:00, ...
+    """
+    tz = pytz.timezone(settings.scheduler_timezone)
+    now = datetime.now(tz)
+
+    # 构造今天的基准时间点
+    today_base = now.replace(hour=base_hour, minute=0, second=0, microsecond=0)
+
+    # 如果当前的基准时间点已过，直接使用今天的时间点
+    # APScheduler 会自动计算下一次运行时间
+    if now >= today_base:
+        return today_base
+    else:
+        # 如果还没到今天的基准时间，从昨天开始
+        # 这样今天的时间点也会被正确计算
+        return today_base - timedelta(days=1)
 
 
 def get_scheduler() -> AsyncIOScheduler:
@@ -73,10 +108,14 @@ async def start_scheduler() -> None:
     # 延迟导入爬虫任务函数，避免启动时加载不必要的依赖
     # Add crawl job
     from apps.scheduler.jobs.crawl_job import run_crawl_job
+    crawl_interval = feature_config.get_int("scheduler.crawl_interval_hours", settings.crawl_interval_hours)
+    crawl_base_hour = feature_config.get_int("scheduler.crawl_base_hour", 0)
     scheduler.add_job(
         run_crawl_job,
-        # 优先从功能配置中心获取爬取间隔时间，若未配置则使用全局默认值
-        IntervalTrigger(hours=feature_config.get_int("scheduler.crawl_interval_hours", settings.crawl_interval_hours)),
+        IntervalTrigger(
+            hours=crawl_interval,
+            start_date=_calculate_interval_start_date(crawl_base_hour)
+        ),
         id="crawl_job",
         name="Crawl articles from all sources",
         # replace_existing=True 确保重启时不会出现重复任务
@@ -171,9 +210,14 @@ async def start_scheduler() -> None:
     if feature_config.get_bool("feature.ai_processor", False):
         # 仅在功能启用时才导入相关模块，减少不必要的依赖加载
         from apps.scheduler.jobs.ai_process_job import run_ai_process_job
+        ai_interval = feature_config.get_int("scheduler.ai_process_interval_hours", 1)
+        ai_base_hour = feature_config.get_int("scheduler.ai_process_base_hour", 0)
         scheduler.add_job(
             run_ai_process_job,
-            IntervalTrigger(hours=feature_config.get_int("scheduler.ai_process_interval_hours", 1)),
+            IntervalTrigger(
+                hours=ai_interval,
+                start_date=_calculate_interval_start_date(ai_base_hour)
+            ),
             id="ai_process_job",
             name="AI process new articles",
             replace_existing=True,
@@ -189,9 +233,14 @@ async def start_scheduler() -> None:
     # Embedding computation job
     if feature_config.get_bool("feature.embedding", False):
         from apps.scheduler.jobs.embedding_job import run_embedding_job
+        embedding_interval = feature_config.get_int("scheduler.embedding_interval_hours", 2)
+        embedding_base_hour = feature_config.get_int("scheduler.embedding_base_hour", 0)
         scheduler.add_job(
             run_embedding_job,
-            IntervalTrigger(hours=feature_config.get_int("scheduler.embedding_interval_hours", 2)),
+            IntervalTrigger(
+                hours=embedding_interval,
+                start_date=_calculate_interval_start_date(embedding_base_hour)
+            ),
             id="embedding_job",
             name="Compute article embeddings",
             replace_existing=True,
@@ -251,9 +300,14 @@ async def start_scheduler() -> None:
     # Action item extraction job
     if feature_config.get_bool("feature.action_items", False):
         from apps.scheduler.jobs.action_extract_job import run_action_extract_job
+        action_interval = feature_config.get_int("scheduler.action_extract_interval_hours", 2)
+        action_base_hour = feature_config.get_int("scheduler.action_extract_base_hour", 0)
         scheduler.add_job(
             run_action_extract_job,
-            IntervalTrigger(hours=feature_config.get_int("scheduler.action_extract_interval_hours", 2)),
+            IntervalTrigger(
+                hours=action_interval,
+                start_date=_calculate_interval_start_date(action_base_hour)
+            ),
             id="action_extract_job",
             name="Extract action items from articles",
             replace_existing=True,

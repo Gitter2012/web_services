@@ -45,7 +45,11 @@
 
         /* Stats */
         .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
-        .stat-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .stat-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); position: relative; }
+        .stat-card.clickable { cursor: pointer; transition: all 0.2s; }
+        .stat-card.clickable:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); transform: translateY(-2px); }
+        .stat-card .stat-link { font-size: 12px; color: #4ecdc4; margin-top: 8px; display: none; }
+        .stat-card.clickable .stat-link { display: block; }
         .stat-value { font-size: 28px; font-weight: 600; color: #1a1a2e; }
         .stat-label { font-size: 13px; color: #888; margin-top: 4px; }
 
@@ -103,8 +107,8 @@
         .category-item input[type="checkbox"] { width: 16px; height: 16px; }
 
         /* Modal */
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
-        .modal.active { display: flex; justify-content: center; align-items: center; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+        .modal.active { display: flex; }
         .modal-content { background: white; border-radius: 12px; width: 500px; max-width: 90%; max-height: 90vh; overflow-y: auto; }
         .modal-header { padding: 20px 24px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
         .modal-header h3 { font-size: 18px; }
@@ -241,13 +245,15 @@
                         <div class="stat-value" id="stat-articles">0</div>
                         <div class="stat-label">文章总数</div>
                     </div>
-                    <div class="stat-card">
+                    <div class="stat-card clickable" onclick="switchSection('sources')">
                         <div class="stat-value" id="stat-sources">0</div>
                         <div class="stat-label">数据源</div>
+                        <div class="stat-link">查看详情 →</div>
                     </div>
-                    <div class="stat-card">
+                    <div class="stat-card clickable" onclick="showSubscriptionsModal()">
                         <div class="stat-value" id="stat-subscriptions">0</div>
                         <div class="stat-label">用户订阅</div>
+                        <div class="stat-link">查看详情 →</div>
                     </div>
                 </div>
 
@@ -267,6 +273,21 @@
                             </thead>
                             <tbody id="recent-articles"></tbody>
                         </table>
+                    </div>
+                </div>
+
+                <!-- Subscriptions Detail Modal -->
+                <div class="modal" id="subscriptions-modal">
+                    <div class="modal-content" style="max-width: 600px;">
+                        <div class="modal-header">
+                            <h2>用户订阅统计</h2>
+                            <button class="modal-close" onclick="document.getElementById('subscriptions-modal').style.display='none'">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div id="subscriptions-detail">
+                                <div style="text-align:center;padding:20px;color:#888;">加载中...</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -606,6 +627,27 @@
                     <p>管理系统用户和权限</p>
                 </div>
 
+                <!-- 搜索筛选栏 -->
+                <div class="card" style="margin-bottom: 16px;">
+                    <div class="card-body" style="padding: 12px 16px;">
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                            <input type="text" id="user-search-input" placeholder="搜索用户名/邮箱" 
+                                class="form-input" style="max-width: 200px;" 
+                                onkeypress="if(event.key==='Enter')searchUsers()">
+                            <select id="user-role-filter" class="form-select" style="max-width: 120px;" onchange="searchUsers()">
+                                <option value="">全部角色</option>
+                            </select>
+                            <select id="user-status-filter" class="form-select" style="max-width: 120px;" onchange="searchUsers()">
+                                <option value="">全部状态</option>
+                                <option value="true">已激活</option>
+                                <option value="false">已禁用</option>
+                            </select>
+                            <button class="btn btn-primary" onclick="searchUsers()">搜索</button>
+                            <button class="btn btn-secondary" onclick="resetUserSearch()">重置</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="card">
                     <div class="card-body">
                         <table class="table">
@@ -624,6 +666,9 @@
                         </table>
                     </div>
                 </div>
+
+                <!-- 用户分页 -->
+                <div class="pagination" id="user-pagination" style="display:none;"></div>
             </div>
 
             <!-- Email Section -->
@@ -1186,6 +1231,7 @@
                 <div class="tabs">
                     <button class="tab active" onclick="switchConfigTab('retention')">数据保留</button>
                     <button class="tab" onclick="switchConfigTab('scheduler')">调度设置</button>
+                    <button class="tab" onclick="switchConfigTab('pipeline')">Pipeline 配置</button>
                     <button class="tab" onclick="switchConfigTab('features')">功能开关</button>
                     <button class="tab" onclick="switchConfigTab('advanced')">高级设置</button>
                 </div>
@@ -1227,7 +1273,12 @@
                         <div class="card-body">
                             <div class="form-group">
                                 <label class="form-label">爬取间隔（小时）</label>
-                                <input type="number" class="form-input" id="config-crawl-interval" value="6">
+                                <input type="number" class="form-input" id="config-crawl-interval" value="6" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">爬取基准时间（小时，0-23）</label>
+                                <input type="number" class="form-input" id="config-crawl-base-hour" value="0" min="0" max="23">
+                                <small class="form-hint">任务从此时间点开始按间隔执行，如设为 23 且间隔 6 小时，则在 23:00、05:00、11:00、17:00 执行</small>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">数据清理时间（小时，0-23）</label>
@@ -1239,11 +1290,22 @@
                             </div>
                             <div class="form-group">
                                 <label class="form-label">AI 处理间隔（小时）</label>
-                                <input type="number" class="form-input" id="config-ai-interval" value="1">
+                                <input type="number" class="form-input" id="config-ai-interval" value="1" min="1" max="168">
+                                <small class="form-hint">建议范围 1-168 小时（1 小时到 7 天）</small>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">AI 处理基准时间（小时，0-23）</label>
+                                <input type="number" class="form-input" id="config-ai-base-hour" value="0" min="0" max="23">
+                                <small class="form-hint">任务从此时间点开始按间隔执行，如设为 23 且间隔 1 小时，则在 23:00、00:00、01:00... 执行</small>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">向量嵌入间隔（小时）</label>
-                                <input type="number" class="form-input" id="config-embedding-interval" value="2">
+                                <input type="number" class="form-input" id="config-embedding-interval" value="2" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">向量嵌入基准时间（小时，0-23）</label>
+                                <input type="number" class="form-input" id="config-embedding-base-hour" value="0" min="0" max="23">
+                                <small class="form-hint">任务从此时间点开始按间隔执行</small>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">事件聚类时间（小时，0-23）</label>
@@ -1268,6 +1330,11 @@
                             <div class="form-group">
                                 <label class="form-label">行动项提取间隔（小时）</label>
                                 <input type="number" class="form-input" id="config-action-interval" value="2" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">行动项提取基准时间（小时，0-23）</label>
+                                <input type="number" class="form-input" id="config-action-base-hour" value="0" min="0" max="23">
+                                <small class="form-hint">任务从此时间点开始按间隔执行</small>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">周报生成（星期几）</label>
@@ -1298,6 +1365,60 @@
                                 <input type="number" class="form-input" id="config-notification-minute" value="0" min="0" max="59">
                             </div>
                             <button class="btn btn-primary" onclick="saveConfigGroup('scheduler')">保存配置</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pipeline Config -->
+                <div id="config-pipeline-panel" class="config-panel" style="display:none;">
+                    <!-- Pipeline Feature Toggles -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Pipeline 功能开关</h3>
+                            <span style="color: #888; font-size: 13px;">启用或禁用 Pipeline 处理模块</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="toggle-list" id="config-pipeline-feature-toggles">
+                                <div style="text-align:center;color:#888;padding:20px;">加载中...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pipeline Batch Config -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>批处理配置</h3>
+                            <span style="color: #888; font-size: 13px;">设置各处理阶段的批次大小</span>
+                        </div>
+                        <div class="card-body">
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                                <div class="form-group">
+                                    <label class="form-label">AI 批次上限</label>
+                                    <input type="number" class="form-input" id="config-pipeline-ai-batch-limit" value="200" min="1">
+                                    <small class="form-hint">单次 AI 处理的最大文章数</small>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Embedding 批次上限</label>
+                                    <input type="number" class="form-input" id="config-pipeline-embedding-batch-limit" value="500" min="1">
+                                    <small class="form-hint">单次向量化的最大文章数</small>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Event 批次上限</label>
+                                    <input type="number" class="form-input" id="config-pipeline-event-batch-limit" value="500" min="1">
+                                    <small class="form-hint">单次事件聚类的最大文章数</small>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Action 批次上限</label>
+                                    <input type="number" class="form-input" id="config-pipeline-action-batch-limit" value="200" min="1">
+                                    <small class="form-hint">单次行动项提取的最大文章数</small>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Worker 轮询间隔（分钟）</label>
+                                    <input type="number" class="form-input" id="config-pipeline-worker-interval" value="10" min="1">
+                                    <small class="form-hint">Pipeline 队列处理间隔</small>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" style="margin-top:12px;" onclick="saveConfigGroup('pipeline')">保存配置</button>
                         </div>
                     </div>
                 </div>
@@ -1523,25 +1644,25 @@
                         <div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:20px 0;flex-wrap:wrap;">
                             <div style="text-align:center;padding:16px 20px;background:#f0f9ff;border-radius:8px;min-width:120px;">
                                 <div style="font-size:13px;color:#2563eb;font-weight:600;">1. AI 分析</div>
-                                <div style="font-size:11px;color:#888;margin-top:4px;">每小时</div>
+                                <div style="font-size:11px;color:#888;margin-top:4px;" id="pl-schedule-ai">加载中...</div>
                                 <div style="font-size:18px;font-weight:600;margin-top:8px;" id="pl-detail-ai">-</div>
                             </div>
                             <div style="font-size:20px;color:#ddd;">→</div>
                             <div style="text-align:center;padding:16px 20px;background:#faf5ff;border-radius:8px;min-width:120px;">
                                 <div style="font-size:13px;color:#7c3aed;font-weight:600;">2. 向量化</div>
-                                <div style="font-size:11px;color:#888;margin-top:4px;">每2小时</div>
+                                <div style="font-size:11px;color:#888;margin-top:4px;" id="pl-schedule-embed">加载中...</div>
                                 <div style="font-size:18px;font-weight:600;margin-top:8px;" id="pl-detail-embed">-</div>
                             </div>
                             <div style="font-size:20px;color:#ddd;">→</div>
                             <div style="text-align:center;padding:16px 20px;background:#ecfdf5;border-radius:8px;min-width:120px;">
                                 <div style="font-size:13px;color:#059669;font-weight:600;">3. 事件聚类</div>
-                                <div style="font-size:11px;color:#888;margin-top:4px;">每日 2AM</div>
+                                <div style="font-size:11px;color:#888;margin-top:4px;" id="pl-schedule-events">加载中...</div>
                                 <div style="font-size:18px;font-weight:600;margin-top:8px;" id="pl-detail-events">-</div>
                             </div>
                             <div style="font-size:20px;color:#ddd;">→</div>
                             <div style="text-align:center;padding:16px 20px;background:#fffbeb;border-radius:8px;min-width:120px;">
                                 <div style="font-size:13px;color:#d97706;font-weight:600;">4. 话题发现</div>
-                                <div style="font-size:11px;color:#888;margin-top:4px;">每周一 1AM</div>
+                                <div style="font-size:11px;color:#888;margin-top:4px;" id="pl-schedule-topics">加载中...</div>
                                 <div style="font-size:18px;font-weight:600;margin-top:8px;" id="pl-detail-topics">-</div>
                             </div>
                         </div>
@@ -1600,54 +1721,14 @@
                 </div>
 
                 <!-- Feature Flags -->
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Pipeline 功能开关</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="toggle-list" id="pipeline-feature-toggles">
-                            <div style="text-align:center;color:#888;padding:20px;">加载中...</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Pipeline Batch Config -->
-                <div class="card">
-                    <div class="card-header">
-                        <h3>批处理配置</h3>
-                    </div>
-                    <div class="card-body">
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-                            <div class="form-group">
-                                <label class="form-label">AI 批次上限</label>
-                                <input type="number" class="form-input" id="pl-ai-batch-limit" value="200" min="1">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Embedding 批次上限</label>
-                                <input type="number" class="form-input" id="pl-embedding-batch-limit" value="500" min="1">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Event 批次上限</label>
-                                <input type="number" class="form-input" id="pl-event-batch-limit" value="500" min="1">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Action 批次上限</label>
-                                <input type="number" class="form-input" id="pl-action-batch-limit" value="200" min="1">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Worker 轮询间隔（分钟）</label>
-                                <input type="number" class="form-input" id="pl-worker-interval" value="10" min="1">
-                            </div>
-                        </div>
-                        <button class="btn btn-primary" style="margin-top:12px;" onclick="savePipelineBatchConfig()">保存配置</button>
-                    </div>
+                <div clas                    </div>
                 </div>
             </div>
 
         </div>
     </div>
 
-    <script>
+<script>
         // APP_BASE 等变量已在 <head> 中定义
 
         let currentCrawlerTab = 'arxiv';
@@ -1726,7 +1807,7 @@
 
             if (name === 'sources') loadSources();
             if (name === 'crawlers') loadCrawlers();
-            if (name === 'users') loadUsers();
+            if (name === 'users') { loadUsers(); loadUserRoleFilter(); }
             if (name === 'email') loadEmailConfig();
             if (name === 'config') loadConfig();
             if (name === 'backups') loadBackups();
@@ -1768,6 +1849,88 @@
                 `).join('');
             } catch (e) {
                 console.error('Failed to load dashboard:', e);
+            }
+        }
+
+        // Subscriptions Detail Modal
+        async function showSubscriptionsModal() {
+            const modal = document.getElementById('subscriptions-modal');
+            modal.style.display = 'flex';
+            
+            const detailDiv = document.getElementById('subscriptions-detail');
+            detailDiv.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">加载中...</div>';
+
+            try {
+                const token = localStorage.getItem('access_token');
+                // 获取各类型订阅统计
+                const [rssRes, arxivRes] = await Promise.all([
+                    fetch(`${API_BASE}/subscriptions`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${ADMIN_BASE}/sources/arxiv?page_size=500`, { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+
+                const rssData = await rssRes.json();
+                const arxivData = await arxivRes.json();
+
+                // 统计各类型订阅数
+                const subStats = {};
+                if (rssData.subscriptions) {
+                    rssData.subscriptions.forEach(sub => {
+                        const type = sub.source_type || 'other';
+                        subStats[type] = (subStats[type] || 0) + 1;
+                    });
+                }
+
+                const typeNames = {
+                    'arxiv': 'ArXiv 分类',
+                    'rss': 'RSS 订阅',
+                    'wechat': '微信公众号',
+                    'weibo': '微博热搜',
+                    'hackernews': 'HackerNews',
+                    'reddit': 'Reddit',
+                    'twitter': 'Twitter'
+                };
+
+                const totalSubs = Object.values(subStats).reduce((a, b) => a + b, 0);
+
+                let html = `
+                    <div style="margin-bottom: 16px; padding: 12px; background: #f0f9ff; border-radius: 8px;">
+                        <strong>总订阅数：${totalSubs}</strong>
+                    </div>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>来源类型</th>
+                                <th>订阅数量</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                Object.entries(subStats).forEach(([type, count]) => {
+                    html += `
+                        <tr>
+                            <td>${typeNames[type] || type}</td>
+                            <td>${count}</td>
+                        </tr>
+                    `;
+                });
+
+                html += '</tbody></table>';
+                
+                // 显示活跃数据源
+                const activeArxiv = (arxivData.categories || []).filter(c => c.is_active).length;
+                html += `
+                    <div style="margin-top: 16px; padding: 12px; background: #ecfdf5; border-radius: 8px;">
+                        <h4 style="margin: 0 0 8px 0; font-size: 14px;">数据源状态</h4>
+                        <div style="font-size: 13px; color: #666;">
+                            ArXiv 活跃分类: <strong>${activeArxiv}</strong> / ${(arxivData.categories || []).length}
+                        </div>
+                    </div>
+                `;
+
+                detailDiv.innerHTML = html;
+            } catch (e) {
+                detailDiv.innerHTML = '<div style="text-align:center;padding:20px;color:#dc2626;">加载失败</div>';
             }
         }
 
@@ -2526,10 +2689,25 @@
         }
 
         // Users
-        async function loadUsers() {
+        let currentUserPage = 1;
+
+        async function loadUsers(page = 1) {
+            currentUserPage = page;
             const token = localStorage.getItem('access_token');
+            
+            // 获取筛选参数
+            const search = document.getElementById('user-search-input')?.value || '';
+            const role = document.getElementById('user-role-filter')?.value || '';
+            const status = document.getElementById('user-status-filter')?.value || '';
+
+            // 构建查询参数
+            const params = new URLSearchParams({ page, page_size: 20 });
+            if (search) params.append('search', search);
+            if (role) params.append('role', role);
+            if (status) params.append('is_active', status);
+
             try {
-                const res = await fetch(`${ADMIN_BASE}/users`, {
+                const res = await fetch(`${ADMIN_BASE}/users?${params}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
@@ -2550,8 +2728,73 @@
                         </td>
                     </tr>
                 `).join('');
+
+                // 渲染分页
+                renderUserPagination(data.total);
             } catch (e) {
                 console.error('Failed to load users:', e);
+            }
+        }
+
+        function renderUserPagination(total) {
+            const container = document.getElementById('user-pagination');
+            const totalPages = Math.ceil(total / 20);
+            
+            if (totalPages <= 1) {
+                container.style.display = 'none';
+                return;
+            }
+            
+            container.style.display = 'flex';
+            let html = '';
+            
+            // 上一页
+            html += `<button class="page-btn" onclick="loadUsers(${currentUserPage - 1})" ${currentUserPage === 1 ? 'disabled' : ''}>上一页</button>`;
+            
+            // 页码
+            for (let i = 1; i <= Math.min(totalPages, 5); i++) {
+                html += `<button class="page-btn ${i === currentUserPage ? 'active' : ''}" onclick="loadUsers(${i})">${i}</button>`;
+            }
+            
+            if (totalPages > 5) {
+                html += `<span style="padding: 8px;">...</span>`;
+                html += `<button class="page-btn" onclick="loadUsers(${totalPages})">${totalPages}</button>`;
+            }
+            
+            // 下一页
+            html += `<button class="page-btn" onclick="loadUsers(${currentUserPage + 1})" ${currentUserPage === totalPages ? 'disabled' : ''}>下一页</button>`;
+            
+            html += `<span class="page-info">共 ${total} 条</span>`;
+            container.innerHTML = html;
+        }
+
+        function searchUsers() {
+            loadUsers(1);
+        }
+
+        function resetUserSearch() {
+            document.getElementById('user-search-input').value = '';
+            document.getElementById('user-role-filter').value = '';
+            document.getElementById('user-status-filter').value = '';
+            loadUsers(1);
+        }
+
+        async function loadUserRoleFilter() {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/roles`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const select = document.getElementById('user-role-filter');
+                data.roles.forEach(r => {
+                    const opt = document.createElement('option');
+                    opt.value = r.name;
+                    opt.textContent = r.name;
+                    select.appendChild(opt);
+                });
+            } catch (e) {
+                console.error('Failed to load roles for filter:', e);
             }
         }
 
@@ -3188,19 +3431,34 @@
                 // Populate scheduler settings
                 const scheduler = allConfigs.scheduler || {};
                 document.getElementById('config-crawl-interval').value = scheduler['scheduler.crawl_interval_hours'] || 6;
+                document.getElementById('config-crawl-base-hour').value = scheduler['scheduler.crawl_base_hour'] || 0;
                 document.getElementById('config-cleanup-hour').value = scheduler['scheduler.cleanup_hour'] || 3;
                 document.getElementById('config-backup-hour').value = scheduler['scheduler.backup_hour'] || 4;
                 document.getElementById('config-ai-interval').value = scheduler['scheduler.ai_process_interval_hours'] || 1;
+                document.getElementById('config-ai-base-hour').value = scheduler['scheduler.ai_process_base_hour'] || 0;
                 document.getElementById('config-embedding-interval').value = scheduler['scheduler.embedding_interval_hours'] || 2;
+                document.getElementById('config-embedding-base-hour').value = scheduler['scheduler.embedding_base_hour'] || 0;
                 document.getElementById('config-event-cluster-hour').value = scheduler['scheduler.event_cluster_hour'] || 2;
                 document.getElementById('config-topic-day').value = scheduler['scheduler.topic_discovery_day'] || 'mon';
                 document.getElementById('config-topic-hour').value = scheduler['scheduler.topic_discovery_hour'] || 1;
                 document.getElementById('config-action-interval').value = scheduler['scheduler.action_extract_interval_hours'] || 2;
+                document.getElementById('config-action-base-hour').value = scheduler['scheduler.action_extract_base_hour'] || 0;
                 document.getElementById('config-report-weekly-day').value = scheduler['scheduler.report_weekly_day'] || 'mon';
                 document.getElementById('config-report-weekly-hour').value = scheduler['scheduler.report_weekly_hour'] || 6;
                 document.getElementById('config-report-monthly-hour').value = scheduler['scheduler.report_monthly_hour'] || 7;
                 document.getElementById('config-notification-hour').value = scheduler['scheduler.notification_hour'] || 9;
                 document.getElementById('config-notification-minute').value = scheduler['scheduler.notification_minute'] || 0;
+
+                // Populate pipeline settings
+                const pipeline = allConfigs.pipeline || {};
+                document.getElementById('config-pipeline-ai-batch-limit').value = pipeline['pipeline.ai_batch_limit'] || 200;
+                document.getElementById('config-pipeline-embedding-batch-limit').value = pipeline['pipeline.embedding_batch_limit'] || 500;
+                document.getElementById('config-pipeline-event-batch-limit').value = pipeline['pipeline.event_batch_limit'] || 500;
+                document.getElementById('config-pipeline-action-batch-limit').value = pipeline['pipeline.action_batch_limit'] || 200;
+                document.getElementById('config-pipeline-worker-interval').value = pipeline['pipeline.worker_interval_minutes'] || 10;
+
+                // Load pipeline feature toggles
+                loadPipelineFeatureToggles();
 
                 // Populate advanced settings
                 const cache = allConfigs.cache || {};
@@ -3215,6 +3473,74 @@
                 loadFeaturesList();
             } catch (e) {
                 console.error('Failed to load config:', e);
+            }
+        }
+
+        async function loadPipelineFeatureToggles() {
+            const token = localStorage.getItem('access_token');
+            const container = document.getElementById('config-pipeline-feature-toggles');
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/features`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const features = data.features || [];
+
+                // 只显示 Pipeline 相关的功能开关
+                const pipelineFeatures = [
+                    'feature.ai_processor',
+                    'feature.embedding',
+                    'feature.event_clustering',
+                    'feature.topic_radar',
+                    'feature.action_items',
+                    'feature.report_generation'
+                ];
+
+                const featureNames = {
+                    'feature.ai_processor': 'AI 文章处理',
+                    'feature.embedding': '向量嵌入',
+                    'feature.event_clustering': '事件聚类',
+                    'feature.topic_radar': '话题雷达',
+                    'feature.action_items': '行动项提取',
+                    'feature.report_generation': '报告生成'
+                };
+
+                const filteredFeatures = features.filter(f => pipelineFeatures.includes(f.key));
+
+                container.innerHTML = filteredFeatures.map(f => `
+                    <div class="toggle-item">
+                        <div class="toggle-info">
+                            <h4>${featureNames[f.key] || f.key}</h4>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" ${f.enabled ? 'checked' : ''} onchange="togglePipelineFeature('${f.key}', this.checked)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                `).join('');
+            } catch (e) {
+                container.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">加载失败</div>';
+            }
+        }
+
+        async function togglePipelineFeature(key, enabled) {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/features/${key}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ enabled })
+                });
+                if (!res.ok) {
+                    alert('更新失败');
+                    loadPipelineFeatureToggles();
+                }
+            } catch (e) {
+                alert('更新失败');
             }
         }
 
@@ -3292,19 +3618,29 @@
                 configs['retention.backup_enabled'] = document.getElementById('config-backup-enabled').checked ? 'true' : 'false';
             } else if (group === 'scheduler') {
                 configs['scheduler.crawl_interval_hours'] = document.getElementById('config-crawl-interval').value;
+                configs['scheduler.crawl_base_hour'] = document.getElementById('config-crawl-base-hour').value;
                 configs['scheduler.cleanup_hour'] = document.getElementById('config-cleanup-hour').value;
                 configs['scheduler.backup_hour'] = document.getElementById('config-backup-hour').value;
                 configs['scheduler.ai_process_interval_hours'] = document.getElementById('config-ai-interval').value;
+                configs['scheduler.ai_process_base_hour'] = document.getElementById('config-ai-base-hour').value;
                 configs['scheduler.embedding_interval_hours'] = document.getElementById('config-embedding-interval').value;
+                configs['scheduler.embedding_base_hour'] = document.getElementById('config-embedding-base-hour').value;
                 configs['scheduler.event_cluster_hour'] = document.getElementById('config-event-cluster-hour').value;
                 configs['scheduler.topic_discovery_day'] = document.getElementById('config-topic-day').value;
                 configs['scheduler.topic_discovery_hour'] = document.getElementById('config-topic-hour').value;
                 configs['scheduler.action_extract_interval_hours'] = document.getElementById('config-action-interval').value;
+                configs['scheduler.action_extract_base_hour'] = document.getElementById('config-action-base-hour').value;
                 configs['scheduler.report_weekly_day'] = document.getElementById('config-report-weekly-day').value;
                 configs['scheduler.report_weekly_hour'] = document.getElementById('config-report-weekly-hour').value;
                 configs['scheduler.report_monthly_hour'] = document.getElementById('config-report-monthly-hour').value;
                 configs['scheduler.notification_hour'] = document.getElementById('config-notification-hour').value;
                 configs['scheduler.notification_minute'] = document.getElementById('config-notification-minute').value;
+            } else if (group === 'pipeline') {
+                configs['pipeline.ai_batch_limit'] = document.getElementById('config-pipeline-ai-batch-limit').value;
+                configs['pipeline.embedding_batch_limit'] = document.getElementById('config-pipeline-embedding-batch-limit').value;
+                configs['pipeline.event_batch_limit'] = document.getElementById('config-pipeline-event-batch-limit').value;
+                configs['pipeline.action_batch_limit'] = document.getElementById('config-pipeline-action-batch-limit').value;
+                configs['pipeline.worker_interval_minutes'] = document.getElementById('config-pipeline-worker-interval').value;
             } else if (group === 'advanced') {
                 configs['cache.enabled'] = document.getElementById('config-cache-enabled').checked ? 'true' : 'false';
                 configs['cache.default_ttl'] = document.getElementById('config-cache-ttl').value;
@@ -3313,7 +3649,7 @@
             }
 
             try {
-                const res = await fetch(`${ADMIN_BASE}/config/batch`, {
+                const res = await fetch(`${ADMIN_BASE}/batch-config`, {
                     method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -3323,10 +3659,15 @@
                 });
 
                 if (res.ok) {
-                    alert('配置已保存');
+                    const data = await res.json();
+                    let msg = '配置已保存';
+                    if (data.rescheduled_jobs && data.rescheduled_jobs.length > 0) {
+                        msg += '\n已重新调度任务: ' + [...new Set(data.rescheduled_jobs)].join(', ');
+                    }
+                    alert(msg);
                 } else {
                     const err = await res.json();
-                    alert(err.detail || '保存失败');
+                    alert(err.detail || JSON.stringify(err) || '保存失败');
                 }
             } catch (e) {
                 alert('保存失败');
@@ -3809,7 +4150,7 @@
             };
 
             try {
-                const res = await fetch(`${ADMIN_BASE}/config/batch`, {
+                const res = await fetch(`${ADMIN_BASE}/batch-config`, {
                     method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -3833,7 +4174,7 @@
             };
 
             try {
-                const res = await fetch(`${ADMIN_BASE}/config/batch`, {
+                const res = await fetch(`${ADMIN_BASE}/batch-config`, {
                     method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -5014,8 +5355,6 @@
                 refreshPipelineStats(),
                 loadTokenStats(),
                 loadProcessingLogs(),
-                loadPipelineFeatureToggles(),
-                loadPipelineBatchConfig(),
             ]);
         }
 
@@ -5073,8 +5412,45 @@
                 document.getElementById('pl-detail-embed').textContent = embedCount + ' 篇';
                 document.getElementById('pl-detail-events').textContent = eventCount + ' 个';
                 document.getElementById('pl-detail-topics').textContent = topicCount + ' 个';
+
+                // 加载调度配置并更新显示
+                await loadPipelineScheduleDisplay();
             } catch(e) {
                 console.error('Failed to load pipeline stats:', e);
+            }
+        }
+
+        // 加载并显示调度配置
+        async function loadPipelineScheduleDisplay() {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/config/groups`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const scheduler = (data.groups || {}).scheduler || {};
+
+                // AI 分析调度
+                const aiInterval = scheduler['scheduler.ai_process_interval_hours'] || 1;
+                const aiBaseHour = scheduler['scheduler.ai_process_base_hour'] || 0;
+                document.getElementById('pl-schedule-ai').textContent = `每${aiInterval}小时 (${aiBaseHour}:00 起)`;
+
+                // 向量化调度
+                const embedInterval = scheduler['scheduler.embedding_interval_hours'] || 2;
+                const embedBaseHour = scheduler['scheduler.embedding_base_hour'] || 0;
+                document.getElementById('pl-schedule-embed').textContent = `每${embedInterval}小时 (${embedBaseHour}:00 起)`;
+
+                // 事件聚类调度
+                const eventHour = scheduler['scheduler.event_cluster_hour'] || 2;
+                document.getElementById('pl-schedule-events').textContent = `每日 ${eventHour}:00`;
+
+                // 话题发现调度
+                const topicDay = scheduler['scheduler.topic_discovery_day'] || 'mon';
+                const topicHour = scheduler['scheduler.topic_discovery_hour'] || 1;
+                const dayNames = { mon: '周一', tue: '周二', wed: '周三', thu: '周四', fri: '周五', sat: '周六', sun: '周日' };
+                document.getElementById('pl-schedule-topics').textContent = `${dayNames[topicDay] || '周一'} ${topicHour}:00`;
+            } catch (e) {
+                console.error('Failed to load schedule config:', e);
             }
         }
 
@@ -5084,7 +5460,7 @@
             const tbody = document.getElementById('token-stats-body');
 
             try {
-                const res = await fetch(`${API_BASE}/ai/process/token-stats`, { headers });
+                const res = await fetch(`${API_BASE}/ai/token-stats?days=7`, { headers });
                 if (!res.ok) {
                     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#999;">无法加载 Token 统计（功能可能未启用）</td></tr>`;
                     return;
@@ -5156,120 +5532,6 @@
                 }).join('');
             } catch(e) {
                 tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#999;">处理日志端点暂未开放</td></tr>`;
-            }
-        }
-
-        async function loadPipelineFeatureToggles() {
-            const token = localStorage.getItem('access_token');
-            const headers = { 'Authorization': `Bearer ${token}` };
-            const container = document.getElementById('pipeline-feature-toggles');
-
-            const featureMeta = {
-                'feature.ai_processor': { name: 'AI 处理器', desc: '启用 AI 内容分析（摘要、分类、评分）' },
-                'feature.embedding': { name: '向量嵌入', desc: '启用文章向量化（语义搜索前提）' },
-                'feature.event_clustering': { name: '事件聚类', desc: '启用自动事件聚类' },
-                'feature.topic_radar': { name: '话题雷达', desc: '启用话题自动发现' },
-                'feature.action_items': { name: '行动建议', desc: '启用可执行建议提取' },
-                'feature.report_generation': { name: '报告生成', desc: '启用周报/月报自动生成' },
-            };
-
-            try {
-                const res = await fetch(`${ADMIN_BASE}/features`, { headers });
-                if (!res.ok) {
-                    container.innerHTML = '<div style="color:#dc2626;text-align:center;padding:20px;">加载功能开关失败</div>';
-                    return;
-                }
-                const data = await res.json();
-                const featureList = data.features || [];
-
-                let html = '';
-                for (const key of Object.keys(featureMeta)) {
-                    const meta = featureMeta[key];
-                    const feature = featureList.find(f => f.key === key);
-                    const enabled = feature ? feature.enabled : false;
-
-                    html += `
-                        <div class="toggle-item">
-                            <div class="toggle-info">
-                                <h4>${meta.name}</h4>
-                                <p>${meta.desc}</p>
-                            </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" ${enabled ? 'checked' : ''} onchange="togglePipelineFeature('${key}', this.checked)">
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                    `;
-                }
-
-                container.innerHTML = html || '<div style="color:#999;text-align:center;padding:20px;">无可用功能开关</div>';
-            } catch(e) {
-                container.innerHTML = '<div style="color:#dc2626;text-align:center;padding:20px;">网络错误，无法加载功能开关</div>';
-            }
-        }
-
-        async function loadPipelineBatchConfig() {
-            const token = localStorage.getItem('access_token');
-            try {
-                const res = await fetch(`${ADMIN_BASE}/config/groups`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await res.json();
-                const pipeline = (data.groups || {}).pipeline || {};
-                document.getElementById('pl-ai-batch-limit').value = pipeline['pipeline.ai_batch_limit'] || 200;
-                document.getElementById('pl-embedding-batch-limit').value = pipeline['pipeline.embedding_batch_limit'] || 500;
-                document.getElementById('pl-event-batch-limit').value = pipeline['pipeline.event_batch_limit'] || 500;
-                document.getElementById('pl-action-batch-limit').value = pipeline['pipeline.action_batch_limit'] || 200;
-                document.getElementById('pl-worker-interval').value = pipeline['pipeline.worker_interval_minutes'] || 10;
-            } catch (e) {
-                console.error('Failed to load pipeline batch config:', e);
-            }
-        }
-
-        async function savePipelineBatchConfig() {
-            const token = localStorage.getItem('access_token');
-            const configs = {
-                'pipeline.ai_batch_limit': document.getElementById('pl-ai-batch-limit').value,
-                'pipeline.embedding_batch_limit': document.getElementById('pl-embedding-batch-limit').value,
-                'pipeline.event_batch_limit': document.getElementById('pl-event-batch-limit').value,
-                'pipeline.action_batch_limit': document.getElementById('pl-action-batch-limit').value,
-                'pipeline.worker_interval_minutes': document.getElementById('pl-worker-interval').value,
-            };
-            try {
-                const res = await fetch(`${ADMIN_BASE}/config/batch`, {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ configs }),
-                });
-                if (res.ok) alert('批处理配置已保存');
-                else alert('保存失败');
-            } catch (e) {
-                alert('保存失败');
-            }
-        }
-
-        async function togglePipelineFeature(key, enabled) {
-            const token = localStorage.getItem('access_token');
-            try {
-                const res = await fetch(`${ADMIN_BASE}/features/${key}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ enabled: enabled }),
-                });
-                if (!res.ok) {
-                    const err = await res.json().catch(() => ({}));
-                    alert('切换失败: ' + (err.detail || '未知错误'));
-                    loadPipelineFeatureToggles();
-                }
-            } catch(e) {
-                alert('网络错误');
-                loadPipelineFeatureToggles();
             }
         }
     </script>

@@ -1202,6 +1202,11 @@ INSERT INTO `system_config` (`config_key`, `config_value`, `description`, `is_se
 ('scheduler.report_monthly_hour', '7', 'Hour of day for monthly report generation on 1st (0-23)', 0),
 ('scheduler.notification_hour', '9', 'Hour of day to send notification emails (0-23)', 0),
 ('scheduler.notification_minute', '0', 'Minute of hour to send notification emails (0-59)', 0),
+-- Scheduler base hour configs (for interval-triggered jobs)
+('scheduler.crawl_base_hour', '0', 'Crawl job base hour (0-23) for interval calculation', 0),
+('scheduler.ai_process_base_hour', '0', 'AI process job base hour (0-23) for interval calculation', 0),
+('scheduler.embedding_base_hour', '0', 'Embedding job base hour (0-23) for interval calculation', 0),
+('scheduler.action_extract_base_hour', '0', 'Action extract job base hour (0-23) for interval calculation', 0),
 -- Pipeline batch limits
 ('pipeline.ai_batch_limit', '200', 'AI processing batch limit per run', 0),
 ('pipeline.embedding_batch_limit', '500', 'Embedding computation batch limit per run', 0),
