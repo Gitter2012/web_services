@@ -82,6 +82,7 @@ DEFAULT_CONFIGS: Dict[str, tuple[str, str]] = {
     "ai.ollama_timeout": ("120", "Ollama request timeout in seconds"),
     "ai.openai_model": ("gpt-4o", "OpenAI model name"),
     "ai.openai_model_light": ("gpt-4o-mini", "OpenAI light model name"),
+    "ai.openai_base_url": ("", "OpenAI base URL for proxies or compatible APIs"),
     "ai.openai_timeout": ("60", "OpenAI request timeout in seconds"),
     "ai.claude_model": ("claude-sonnet-4-20250514", "Claude model name"),
     "ai.claude_model_light": ("claude-haiku-4-20250514", "Claude light model name"),

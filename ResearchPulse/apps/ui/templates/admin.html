@@ -1526,6 +1526,11 @@
                                 <input type="password" class="form-input" id="ai-openai-api-key" placeholder="sk-...">
                             </div>
                             <div class="form-group">
+                                <label class="form-label">Base URL</label>
+                                <input type="text" class="form-input" id="ai-openai-base-url" placeholder="https://api.openai.com/v1">
+                                <small style="color: #666;">用于代理或兼容 API（如 Azure OpenAI）</small>
+                            </div>
+                            <div class="form-group">
                                 <label class="form-label">主模型</label>
                                 <input type="text" class="form-input" id="ai-openai-model" value="gpt-4o">
                             </div>
@@ -4831,6 +4836,7 @@
 
                 // Populate OpenAI settings
                 document.getElementById('ai-openai-api-key').value = aiConfig.openai_api_key === '***' ? '' : (aiConfig.openai_api_key || '');
+                document.getElementById('ai-openai-base-url').value = aiConfig.openai_base_url || '';
                 document.getElementById('ai-openai-model').value = aiConfig.openai_model || 'gpt-4o';
                 document.getElementById('ai-openai-model-light').value = aiConfig.openai_model_light || 'gpt-4o-mini';
                 document.getElementById('ai-openai-timeout').value = aiConfig.openai_timeout || 60;
@@ -4919,6 +4925,8 @@
             };
             const openaiKey = document.getElementById('ai-openai-api-key').value;
             if (openaiKey) config.openai_api_key = openaiKey;
+            const openaiBaseUrl = document.getElementById('ai-openai-base-url').value;
+            if (openaiBaseUrl) config.openai_base_url = openaiBaseUrl;
 
             try {
                 const res = await fetch(`${ADMIN_BASE}/ai/config`, {
