@@ -412,15 +412,18 @@ CREATE TABLE `arxiv_categories` (
 DROP TABLE IF EXISTS `wechat_accounts`;
 CREATE TABLE `wechat_accounts` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `name` VARCHAR(100) NOT NULL COMMENT '公众号名称',
-  `account_id` VARCHAR(100) NOT NULL COMMENT '公众号ID',
+  `account_name` VARCHAR(100) NOT NULL COMMENT '微信公众号唯一标识(biz)',
+  `display_name` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '显示名称',
   `description` TEXT DEFAULT NULL COMMENT '描述',
+  `avatar_url` VARCHAR(2000) NOT NULL DEFAULT '' COMMENT '头像URL',
   `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否激活',
   `last_fetched_at` DATETIME DEFAULT NULL COMMENT '最后抓取时间',
+  `error_count` INT NOT NULL DEFAULT 0 COMMENT '连续错误次数',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `account_id` (`account_id`)
+  UNIQUE KEY `account_name` (`account_name`),
+  KEY `idx_wechat_accounts_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='微信公众号表';
 
 -- -----------------------------------------------------------------------------
@@ -527,9 +530,10 @@ CREATE TABLE `backup_records` (
   `backup_size` BIGINT NOT NULL DEFAULT 0 COMMENT '备份大小(字节)',
   `article_count` INT NOT NULL DEFAULT 0 COMMENT '文章数量',
   `status` VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '状态: pending, completed, failed',
-  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `completed_at` DATETIME DEFAULT NULL COMMENT '完成时间',
   `error_message` TEXT DEFAULT NULL COMMENT '错误信息',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `backup_date` (`backup_date`),
   KEY `idx_backup_records_date` (`backup_date`),
@@ -588,7 +592,8 @@ CREATE TABLE `system_config` (
   `description` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '描述',
   `is_sensitive` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否敏感',
   `updated_by` BIGINT DEFAULT NULL COMMENT '更新者ID',
-  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`config_key`),
   KEY `idx_system_config_updated_by` (`updated_by`),
   CONSTRAINT `system_config_ibfk_1` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
