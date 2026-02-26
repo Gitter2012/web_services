@@ -60,6 +60,7 @@ show_help() {
     echo "              --ids <id...>      指定文章 ID"
     echo "              --unprocessed      仅处理未处理的文章"
     echo "              --source-type <t>  按来源类型筛选"
+    echo "              --concurrency, -c  并行数（默认: 1 串行，debug 模式强制串行）"
     echo ""
     echo "选项:"
     echo "  --limit <n>    每阶段最多处理的文章数 (默认: 50)"
@@ -78,8 +79,8 @@ show_help() {
     echo -e "  ${GREEN}# 重处理指定文章${NC}"
     echo "  ./scripts/ai-pipeline.sh reprocess --ids 12188 12189 --debug"
     echo ""
-    echo -e "  ${GREEN}# 批量重处理 100 篇${NC}"
-    echo "  ./scripts/ai-pipeline.sh reprocess --limit 100"
+    echo -e "  ${GREEN}# 批量重处理 100 篇（并行 4 个 worker）${NC}"
+    echo "  ./scripts/ai-pipeline.sh reprocess --limit 100 --concurrency 4"
     echo ""
     echo -e "  ${GREEN}# 每阶段最多处理 200 条文章${NC}"
     echo "  ./scripts/ai-pipeline.sh all --limit 200"
@@ -143,18 +144,30 @@ while [[ $# -gt 0 ]]; do
             IS_REPROCESS=true
             shift
             ;;
-        --limit|--force|--verbose|-v|--json|--trigger)
+        --limit)
             OPTIONS+=("$1")
-            # --limit 需要带参数值
-            if [ "$1" = "--limit" ] && [ -n "$2" ]; then
+            if [ -n "$2" ]; then
                 shift
                 OPTIONS+=("$1")
             fi
             shift
             ;;
+        --force|--verbose|-v|--json|--trigger)
+            # 这些参数仅适用于流水线阶段，不适用于 reprocess
+            OPTIONS+=("$1")
+            shift
+            ;;
         # reprocess 专用参数
         --debug|-d|--unprocessed)
             OPTIONS+=("$1")
+            shift
+            ;;
+        --concurrency|-c)
+            OPTIONS+=("$1")
+            if [ -n "$2" ]; then
+                shift
+                OPTIONS+=("$1")
+            fi
             shift
             ;;
         --ids)

@@ -284,6 +284,7 @@ async def run(args: argparse.Namespace) -> None:
 
     debug = args.debug
     limit = args.limit if not debug or args.limit != 50 else 3  # debug 默认 3 篇
+    concurrency = args.concurrency or 1  # 默认串行
 
     # 预热
     await feature_config.async_reload()
@@ -320,57 +321,40 @@ async def run(args: argparse.Namespace) -> None:
                 article_ids = [row[0] for row in result.all()]
 
         if not article_ids:
-            print(_c("No articles found matching criteria.", YELLOW))
+            logger.warning("No articles found matching criteria.")
             return
 
         total = len(article_ids)
-        print(f"\n{BOLD}Reprocessing {total} article(s){NC}" +
-              (f" {DIM}(debug mode){NC}" if debug else ""))
-        if not debug:
-            print(f"Article IDs: {article_ids[:20]}{'...' if total > 20 else ''}")
+        mode_str = " (debug mode)" if debug else ""
+        concurrency_str = f" (concurrency={concurrency})" if concurrency > 1 else ""
+        logger.info(f"Reprocessing {total} article(s){mode_str}{concurrency_str}")
+        if not debug and total <= 20:
+            logger.info(f"Article IDs: {article_ids}")
 
-        # ---- 逐篇处理 ----
-        stats = {"processed": 0, "cached": 0, "rule": 0, "failed": 0}
+        # ---- 并行或串行处理 ----
         t_start = time.time()
 
-        for i, aid in enumerate(article_ids, 1):
-            if not debug:
-                print(f"  [{i}/{total}] Article {aid} ...", end=" ", flush=True)
+        if concurrency > 1 and not debug:
+            # 并行处理
+            results = await _batch_process_concurrent(article_ids, concurrency)
+        else:
+            # 串行处理（debug 模式强制串行）
+            results = await _batch_process_serial(article_ids, service, debug)
 
-            try:
-                async with session_factory() as session:
-                    result = await debug_process_article(aid, service, session, debug=debug)
-                    await session.commit()
+        # ---- 统计结果 ----
+        stats = {"processed": 0, "cached": 0, "rule": 0, "failed": 0}
+        for result in results:
+            method = result.get("processing_method", "")
+            success = result.get("success", False)
 
-                method = result.get("processing_method", "")
-                success = result.get("success", False)
-
-                if method == "cached":
-                    stats["cached"] += 1
-                    tag = _c("cached", DIM)
-                elif method == "rule":
-                    stats["rule"] += 1
-                    tag = _c("rule", YELLOW)
-                elif success:
-                    stats["processed"] += 1
-                    tag = _c("ok", GREEN)
-                else:
-                    stats["failed"] += 1
-                    tag = _c("fail", RED)
-
-                if not debug:
-                    score = result.get("importance_score", "?")
-                    cat = result.get("category", "?")
-                    print(f"[{tag}] score={score} cat={cat}")
-
-            except Exception as e:
+            if method == "cached":
+                stats["cached"] += 1
+            elif method == "rule":
+                stats["rule"] += 1
+            elif success:
+                stats["processed"] += 1
+            else:
                 stats["failed"] += 1
-                if debug:
-                    print(f"\n  {RED}Exception: {e}{NC}")
-                    import traceback
-                    traceback.print_exc()
-                else:
-                    print(f"[{_c('error', RED)}] {e}")
 
         # ---- 汇总 ----
         t_total = time.time() - t_start
@@ -388,6 +372,130 @@ async def run(args: argparse.Namespace) -> None:
         feature_config.unfreeze()
         await service.close()
         await close_db()
+
+
+async def _batch_process_serial(
+    article_ids: list[int], service, debug: bool
+) -> list[dict]:
+    """Process articles serially (debug mode or concurrency=1)."""
+    from core.database import get_session_factory
+
+    session_factory = get_session_factory()
+    results = []
+    total = len(article_ids)
+
+    for i, aid in enumerate(article_ids, 1):
+        logger.info(f"[{i}/{total}] Processing article {aid} ...")
+
+        try:
+            async with session_factory() as session:
+                result = await debug_process_article(aid, service, session, debug=debug)
+                await session.commit()
+                results.append(result)
+
+            method = result.get("processing_method", "")
+            success = result.get("success", False)
+            score = result.get("importance_score", "?")
+            cat = result.get("category", "?")
+
+            if method == "cached":
+                status = "cached"
+            elif method == "rule":
+                status = "rule"
+            elif success:
+                status = "ok"
+            else:
+                status = "failed"
+
+            logger.info(f"[{i}/{total}] Article {aid} [{status}] score={score} cat={cat}")
+
+        except Exception as e:
+            results.append({
+                "success": False,
+                "article_id": aid,
+                "processing_method": "failed",
+                "error_message": str(e),
+            })
+            logger.error(f"[{i}/{total}] Article {aid} failed: {e}")
+            if debug:
+                import traceback
+                traceback.print_exc()
+
+    return results
+
+
+async def _batch_process_concurrent(
+    article_ids: list[int], concurrency: int
+) -> list[dict]:
+    """Process articles concurrently with semaphore-controlled parallelism.
+
+    并行处理文章。每个并发任务创建独立的 AIProcessorService 实例
+    （含独立的 Provider 和 httpx.AsyncClient），避免共享状态。
+    """
+    import asyncio
+    from core.database import get_session_factory
+    from apps.ai_processor.service import AIProcessorService
+
+    semaphore = asyncio.Semaphore(concurrency)
+    session_factory = get_session_factory()
+    total = len(article_ids)
+    completed = [0]  # 使用 list 以便在闭包中修改
+    results = [None] * total  # 预分配结果数组，保持顺序
+    lock = asyncio.Lock()
+
+    async def _process_one(article_id: int, index: int) -> dict:
+        async with semaphore:
+            # 打印开始处理信息
+            async with lock:
+                logger.info(f"[{completed[0] + 1}/{total}] Processing article {article_id} ...")
+
+            # 每个任务创建独立的 service 实例
+            task_service = AIProcessorService()
+            try:
+                async with session_factory() as session:
+                    result = await debug_process_article(article_id, task_service, session, debug=False)
+                    await session.commit()
+
+                    # 更新进度并打印结果
+                    async with lock:
+                        completed[0] += 1
+                        results[index] = result
+
+                        # 打印结果
+                        method = result.get("processing_method", "")
+                        success = result.get("success", False)
+                        score = result.get("importance_score", "?")
+                        cat = result.get("category", "?")
+
+                        if method == "cached":
+                            status = "cached"
+                        elif method == "rule":
+                            status = "rule"
+                        elif success:
+                            status = "ok"
+                        else:
+                            status = "failed"
+
+                        logger.info(f"[{completed[0]}/{total}] Article {article_id} [{status}] score={score} cat={cat}")
+
+                    return result
+            except Exception as e:
+                async with lock:
+                    completed[0] += 1
+                    results[index] = {
+                        "success": False,
+                        "article_id": article_id,
+                        "processing_method": "failed",
+                        "error_message": str(e),
+                    }
+                    logger.error(f"[{completed[0]}/{total}] Article {article_id} failed: {e}")
+                return results[index]
+            finally:
+                await task_service.close()
+
+    tasks = [_process_one(aid, i) for i, aid in enumerate(article_ids)]
+    await asyncio.gather(*tasks)
+    return results
 
 
 def main():
@@ -430,6 +538,14 @@ Examples:
         "--source-type",
         type=str,
         help="Filter by source type (e.g., arxiv, rss, hackernews, weibo)",
+    )
+    parser.add_argument(
+        "--concurrency", "-c",
+        type=int,
+        default=1,
+        help="Number of concurrent workers (default: 1, serial mode). "
+             "Use higher values for parallel processing (e.g., -c 4). "
+             "Note: debug mode always uses serial processing.",
     )
 
     args = parser.parse_args()
