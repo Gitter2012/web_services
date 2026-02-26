@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 
 import httpx
@@ -24,6 +25,19 @@ from common.feature_config import feature_config
 from .base import BaseAIProvider, parse_json_response
 
 logger = logging.getLogger(__name__)
+
+
+# 匹配 <think>...</think> 思维链标签（含跨行内容）
+_THINK_TAG_RE = re.compile(r"<think>[\s\S]*?</think>\s*", re.DOTALL)
+
+
+def _strip_think_tags(text: str) -> str:
+    """Remove <think>...</think> blocks from model output.
+
+    部分模型（如 qwen3）即使在 /no_think 模式下也可能偶尔输出思维链标签，
+    此函数作为兜底清洗确保最终结果干净。
+    """
+    return _THINK_TAG_RE.sub("", text).strip()
 
 
 # -----------------------------------------------------------------------------
@@ -142,6 +156,8 @@ class OpenAIProvider(BaseAIProvider):
         try:
             result = await self._call_api(headers, payload)
             translated = result["choices"][0]["message"]["content"].strip()
+            # 清洗可能残留的思维链标签
+            translated = _strip_think_tags(translated)
             return translated if translated else None
         except Exception as e:
             logger.warning(f"Translation failed: {e}")
@@ -199,6 +215,9 @@ class OpenAIProvider(BaseAIProvider):
             result = await retrying_call(headers, payload)
             # 从 Chat Completions 响应中提取助手回复内容
             response_text = result["choices"][0]["message"]["content"]
+
+            # 清洗可能残留的思维链标签（部分模型如 qwen3 可能输出）
+            response_text = _strip_think_tags(response_text)
 
             # 计算处理耗时（毫秒）
             duration_ms = int((time.time() - start_time) * 1000)
