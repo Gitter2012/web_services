@@ -12,6 +12,7 @@
 #
 # 重处理（独立子命令）:
 #   reprocess 对已有文章重新运行 AI 分析流程
+#   clean-thinking 清理文章中的 thinking 标签内容
 #
 # 示例:
 #   ./scripts/ai-pipeline.sh all                   # 运行全部阶段
@@ -39,6 +40,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$PROJECT_DIR/.env"
 PYTHON_SCRIPT="$PROJECT_DIR/scripts/_ai_pipeline_runner.py"
 REPROCESS_SCRIPT="$PROJECT_DIR/scripts/reprocess_articles.py"
+CLEAN_THINKING_SCRIPT="$PROJECT_DIR/scripts/clean_thinking_in_articles.py"
 
 # 显示帮助
 show_help() {
@@ -62,6 +64,11 @@ show_help() {
     echo "              --source-type <t>  按来源类型筛选"
     echo "              --concurrency, -c  并行数（默认: 1 串行，debug 模式强制串行）"
     echo ""
+    echo -e "  ${CYAN}clean-thinking${NC} 清理文章中的 thinking 标签内容"
+    echo "              --field, -f <field>  指定清理字段（默认: content）"
+    echo "              --stats              仅统计不执行"
+    echo "              --ids <id...>        指定文章 ID"
+    echo ""
     echo "选项:"
     echo "  --limit <n>    每阶段最多处理的文章数 (默认: 50)"
     echo "  --force        忽略功能开关，强制运行所有指定阶段"
@@ -81,6 +88,12 @@ show_help() {
     echo ""
     echo -e "  ${GREEN}# 批量重处理 100 篇（并行 4 个 worker）${NC}"
     echo "  ./scripts/ai-pipeline.sh reprocess --limit 100 --concurrency 4"
+    echo ""
+    echo -e "  ${GREEN}# 清理文章中的 thinking 标签${NC}"
+    echo "  ./scripts/ai-pipeline.sh clean-thinking"
+    echo ""
+    echo -e "  ${GREEN}# 清理指定字段和文章${NC}"
+    echo "  ./scripts/ai-pipeline.sh clean-thinking --field content --field ai_summary --ids 17652"
     echo ""
     echo -e "  ${GREEN}# 每阶段最多处理 200 条文章${NC}"
     echo "  ./scripts/ai-pipeline.sh all --limit 200"
@@ -133,6 +146,7 @@ STAGES=()
 OPTIONS=()
 SHOW_HELP=false
 IS_REPROCESS=false
+IS_CLEAN_THINKING=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -142,6 +156,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         reprocess)
             IS_REPROCESS=true
+            shift
+            ;;
+        clean-thinking)
+            IS_CLEAN_THINKING=true
             shift
             ;;
         --limit)
@@ -160,6 +178,17 @@ while [[ $# -gt 0 ]]; do
         # reprocess 专用参数
         --debug|-d|--unprocessed)
             OPTIONS+=("$1")
+            shift
+            ;;
+        # clean-thinking 专用参数
+        --field|-f|--stats)
+            OPTIONS+=("$1")
+            if [ "$1" = "--field" ] || [ "$1" = "-f" ]; then
+                if [ -n "$2" ]; then
+                    shift
+                    OPTIONS+=("$1")
+                fi
+            fi
             shift
             ;;
         --concurrency|-c)
@@ -201,7 +230,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # 显示帮助
-if [ "$SHOW_HELP" = true ] || { [ "$IS_REPROCESS" = false ] && [ ${#STAGES[@]} -eq 0 ]; }; then
+if [ "$SHOW_HELP" = true ] || { [ "$IS_REPROCESS" = false ] && [ "$IS_CLEAN_THINKING" = false ] && [ ${#STAGES[@]} -eq 0 ]; }; then
     show_help
     exit 0
 fi
@@ -209,6 +238,34 @@ fi
 # 检查环境
 check_env
 check_python
+
+# ---- clean-thinking 子命令 ----
+if [ "$IS_CLEAN_THINKING" = true ]; then
+    if [ ! -f "$CLEAN_THINKING_SCRIPT" ]; then
+        echo -e "${RED}错误: 清理脚本不存在: ${CLEAN_THINKING_SCRIPT}${NC}"
+        exit 1
+    fi
+
+    echo -e "${BLUE}============================================${NC}"
+    echo -e "${BLUE}ResearchPulse v2 清理 Thinking 标签${NC}"
+    echo -e "${BLUE}============================================${NC}"
+    echo ""
+
+    cd "$PROJECT_DIR"
+    python3 "${CLEAN_THINKING_SCRIPT}" "${OPTIONS[@]}"
+
+    EXIT_CODE=$?
+
+    echo ""
+    echo -e "${BLUE}--------------------------------------------${NC}"
+    if [ $EXIT_CODE -eq 0 ]; then
+        echo -e "${GREEN}清理完毕${NC}"
+    else
+        echo -e "${RED}清理失败 (退出码: $EXIT_CODE)${NC}"
+    fi
+
+    exit $EXIT_CODE
+fi
 
 # ---- reprocess 子命令 ----
 if [ "$IS_REPROCESS" = true ]; then
