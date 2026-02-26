@@ -6,6 +6,7 @@
 #
 # 流水线阶段（按依赖顺序）:
 #   ai        AI 文章处理（摘要/分类/评分）
+#   translate arXiv 文章标题翻译
 #   embedding 向量嵌入计算
 #   event     事件聚类
 #   topic     主题发现
@@ -17,7 +18,8 @@
 # 示例:
 #   ./scripts/ai-pipeline.sh all                   # 运行全部阶段
 #   ./scripts/ai-pipeline.sh ai                    # 仅运行 AI 处理
-#   ./scripts/ai-pipeline.sh ai embedding          # 运行 AI 处理 + 嵌入计算
+#   ./scripts/ai-pipeline.sh ai translate          # 运行 AI 处理 + 标题翻译
+#   ./scripts/ai-pipeline.sh translate             # 仅翻译 arXiv 文章标题
 #   ./scripts/ai-pipeline.sh all --limit 200       # 每阶段最多处理 200 条
 #   ./scripts/ai-pipeline.sh all --force            # 忽略功能开关，强制运行
 #   ./scripts/ai-pipeline.sh reprocess --debug      # Debug 模式重处理 3 篇
@@ -51,6 +53,7 @@ show_help() {
     echo "阶段 (按流水线顺序):"
     echo -e "  ${CYAN}all${NC}         运行全部阶段（按顺序依次执行）"
     echo -e "  ${CYAN}ai${NC}          AI 文章处理（摘要/分类/评分）   [feature.ai_processor]"
+    echo -e "  ${CYAN}translate${NC}   arXiv 文章标题翻译               [feature.ai_processor]"
     echo -e "  ${CYAN}embedding${NC}   向量嵌入计算                     [feature.embedding]"
     echo -e "  ${CYAN}event${NC}       事件聚类                         [feature.event_clustering]"
     echo -e "  ${CYAN}topic${NC}       主题发现                         [feature.topic_radar]"
@@ -80,6 +83,12 @@ show_help() {
     echo -e "  ${GREEN}# 运行完整的 AI 流水线${NC}"
     echo "  ./scripts/ai-pipeline.sh all"
     echo ""
+    echo -e "  ${GREEN}# 仅运行 AI 处理${NC}"
+    echo "  ./scripts/ai-pipeline.sh ai"
+    echo ""
+    echo -e "  ${GREEN}# 仅翻译 arXiv 文章标题${NC}"
+    echo "  ./scripts/ai-pipeline.sh translate"
+    echo ""
     echo -e "  ${GREEN}# Debug 模式重处理（打印 AI prompt 和完整输出）${NC}"
     echo "  ./scripts/ai-pipeline.sh reprocess --debug"
     echo ""
@@ -102,7 +111,7 @@ show_help() {
     echo "  ./scripts/ai-pipeline.sh all --force"
     echo ""
     echo "流水线依赖关系:"
-    echo "  ai → embedding → event → topic"
+    echo "  ai → translate → embedding → event → topic"
     echo "  各阶段按此顺序自动排列，无论命令行中的输入顺序如何。"
     echo ""
 }
@@ -216,7 +225,7 @@ while [[ $# -gt 0 ]]; do
             fi
             shift
             ;;
-        all|ai|embedding|event|topic|action|report)
+        all|ai|translate|embedding|event|topic|action|report)
             STAGES+=("$1")
             shift
             ;;

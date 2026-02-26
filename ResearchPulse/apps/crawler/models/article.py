@@ -94,6 +94,12 @@ class Article(Base, TimestampMixin):
         nullable=False,
         default="",
     )
+    # 翻译后的标题（中文）
+    translated_title: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+        comment="Translated title in Chinese",
+    )
     # 文章正文内容（完整内容或 HTML）
     content: Mapped[str] = mapped_column(
         Text,

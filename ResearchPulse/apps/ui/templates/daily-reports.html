@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>每日 arXiv 报告 - ResearchPulse</title>
+    <script>
+        (function() {
+            var path = window.location.pathname;
+            var rpIndex = path.indexOf('/researchpulse');
+            var prefix = rpIndex > 0 ? path.substring(0, rpIndex) : '';
+            window.APP_BASE = prefix + '/researchpulse';
+            window.API_BASE = prefix + '/researchpulse/api';
+            window.AUTH_BASE = prefix + '/api/v1';
+        })();
+    </script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; min-height: 100vh; }
+
+        .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; padding: 0; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header-inner { max-width: 1200px; margin: 0 auto; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+        .logo { display: flex; align-items: center; gap: 12px; }
+        .logo h1 { font-size: 22px; font-weight: 600; }
+        .logo h1 a { color: white; text-decoration: none; }
+        .logo .badge { background: #e94560; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+        .nav { display: flex; gap: 20px; }
+        .nav a { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        .nav a:hover { color: white; }
+        .nav a.active { color: #4ecdc4; }
+        .auth-area { display: flex; align-items: center; gap: 16px; }
+        .auth-area a { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 14px; }
+
+        .main { max-width: 1200px; margin: 0 auto; padding: 24px; }
+        .page-header { margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+        .page-header h2 { font-size: 24px; color: #1a1a2e; }
+        .filter-bar { display: flex; gap: 12px; flex-wrap: wrap; }
+        .filter-bar input, .filter-bar select, .filter-bar button { padding: 8px 14px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; background: white; cursor: pointer; }
+        .filter-bar input { width: 140px; }
+        .filter-bar button { background: #1a1a2e; color: white; border: none; }
+        .filter-bar button:hover { background: #2d2d4a; }
+        .filter-bar button.secondary { background: #4ecdc4; color: #1a1a2e; }
+        .filter-bar button.secondary:hover { background: #3dbdb5; }
+        .filter-bar button.danger { background: #e94560; }
+        .filter-bar button.danger:hover { background: #d13a52; }
+
+        .report-list { display: flex; flex-direction: column; gap: 16px; }
+        .report-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); transition: box-shadow 0.2s; overflow: hidden; }
+        .report-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .report-header { padding: 20px; cursor: pointer; display: flex; justify-content: space-between; align-items: flex-start; }
+        .report-info { flex: 1; }
+        .report-title { font-size: 17px; font-weight: 600; color: #1a1a2e; margin-bottom: 8px; }
+        .report-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: #666; }
+        .report-meta span { display: flex; align-items: center; gap: 4px; }
+        .report-category { padding: 3px 10px; border-radius: 3px; font-size: 11px; font-weight: 600; background: #dbeafe; color: #2563eb; }
+        .report-status { padding: 3px 10px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+        .report-status.draft { background: #fef3c7; color: #d97706; }
+        .report-status.published { background: #d1fae5; color: #059669; }
+        .report-actions { display: flex; gap: 8px; margin-left: 16px; }
+        .report-actions button { padding: 6px 12px; border: 1px solid #e0e0e0; border-radius: 4px; font-size: 12px; background: white; cursor: pointer; }
+        .report-actions button:hover { background: #f5f5f5; }
+        .report-actions button.primary { background: #1a1a2e; color: white; border: none; }
+        .report-actions button.primary:hover { background: #2d2d4a; }
+
+        .report-content { padding: 0 20px 20px; display: none; border-top: 1px solid #f0f0f0; }
+        .report-content.open { display: block; }
+        .report-body { padding-top: 16px; font-size: 14px; color: #444; line-height: 1.8; max-height: 600px; overflow-y: auto; }
+        .report-body h1, .report-body h2, .report-body h3 { color: #1a1a2e; margin: 16px 0 8px; }
+        .report-body h1 { font-size: 20px; }
+        .report-body h2 { font-size: 17px; }
+        .report-body h3 { font-size: 15px; }
+        .report-body ul, .report-body ol { padding-left: 24px; margin: 8px 0; }
+        .report-body li { margin: 4px 0; }
+        .report-body p { margin: 8px 0; }
+        .report-body code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
+        .report-body blockquote { border-left: 3px solid #764ba2; padding-left: 12px; color: #666; margin: 8px 0; }
+        .report-body a { color: #2563eb; text-decoration: none; }
+        .report-body a:hover { text-decoration: underline; }
+        .report-body hr { border: none; border-top: 1px solid #e0e0e0; margin: 16px 0; }
+
+        .empty-state { text-align: center; padding: 60px 20px; color: #888; }
+        .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+
+        .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 24px; align-items: center; }
+        .page-btn { padding: 8px 14px; border: 1px solid #e0e0e0; background: white; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .page-btn.active { background: #1a1a2e; color: white; border-color: #1a1a2e; }
+        .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 200; justify-content: center; align-items: center; }
+        .modal-overlay.open { display: flex; }
+        .modal { background: white; border-radius: 12px; max-width: 800px; width: 90%; max-height: 80vh; display: flex; flex-direction: column; }
+        .modal-header { padding: 20px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h3 { font-size: 18px; color: #1a1a2e; }
+        .modal-header .close { background: none; border: none; font-size: 24px; cursor: pointer; color: #888; }
+        .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+        .modal-footer { padding: 16px 20px; border-top: 1px solid #e0e0e0; display: flex; justify-content: flex-end; gap: 12px; }
+        .modal-footer button { padding: 8px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; }
+        .modal-footer button.cancel { background: #f5f5f5; border: 1px solid #e0e0e0; }
+        .modal-footer button.primary { background: #1a1a2e; color: white; border: none; }
+
+        .generate-form { display: flex; flex-direction: column; gap: 16px; }
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        .form-group label { font-size: 14px; font-weight: 500; color: #333; }
+        .form-group input, .form-group select { padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 14px; }
+        .form-group .hint { font-size: 12px; color: #888; }
+
+        .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 8px; font-size: 14px; z-index: 300; animation: slideIn 0.3s ease; }
+        .toast.success { background: #d1fae5; color: #059669; }
+        .toast.error { background: #fee2e2; color: #dc2626; }
+        .toast.info { background: #dbeafe; color: #2563eb; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        @media (max-width: 768px) {
+            .header-inner { padding: 12px 16px; }
+            .nav { display: none; }
+            .main { padding: 16px; }
+            .page-header { flex-direction: column; gap: 12px; align-items: flex-start; }
+            .report-header { flex-direction: column; }
+            .report-actions { margin-left: 0; margin-top: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-inner">
+            <div class="logo">
+                <h1><a href="" id="home-link">ResearchPulse</a></h1>
+                <span class="badge">v2</span>
+            </div>
+            <div class="nav" id="nav-menu">
+                <a href="" id="nav-home">首页</a>
+                <a href="" id="nav-subscriptions">订阅管理</a>
+            </div>
+            <div class="auth-area" id="auth-area"></div>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="page-header">
+            <h2>每日 arXiv 报告</h2>
+            <div class="filter-bar">
+                <input type="date" id="filter-date" onchange="loadReports()">
+                <select id="filter-category" onchange="loadReports()">
+                    <option value="">全部分类</option>
+                </select>
+                <button onclick="openGenerateModal()" class="secondary">&#9889; 生成报告</button>
+            </div>
+        </div>
+        <div class="report-list" id="report-list">
+            <div class="empty-state">
+                <div class="icon">&#9203;</div>
+                <div class="text">加载中...</div>
+            </div>
+        </div>
+        <div class="pagination" id="pagination"></div>
+    </div>
+
+    <!-- 生成报告弹窗 -->
+    <div class="modal-overlay" id="generate-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>生成每日报告</h3>
+                <button class="close" onclick="closeGenerateModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="generate-form">
+                    <div class="form-group">
+                        <label>报告日期</label>
+                        <input type="date" id="generate-date">
+                        <div class="hint">默认为昨天</div>
+                    </div>
+                    <div class="form-group">
+                        <label>分类（可多选）</label>
+                        <select id="generate-categories" multiple style="height: 120px;">
+                            <option value="">使用默认配置</option>
+                        </select>
+                        <div class="hint">按住 Ctrl/Cmd 可多选，不选则使用系统配置的默认分类</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="cancel" onclick="closeGenerateModal()">取消</button>
+                <button class="primary" onclick="generateReports()">生成</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 导出弹窗 -->
+    <div class="modal-overlay" id="export-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>导出报告</h3>
+                <button class="close" onclick="closeExportModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="export-content" style="font-family: monospace; white-space: pre-wrap; background: #f5f5f5; padding: 16px; border-radius: 8px; max-height: 400px; overflow-y: auto; font-size: 13px; line-height: 1.6;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="cancel" onclick="closeExportModal()">关闭</button>
+                <button class="primary" onclick="copyExportContent()">复制内容</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('home-link').href = APP_BASE + '/';
+        document.getElementById('nav-home').href = APP_BASE + '/';
+        document.getElementById('nav-subscriptions').href = APP_BASE + '/subscriptions';
+
+        let currentPage = 1;
+        const pageSize = 20;
+        let totalReports = 0;
+        let categories = [];
+
+        // 设置默认日期为昨天
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        document.getElementById('filter-date').value = yesterday.toISOString().split('T')[0];
+        document.getElementById('generate-date').value = yesterday.toISOString().split('T')[0];
+
+        async function checkAuth() {
+            let featureStatus = {};
+            try {
+                const fsRes = await fetch(`${API_BASE}/feature-status`);
+                if (fsRes.ok) featureStatus = await fsRes.json();
+            } catch(e) {}
+
+            const token = localStorage.getItem('access_token');
+            const area = document.getElementById('auth-area');
+            const navMenu = document.getElementById('nav-menu');
+            if (token) {
+                try {
+                    const res = await fetch(`${AUTH_BASE}/auth/me`, { headers: { 'Authorization': `Bearer ${token}` }});
+                    if (res.ok) {
+                        const user = await res.json();
+                        area.innerHTML = `<span style="color:#4ecdc4;font-size:14px;">&#128100; ${user.username}</span><a href="#" onclick="logout()">退出</a>`;
+                        
+                        // 动态显示导航
+                        if (user.is_superuser || featureStatus.event_clustering) {
+                            navMenu.innerHTML += `<a href="${APP_BASE}/events">事件聚类</a>`;
+                        }
+                        if (user.is_superuser || featureStatus.topic_radar) {
+                            navMenu.innerHTML += `<a href="${APP_BASE}/topics">话题趋势</a>`;
+                        }
+                        if (user.is_superuser || featureStatus.action_items) {
+                            navMenu.innerHTML += `<a href="${APP_BASE}/actions">行动建议</a>`;
+                        }
+                        if (user.is_superuser || featureStatus.report_generation) {
+                            navMenu.innerHTML += `<a href="${APP_BASE}/reports">报告中心</a>`;
+                        }
+                        // 每日报告
+                        const dailyLink = document.createElement('a');
+                        dailyLink.href = APP_BASE + '/daily-reports';
+                        dailyLink.textContent = '每日报告';
+                        dailyLink.className = 'active';
+                        navMenu.appendChild(dailyLink);
+                        
+                        if (user.is_superuser) {
+                            navMenu.innerHTML += `<a href="${APP_BASE}/admin">管理后台</a>`;
+                        }
+                        return user;
+                    }
+                } catch(e) {}
+            }
+            area.innerHTML = `<a href="${APP_BASE}/">登录</a>`;
+            return null;
+        }
+
+        function logout() { localStorage.removeItem('access_token'); location.reload(); }
+
+        function getHeaders() {
+            const token = localStorage.getItem('access_token');
+            return token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+        }
+
+        async function loadCategories() {
+            try {
+                // 从 arxiv_categories 表获取分类
+                const res = await fetch(`${API_BASE}/admin/arxiv-categories?is_active=true`, { headers: getHeaders() });
+                if (res.ok) {
+                    const data = await res.json();
+                    categories = data.items || [];
+                    
+                    // 更新筛选下拉框
+                    const filterSelect = document.getElementById('filter-category');
+                    filterSelect.innerHTML = '<option value="">全部分类</option>';
+                    categories.forEach(c => {
+                        const name = c.name_zh || c.name;
+                        filterSelect.innerHTML += `<option value="${c.code}">${c.code} - ${name}</option>`;
+                    });
+                    
+                    // 更新生成弹窗的多选框
+                    const genSelect = document.getElementById('generate-categories');
+                    genSelect.innerHTML = '<option value="">使用默认配置</option>';
+                    categories.forEach(c => {
+                        const name = c.name_zh || c.name;
+                        genSelect.innerHTML += `<option value="${c.code}">${c.code} - ${name}</option>`;
+                    });
+                }
+            } catch(e) {
+                console.error('Failed to load categories:', e);
+            }
+        }
+
+        async function loadReports() {
+            const date = document.getElementById('filter-date').value;
+            const category = document.getElementById('filter-category').value;
+
+            const params = new URLSearchParams({ page: currentPage, page_size: pageSize });
+            if (date) params.append('report_date', date);
+            if (category) params.append('category', category);
+
+            try {
+                const res = await fetch(`${API_BASE}/daily-reports?${params}`, { headers: getHeaders() });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    let errMsg = err.detail || '加载失败';
+                    if (res.status === 404) {
+                        errMsg = '暂无该日期的报告数据，可以点击"生成报告"手动生成';
+                    } else if (res.status === 401) {
+                        errMsg = '请先登录';
+                    }
+                    document.getElementById('report-list').innerHTML = `<div class="empty-state"><div class="icon">&#128274;</div><div class="text">${errMsg}</div></div>`;
+                    return;
+                }
+                const data = await res.json();
+                totalReports = data.total || 0;
+                renderReports(data.reports || []);
+                renderPagination();
+            } catch(e) {
+                document.getElementById('report-list').innerHTML = '<div class="empty-state"><div class="icon">&#10060;</div><div class="text">网络错误</div></div>';
+            }
+        }
+
+        function renderReports(reports) {
+            const container = document.getElementById('report-list');
+            if (!reports || reports.length === 0) {
+                container.innerHTML = '<div class="empty-state"><div class="icon">&#128203;</div><div class="text">暂无报告数据<br><small>可以尝试修改筛选条件或手动生成报告</small></div></div>';
+                return;
+            }
+            container.innerHTML = reports.map((r, idx) => {
+                const statusClass = r.status || 'draft';
+                const statusLabel = statusClass === 'draft' ? '草稿' : statusClass === 'published' ? '已发布' : statusClass;
+                const created = r.created_at ? formatDate(r.created_at) : '';
+
+                return `
+                    <div class="report-card">
+                        <div class="report-header" onclick="toggleReport(${idx})">
+                            <div class="report-info">
+                                <div class="report-title">${escapeHtml(r.title || '无标题')}</div>
+                                <div class="report-meta">
+                                    <span class="report-category">${r.category} - ${r.category_name}</span>
+                                    <span class="report-status ${statusClass}">${statusLabel}</span>
+                                    <span>&#128197; ${r.report_date}</span>
+                                    <span>&#128196; ${r.article_count} 篇论文</span>
+                                    ${created ? `<span>&#128336; ${created}</span>` : ''}
+                                </div>
+                            </div>
+                            <div class="report-actions" onclick="event.stopPropagation()">
+                                <button onclick="exportReport(${r.id}, 'markdown')">MD</button>
+                                <button class="primary" onclick="exportReport(${r.id}, 'wechat')">微信格式</button>
+                            </div>
+                        </div>
+                        <div class="report-content" id="report-content-${idx}">
+                            <div class="report-body">${renderMarkdown(r.content_markdown || '')}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleReport(idx) {
+            const el = document.getElementById(`report-content-${idx}`);
+            el.classList.toggle('open');
+        }
+
+        async function exportReport(reportId, format) {
+            try {
+                const res = await fetch(`${API_BASE}/daily-reports/${reportId}/export?format=${format}`, { headers: getHeaders() });
+                if (!res.ok) {
+                    showToast('导出失败', 'error');
+                    return;
+                }
+                const data = await res.json();
+                document.getElementById('export-content').textContent = data.content;
+                document.getElementById('export-modal').classList.add('open');
+            } catch(e) {
+                showToast('网络错误', 'error');
+            }
+        }
+
+        function copyExportContent() {
+            const content = document.getElementById('export-content').textContent;
+            navigator.clipboard.writeText(content).then(() => {
+                showToast('已复制到剪贴板', 'success');
+            }).catch(() => {
+                showToast('复制失败', 'error');
+            });
+        }
+
+        function closeExportModal() {
+            document.getElementById('export-modal').classList.remove('open');
+        }
+
+        function openGenerateModal() {
+            document.getElementById('generate-modal').classList.add('open');
+        }
+
+        function closeGenerateModal() {
+            document.getElementById('generate-modal').classList.remove('open');
+        }
+
+        async function generateReports() {
+            const date = document.getElementById('generate-date').value;
+            const select = document.getElementById('generate-categories');
+            const selectedCategories = Array.from(select.selectedOptions).map(o => o.value).filter(v => v);
+
+            const body = {};
+            if (date) body.report_date = date;
+            if (selectedCategories.length > 0) body.categories = selectedCategories;
+
+            try {
+                showToast('正在生成报告...', 'info');
+                const res = await fetch(`${API_BASE}/daily-reports/generate`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message || `成功生成 ${data.reports?.length || 0} 份报告`, 'success');
+                    closeGenerateModal();
+                    loadReports();
+                } else {
+                    showToast(data.message || '生成失败', 'error');
+                }
+            } catch(e) {
+                showToast('网络错误', 'error');
+            }
+        }
+
+        function renderMarkdown(md) {
+            if (!md) return '<p style="color:#999;">暂无内容</p>';
+            let html = escapeHtml(md);
+            html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+            html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+            html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+            html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+            html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+            html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+            html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+            html = html.replace(/^---$/gm, '<hr>');
+            // Links
+            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+            html = html.replace(/\n\n/g, '</p><p>');
+            html = '<p>' + html + '</p>';
+            html = html.replace(/<p>\s*<\/p>/g, '');
+            return html;
+        }
+
+        function renderPagination() {
+            const totalPages = Math.ceil(totalReports / pageSize);
+            const container = document.getElementById('pagination');
+            if (totalPages <= 1) { container.innerHTML = `<span style="color:#888;font-size:14px;">共 ${totalReports} 份报告</span>`; return; }
+            let html = `<button class="page-btn" onclick="goToPage(${currentPage-1})" ${currentPage===1?'disabled':''}>上一页</button>`;
+            const start = Math.max(1, currentPage - 2), end = Math.min(totalPages, currentPage + 2);
+            for (let i = start; i <= end; i++) { html += `<button class="page-btn ${i===currentPage?'active':''}" onclick="goToPage(${i})">${i}</button>`; }
+            html += `<button class="page-btn" onclick="goToPage(${currentPage+1})" ${currentPage===totalPages?'disabled':''}>下一页</button>`;
+            html += `<span style="color:#888;font-size:14px;margin-left:12px;">共 ${totalReports} 份</span>`;
+            container.innerHTML = html;
+        }
+
+        function goToPage(p) { currentPage = p; loadReports(); window.scrollTo({top:0,behavior:'smooth'}); }
+
+        function showToast(msg, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = msg;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function escapeHtml(str) { if (!str) return ''; const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
+        function formatDate(iso) { if (!iso) return ''; try { const d = new Date(iso); return d.toLocaleDateString('zh-CN', {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); } catch(e) { return iso; } }
+
+        // 初始化
+        checkAuth();
+        loadCategories();
+        loadReports();
+    </script>
+</body>
+</html>

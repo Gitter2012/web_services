@@ -11,6 +11,7 @@
 - [事件聚类配置](#事件聚类配置)
 - [话题发现配置](#话题发现配置)
 - [功能开关配置](#功能开关配置)
+- [每日报告配置](#每日报告配置)
 - [邮件配置](#邮件配置)
 - [完整 YAML 配置示例](#完整-yaml-配置示例)
 - [用户配置](#用户配置)
@@ -427,6 +428,20 @@ topic:
 | `event.rule_weight` | 0.4 | 规则权重 |
 | `event.semantic_weight` | 0.6 | 语义权重 |
 | `event.min_similarity` | 0.7 | 最小相似度 |
+
+### 每日报告配置键（运行时可调）
+
+| 配置键名 | 默认值 | 说明 |
+|---------|--------|------|
+| `daily_report.enabled` | true | 是否启用每日报告功能 |
+| `daily_report.hour` | 8 | 报告生成时间（小时，0-23） |
+| `daily_report.minute` | 0 | 报告生成时间（分钟，0-59） |
+| `daily_report.categories` | cs.LG,cs.CV,cs.CL,cs.AI,cs.RO,cs.NE | 要生成报告的分类（逗号分隔） |
+| `daily_report.max_articles` | 50 | 每个分类最大文章数 |
+| `daily_report.translate_title` | true | 是否翻译标题 |
+| `daily_report.report_offset_days` | 1 | 报告偏移天数（1=昨天） |
+
+> 分类中文名称从数据库 `arxiv_categories` 表的 `name_zh` 字段读取。
 
 ### 通过 API 修改配置
 

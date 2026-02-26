@@ -892,6 +892,91 @@ async def trigger_job(
     return {"status": "ok", "job_id": job_id, "result": result}
 
 
+@router.post("/pipeline/translate")
+async def trigger_translate(
+    limit: int = 100,
+    admin: Superuser = None,
+) -> Dict[str, Any]:
+    """Trigger arXiv title translation manually.
+
+    翻译 source_type='arxiv' 且标题为英文、且尚未翻译的文章标题。
+
+    Args:
+        limit: Maximum number of articles to translate (default: 100).
+        admin: Superuser dependency.
+
+    Returns:
+        Dict[str, Any]: Translation result with counts.
+    """
+    from core.database import get_session_factory
+    from sqlalchemy import and_, select, update
+    from apps.crawler.models.article import Article
+    from apps.ai_processor.service import get_ai_provider, _is_english
+
+    session_factory = get_session_factory()
+    provider = get_ai_provider()
+    translated = 0
+    skipped = 0
+    failed = 0
+
+    try:
+        async with session_factory() as session:
+            # 查询待翻译的 arXiv 文章：英文标题 + 未翻译
+            result = await session.execute(
+                select(Article.id, Article.title)
+                .where(
+                    and_(
+                        Article.source_type == "arxiv",
+                        Article.translated_title.is_(None),
+                        Article.title.isnot(None),
+                        Article.title != "",
+                    )
+                )
+                .order_by(Article.crawl_time.desc())
+                .limit(limit)
+            )
+            articles = result.all()
+
+            if not articles:
+                return {"translated": 0, "skipped": 0, "failed": 0, "total": 0, "message": "没有待翻译的文章"}
+
+            for article_id, title in articles:
+                # 跳过非英文标题
+                if not _is_english(title):
+                    skipped += 1
+                    continue
+
+                try:
+                    translated_title = await provider.translate(title)
+                    if translated_title:
+                        await session.execute(
+                            update(Article)
+                            .where(Article.id == article_id)
+                            .values(translated_title=translated_title)
+                        )
+                        translated += 1
+                    else:
+                        skipped += 1
+                except Exception as e:
+                    logger.warning(f"Failed to translate article {article_id}: {e}")
+                    failed += 1
+
+            await session.commit()
+
+        return {
+            "translated": translated,
+            "skipped": skipped,
+            "failed": failed,
+            "total": len(articles),
+            "message": f"翻译完成: {translated} 篇成功, {skipped} 篇跳过, {failed} 篇失败"
+        }
+    except Exception as e:
+        logger.error(f"Translation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Translation failed: {e}")
+    finally:
+        await provider.close()
+
+
 # ============================================================================
 # Grouped / Batch Configuration Management
 # ============================================================================

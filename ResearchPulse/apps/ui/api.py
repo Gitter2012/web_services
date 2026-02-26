@@ -248,6 +248,21 @@ async def reports_page(
     )
 
 
+@router.get("/daily-reports", response_class=HTMLResponse)
+async def daily_reports_page(
+    request: Request,
+    user_id: OptionalUserId = None,
+) -> HTMLResponse:
+    """Daily arXiv reports page.
+
+    每日 arXiv 报告页面渲染入口。
+    """
+    return _templates.TemplateResponse(
+        "daily-reports.html",
+        {"request": request, "user_id": user_id},
+    )
+
+
 # ============================================================================
 # Article API Endpoints
 # ============================================================================

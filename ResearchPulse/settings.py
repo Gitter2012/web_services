@@ -689,6 +689,43 @@ class Settings(BaseSettings):
         validation_alias="TOPIC_LOOKBACK_DAYS",
     )
 
+    # ======================== 每日报告配置 ========================
+    # 每日报告功能开关
+    daily_report_enabled: bool = Field(
+        default=True,
+        validation_alias="DAILY_REPORT_ENABLED",
+    )
+    # 每日报告生成时间（小时，0-23）
+    daily_report_hour: int = Field(
+        default=8,
+        validation_alias="DAILY_REPORT_HOUR",
+    )
+    # 每日报告生成时间（分钟，0-59）
+    daily_report_minute: int = Field(
+        default=0,
+        validation_alias="DAILY_REPORT_MINUTE",
+    )
+    # 要生成报告的 arXiv 分类（逗号分隔）
+    daily_report_categories: str = Field(
+        default="cs.LG,cs.CV,cs.CL,cs.AI,cs.RO,cs.NE",
+        validation_alias="DAILY_REPORT_CATEGORIES",
+    )
+    # 每个分类最大文章数
+    daily_report_max_articles: int = Field(
+        default=50,
+        validation_alias="DAILY_REPORT_MAX_ARTICLES",
+    )
+    # 是否翻译标题
+    daily_report_translate_title: bool = Field(
+        default=True,
+        validation_alias="DAILY_REPORT_TRANSLATE_TITLE",
+    )
+    # 报告相对于今天的偏移天数（1=昨天）
+    daily_report_offset_days: int = Field(
+        default=1,
+        validation_alias="DAILY_REPORT_OFFSET_DAYS",
+    )
+
     # pydantic-settings 的模型配置
     # env_file: 指定 .env 文件路径
     # case_sensitive: 环境变量名不区分大小写

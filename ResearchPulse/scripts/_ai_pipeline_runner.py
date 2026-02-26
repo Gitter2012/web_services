@@ -90,10 +90,11 @@ NC = "\033[0m"
 # ---------------------------------------------------------------------------
 # 流水线阶段定义（按依赖顺序）
 # ---------------------------------------------------------------------------
-STAGES = ("ai", "embedding", "event", "topic", "action", "report")
+STAGES = ("ai", "translate", "embedding", "event", "topic", "action", "report")
 
 STAGE_DESCRIPTIONS = {
     "ai": "AI 文章处理（摘要/分类/评分）",
+    "translate": "arXiv 文章标题翻译",
     "embedding": "向量嵌入计算",
     "event": "事件聚类",
     "topic": "主题发现",
@@ -103,6 +104,7 @@ STAGE_DESCRIPTIONS = {
 
 STAGE_FEATURES = {
     "ai": "feature.ai_processor",
+    "translate": "feature.ai_processor",
     "embedding": "feature.embedding",
     "event": "feature.event_clustering",
     "topic": "feature.topic_radar",
@@ -143,6 +145,73 @@ async def _run_ai(limit: int, verbose: bool) -> dict:
         return {"error": str(e), "processed": 0, "cached": 0, "failed": 0, "total": 0}
     finally:
         await service.close()
+
+
+async def _run_translate(limit: int, verbose: bool) -> dict:
+    """Run arXiv title translation stage.
+
+    翻译 source_type='arxiv' 且标题为英文、且尚未翻译的文章标题。
+    """
+    from core.database import get_session_factory
+    from sqlalchemy import and_, select, update
+    from apps.crawler.models.article import Article
+    from apps.ai_processor.service import get_ai_provider, _is_english
+
+    session_factory = get_session_factory()
+    provider = get_ai_provider()
+    translated = 0
+    skipped = 0
+    failed = 0
+
+    try:
+        async with session_factory() as session:
+            # 查询待翻译的 arXiv 文章：英文标题 + 未翻译
+            result = await session.execute(
+                select(Article.id, Article.title)
+                .where(
+                    and_(
+                        Article.source_type == "arxiv",
+                        Article.translated_title.is_(None),
+                        Article.title.isnot(None),
+                        Article.title != "",
+                    )
+                )
+                .order_by(Article.crawl_time.desc())
+                .limit(limit)
+            )
+            articles = result.all()
+
+            if not articles:
+                return {"translated": 0, "skipped": 0, "failed": 0, "total": 0}
+
+            for article_id, title in articles:
+                # 跳过非英文标题
+                if not _is_english(title):
+                    skipped += 1
+                    continue
+
+                try:
+                    translated_title = await provider.translate(title)
+                    if translated_title:
+                        await session.execute(
+                            update(Article)
+                            .where(Article.id == article_id)
+                            .values(translated_title=translated_title)
+                        )
+                        translated += 1
+                    else:
+                        skipped += 1
+                except Exception as e:
+                    logger.warning(f"Failed to translate article {article_id}: {e}")
+                    failed += 1
+
+            await session.commit()
+            return {"translated": translated, "skipped": skipped, "failed": failed, "total": len(articles)}
+    except Exception as e:
+        logger.error(f"Translation stage failed: {e}", exc_info=verbose)
+        return {"error": str(e), "translated": translated, "skipped": skipped, "failed": failed, "total": 0}
+    finally:
+        await provider.close()
 
 
 async def _run_embedding(limit: int, verbose: bool) -> dict:
@@ -352,6 +421,7 @@ async def _run_report(limit: int, verbose: bool) -> dict:
 
 STAGE_RUNNERS = {
     "ai": _run_ai,
+    "translate": _run_translate,
     "embedding": _run_embedding,
     "event": _run_event,
     "topic": _run_topic,
@@ -401,6 +471,13 @@ def _format_result(stage: str, result: dict) -> str:
         return (
             f"  处理: {result.get('processed', 0)} | "
             f"缓存: {result.get('cached', 0)} | "
+            f"失败: {result.get('failed', 0)} | "
+            f"总计: {result.get('total', 0)}"
+        )
+    elif stage == "translate":
+        return (
+            f"  翻译: {result.get('translated', 0)} | "
+            f"跳过: {result.get('skipped', 0)} | "
             f"失败: {result.get('failed', 0)} | "
             f"总计: {result.get('total', 0)}"
         )
@@ -527,7 +604,8 @@ def main():
 示例:
   %(prog)s all                   # 运行全部阶段
   %(prog)s ai                    # 仅运行 AI 处理
-  %(prog)s ai embedding          # 运行 AI 处理 + 嵌入计算
+  %(prog)s ai translate          # 运行 AI 处理 + 标题翻译
+  %(prog)s translate             # 仅翻译 arXiv 文章标题
   %(prog)s embedding event topic # 运行嵌入 → 事件 → 主题
   %(prog)s all --limit 200       # 每阶段最多处理 200 条
   %(prog)s all --force           # 忽略功能开关，强制运行所有阶段
@@ -535,6 +613,7 @@ def main():
 
 阶段说明:
   ai        AI 文章处理（摘要/分类/评分）   [feature.ai_processor]
+  translate arXiv 文章标题翻译               [feature.ai_processor]
   embedding 向量嵌入计算                     [feature.embedding]
   event     事件聚类                         [feature.event_clustering]
   topic     主题发现                         [feature.topic_radar]

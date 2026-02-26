@@ -368,6 +368,18 @@ async def start_scheduler() -> None:
     else:
         logger.info("Report generation jobs skipped (feature.report_generation disabled)")
 
+    # ---- 每日 arXiv 报告生成任务 ----
+    # 功能: 每天自动生成各分类的 arXiv 论文报告，支持 AI 翻译，输出微信公众号格式
+    # 前置条件: 需要启用 daily_report.enabled 功能开关
+    # 触发方式: 每天定时执行（Cron 触发），默认早上8点
+    # Daily arXiv report generation job
+    if feature_config.get_bool("daily_report.enabled", True):
+        from apps.daily_report.tasks import register_daily_report_job
+        register_daily_report_job(scheduler)
+        logger.info("Daily arXiv report job registered")
+    else:
+        logger.info("Daily arXiv report job skipped (daily_report.enabled disabled)")
+
     # 所有任务注册完毕后，启动调度器开始按计划执行任务
     scheduler.start()
     logger.info("Scheduler started")

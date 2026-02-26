@@ -24,6 +24,7 @@
 - [话题雷达 API](#话题雷达-api)
 - [行动项 API](#行动项-api)
 - [报告 API](#报告-api)
+- [每日报告 API](#每日报告-api)
 - [管理员 API](#管理员-api)
 - [健康检查 API](#健康检查-api)
 - [错误响应](#错误响应)
@@ -1380,6 +1381,177 @@ Authorization: Bearer <token>
 ```
 DELETE /researchpulse/api/reports/{report_id}
 Authorization: Bearer <token>
+```
+
+---
+
+## 每日报告 API
+
+> **功能开关:** `daily_report.enabled`（默认启用）
+
+每日 arXiv 论文报告，自动按分类生成当天论文信息，支持 AI 翻译和微信公众号格式导出。
+
+### 获取报告列表
+
+```
+GET /researchpulse/api/daily-reports
+Authorization: Bearer <token>
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| report_date | date | 否 | 报告日期（YYYY-MM-DD） |
+| category | string | 否 | arXiv 分类代码（如 cs.LG） |
+| status | string | 否 | 报告状态（draft/published/archived） |
+| page | int | 否 | 页码，默认 1 |
+| page_size | int | 否 | 每页数量，默认 20 |
+
+**Response (200):**
+
+```json
+{
+  "total": 6,
+  "page": 1,
+  "page_size": 20,
+  "reports": [
+    {
+      "id": 1,
+      "report_date": "2026-02-25",
+      "category": "cs.LG",
+      "category_name": "机器学习",
+      "title": "【每日 arXiv】2026年02月25日 机器学习领域新论文",
+      "article_count": 15,
+      "status": "draft",
+      "created_at": "2026-02-26T00:00:00",
+      "published_at": null
+    }
+  ]
+}
+```
+
+---
+
+### 获取报告详情
+
+```
+GET /researchpulse/api/daily-reports/{report_id}
+Authorization: Bearer <token>
+```
+
+**Response (200):**
+
+```json
+{
+  "id": 1,
+  "report_date": "2026-02-25",
+  "category": "cs.LG",
+  "category_name": "机器学习",
+  "title": "【每日 arXiv】2026年02月25日 机器学习领域新论文",
+  "content_markdown": "# 报告内容...",
+  "content_wechat": "微信公众号格式内容...",
+  "article_count": 15,
+  "article_ids": [1, 2, 3],
+  "status": "draft",
+  "created_at": "2026-02-26T00:00:00",
+  "updated_at": "2026-02-26T00:00:00"
+}
+```
+
+---
+
+### 导出报告
+
+```
+GET /researchpulse/api/daily-reports/{report_id}/export?format={format}
+Authorization: Bearer <token>
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| format | string | 否 | 导出格式：`markdown` 或 `wechat`，默认 `markdown` |
+
+**Response (200):**
+
+```json
+{
+  "id": 1,
+  "report_date": "2026-02-25",
+  "category": "cs.LG",
+  "category_name": "机器学习",
+  "title": "【每日 arXiv】2026年02月25日 机器学习领域新论文",
+  "content": "导出的报告内容...",
+  "format": "wechat",
+  "article_count": 15
+}
+```
+
+---
+
+### 手动生成报告
+
+```
+POST /researchpulse/api/daily-reports/generate
+Authorization: Bearer <token>
+```
+
+**Body:**
+
+```json
+{
+  "report_date": "2026-02-25",
+  "categories": ["cs.LG", "cs.CV"]
+}
+```
+
+**字段说明:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| report_date | date | 否 | 报告日期，默认昨天 |
+| categories | array | 否 | 分类列表，默认使用系统配置 |
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "message": "成功生成 2 份报告",
+  "reports": [...],
+  "errors": []
+}
+```
+
+---
+
+### 导出一天所有报告（合并版）
+
+```
+GET /researchpulse/api/daily-reports/export-daily?report_date={date}&format={format}
+Authorization: Bearer <token>
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| report_date | date | 是 | 报告日期 |
+| format | string | 否 | 导出格式：`markdown` 或 `wechat`，默认 `wechat` |
+
+**Response (200):**
+
+```json
+{
+  "report_date": "2026-02-25",
+  "format": "wechat",
+  "total_articles": 45,
+  "categories": ["机器学习", "计算机视觉", "人工智能"],
+  "content": "合并后的报告内容...",
+  "reports": [...]
+}
 ```
 
 ---

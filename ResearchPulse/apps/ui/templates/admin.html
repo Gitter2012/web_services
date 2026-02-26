@@ -1832,7 +1832,7 @@
                 <div class="tabs">
                     <button class="tab active" onclick="switchConfigTab('retention')">数据保留</button>
                     <button class="tab" onclick="switchConfigTab('scheduler')">调度设置</button>
-                    <button class="tab" onclick="switchConfigTab('pipeline')">Pipeline 配置</button>
+                    <button class="tab" onclick="switchConfigTab('pipeline')">Pipeline 管理</button>
                     <button class="tab" onclick="switchConfigTab('features')">功能开关</button>
                     <button class="tab" onclick="switchConfigTab('advanced')">高级设置</button>
                 </div>
@@ -1869,167 +1869,79 @@
                 <div id="config-scheduler-panel" class="config-panel" style="display:none;">
                     <div class="card">
                         <div class="card-header">
-                            <h3>调度器设置</h3>
+                            <h3>基础调度设置</h3>
+                            <span style="color:#888;font-size:13px;">爬取、清理、备份、邮件通知的调度配置（Pipeline 相关配置在「Pipeline 管理」中）</span>
                         </div>
                         <div class="card-body">
-                            <div class="form-group">
-                                <label class="form-label">爬取间隔（小时）</label>
-                                <input type="number" class="form-input" id="config-crawl-interval" value="6" min="1">
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                                <div class="form-group">
+                                    <label class="form-label">爬取间隔（小时）</label>
+                                    <input type="number" class="form-input" id="config-crawl-interval" value="6" min="1">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">爬取基准时间（小时，0-23）</label>
+                                    <input type="number" class="form-input" id="config-crawl-base-hour" value="0" min="0" max="23">
+                                    <small class="form-hint">如设为 23 且间隔 6h，则在 23:00、05:00、11:00、17:00 执行</small>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">数据清理时间（小时，0-23）</label>
+                                    <input type="number" class="form-input" id="config-cleanup-hour" value="3">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">备份时间（小时，0-23）</label>
+                                    <input type="number" class="form-input" id="config-backup-hour" value="4">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">邮件通知时间（小时，0-23）</label>
+                                    <input type="number" class="form-input" id="config-notification-hour" value="9" min="0" max="23">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">邮件通知时间（分钟，0-59）</label>
+                                    <input type="number" class="form-input" id="config-notification-minute" value="0" min="0" max="59">
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">爬取基准时间（小时，0-23）</label>
-                                <input type="number" class="form-input" id="config-crawl-base-hour" value="0" min="0" max="23">
-                                <small class="form-hint">任务从此时间点开始按间隔执行，如设为 23 且间隔 6 小时，则在 23:00、05:00、11:00、17:00 执行</small>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">数据清理时间（小时，0-23）</label>
-                                <input type="number" class="form-input" id="config-cleanup-hour" value="3">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">备份时间（小时，0-23）</label>
-                                <input type="number" class="form-input" id="config-backup-hour" value="4">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">AI 处理间隔（小时）</label>
-                                <input type="number" class="form-input" id="config-ai-interval" value="1" min="1" max="168">
-                                <small class="form-hint">建议范围 1-168 小时（1 小时到 7 天）</small>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">AI 处理基准时间（小时，0-23）</label>
-                                <input type="number" class="form-input" id="config-ai-base-hour" value="0" min="0" max="23">
-                                <small class="form-hint">任务从此时间点开始按间隔执行，如设为 23 且间隔 1 小时，则在 23:00、00:00、01:00... 执行</small>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">向量嵌入间隔（小时）</label>
-                                <input type="number" class="form-input" id="config-embedding-interval" value="2" min="1">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">向量嵌入基准时间（小时，0-23）</label>
-                                <input type="number" class="form-input" id="config-embedding-base-hour" value="0" min="0" max="23">
-                                <small class="form-hint">任务从此时间点开始按间隔执行</small>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">事件聚类时间（小时，0-23）</label>
-                                <input type="number" class="form-input" id="config-event-cluster-hour" value="2" min="0" max="23">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">主题发现（星期几）</label>
-                                <select class="form-input" id="config-topic-day">
-                                    <option value="mon">周一</option>
-                                    <option value="tue">周二</option>
-                                    <option value="wed">周三</option>
-                                    <option value="thu">周四</option>
-                                    <option value="fri">周五</option>
-                                    <option value="sat">周六</option>
-                                    <option value="sun">周日</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">主题发现时间（小时，0-23）</label>
-                                <input type="number" class="form-input" id="config-topic-hour" value="1" min="0" max="23">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">行动项提取间隔（小时）</label>
-                                <input type="number" class="form-input" id="config-action-interval" value="2" min="1">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">行动项提取基准时间（小时，0-23）</label>
-                                <input type="number" class="form-input" id="config-action-base-hour" value="0" min="0" max="23">
-                                <small class="form-hint">任务从此时间点开始按间隔执行</small>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">周报生成（星期几）</label>
-                                <select class="form-input" id="config-report-weekly-day">
-                                    <option value="mon">周一</option>
-                                    <option value="tue">周二</option>
-                                    <option value="wed">周三</option>
-                                    <option value="thu">周四</option>
-                                    <option value="fri">周五</option>
-                                    <option value="sat">周六</option>
-                                    <option value="sun">周日</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">周报生成时间（小时，0-23）</label>
-                                <input type="number" class="form-input" id="config-report-weekly-hour" value="6" min="0" max="23">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">月报生成时间（小时，0-23，每月1号）</label>
-                                <input type="number" class="form-input" id="config-report-monthly-hour" value="7" min="0" max="23">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">邮件通知时间（小时，0-23）</label>
-                                <input type="number" class="form-input" id="config-notification-hour" value="9" min="0" max="23">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">邮件通知时间（分钟，0-59）</label>
-                                <input type="number" class="form-input" id="config-notification-minute" value="0" min="0" max="59">
-                            </div>
-                            <button class="btn btn-primary" onclick="saveConfigGroup('scheduler')">保存配置</button>
+                            <button class="btn btn-primary" style="margin-top:12px;" onclick="saveConfigGroup('scheduler')">保存配置</button>
                         </div>
                     </div>
                 </div>
 
                 <!-- Pipeline Config -->
                 <div id="config-pipeline-panel" class="config-panel" style="display:none;">
-                    <!-- Pipeline Feature Toggles -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h3>Pipeline 功能开关</h3>
-                            <span style="color: #888; font-size: 13px;">启用或禁用 Pipeline 处理模块</span>
-                        </div>
-                        <div class="card-body">
-                            <div class="toggle-list" id="config-pipeline-feature-toggles">
-                                <div style="text-align:center;color:#888;padding:20px;">加载中...</div>
-                            </div>
-                        </div>
+                    <div class="page-header" style="margin-bottom:16px;">
+                        <h3 style="margin:0;">Pipeline 功能管理</h3>
+                        <span style="color:#888;font-size:13px;">管理 Pipeline 各模块的功能开关、调度配置和手动触发</span>
                     </div>
 
-                    <!-- Pipeline Batch Config -->
-                    <div class="card">
+                    <!-- Pipeline Modules -->
+                    <div id="pipeline-modules-container">
+                        <div style="text-align:center;color:#888;padding:40px;">加载中...</div>
+                    </div>
+
+                    <!-- Worker Config -->
+                    <div class="card" style="margin-top:16px;">
                         <div class="card-header">
-                            <h3>批处理配置</h3>
-                            <span style="color: #888; font-size: 13px;">设置各处理阶段的批次大小</span>
+                            <h3>Worker 配置</h3>
                         </div>
                         <div class="card-body">
-                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-                                <div class="form-group">
-                                    <label class="form-label">AI 批次上限</label>
-                                    <input type="number" class="form-input" id="config-pipeline-ai-batch-limit" value="200" min="1">
-                                    <small class="form-hint">单次 AI 处理的最大文章数</small>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Embedding 批次上限</label>
-                                    <input type="number" class="form-input" id="config-pipeline-embedding-batch-limit" value="500" min="1">
-                                    <small class="form-hint">单次向量化的最大文章数</small>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Event 批次上限</label>
-                                    <input type="number" class="form-input" id="config-pipeline-event-batch-limit" value="500" min="1">
-                                    <small class="form-hint">单次事件聚类的最大文章数</small>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Action 批次上限</label>
-                                    <input type="number" class="form-input" id="config-pipeline-action-batch-limit" value="200" min="1">
-                                    <small class="form-hint">单次行动项提取的最大文章数</small>
-                                </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                                 <div class="form-group">
                                     <label class="form-label">Worker 轮询间隔（分钟）</label>
                                     <input type="number" class="form-input" id="config-pipeline-worker-interval" value="10" min="1">
                                     <small class="form-hint">Pipeline 队列处理间隔</small>
                                 </div>
                             </div>
-                            <button class="btn btn-primary" style="margin-top:12px;" onclick="saveConfigGroup('pipeline')">保存配置</button>
                         </div>
                     </div>
+
+                    <button class="btn btn-primary" style="margin-top:16px;" onclick="saveAllPipelineConfig()">保存所有配置</button>
                 </div>
 
                 <!-- Features Config -->
                 <div id="config-features-panel" class="config-panel" style="display:none;">
                     <div class="card">
                         <div class="card-header">
-                            <h3>功能开关</h3>
-                            <span style="color: #888; font-size: 13px;">启用或禁用系统功能模块</span>
+                            <h3>系统功能开关</h3>
+                            <span style="color: #888; font-size: 13px;">启用或禁用系统功能模块（Pipeline 相关功能在「Pipeline 管理」中）</span>
                         </div>
                         <div class="card-body" id="features-list">
                             <p>加载中...</p>
@@ -4305,36 +4217,16 @@
                 document.getElementById('config-retention-archive-days').value = retention['retention.archive_days'] || 30;
                 document.getElementById('config-backup-enabled').checked = (retention['retention.backup_enabled'] || 'true') === 'true';
 
-                // Populate scheduler settings
+                // Populate scheduler settings (基础调度，Pipeline 相关配置在 Pipeline 管理)
                 const scheduler = allConfigs.scheduler || {};
                 document.getElementById('config-crawl-interval').value = scheduler['scheduler.crawl_interval_hours'] || 6;
                 document.getElementById('config-crawl-base-hour').value = scheduler['scheduler.crawl_base_hour'] || 0;
                 document.getElementById('config-cleanup-hour').value = scheduler['scheduler.cleanup_hour'] || 3;
                 document.getElementById('config-backup-hour').value = scheduler['scheduler.backup_hour'] || 4;
-                document.getElementById('config-ai-interval').value = scheduler['scheduler.ai_process_interval_hours'] || 1;
-                document.getElementById('config-ai-base-hour').value = scheduler['scheduler.ai_process_base_hour'] || 0;
-                document.getElementById('config-embedding-interval').value = scheduler['scheduler.embedding_interval_hours'] || 2;
-                document.getElementById('config-embedding-base-hour').value = scheduler['scheduler.embedding_base_hour'] || 0;
-                document.getElementById('config-event-cluster-hour').value = scheduler['scheduler.event_cluster_hour'] || 2;
-                document.getElementById('config-topic-day').value = scheduler['scheduler.topic_discovery_day'] || 'mon';
-                document.getElementById('config-topic-hour').value = scheduler['scheduler.topic_discovery_hour'] || 1;
-                document.getElementById('config-action-interval').value = scheduler['scheduler.action_extract_interval_hours'] || 2;
-                document.getElementById('config-action-base-hour').value = scheduler['scheduler.action_extract_base_hour'] || 0;
-                document.getElementById('config-report-weekly-day').value = scheduler['scheduler.report_weekly_day'] || 'mon';
-                document.getElementById('config-report-weekly-hour').value = scheduler['scheduler.report_weekly_hour'] || 6;
-                document.getElementById('config-report-monthly-hour').value = scheduler['scheduler.report_monthly_hour'] || 7;
                 document.getElementById('config-notification-hour').value = scheduler['scheduler.notification_hour'] || 9;
                 document.getElementById('config-notification-minute').value = scheduler['scheduler.notification_minute'] || 0;
 
-                // Populate pipeline settings
-                const pipeline = allConfigs.pipeline || {};
-                document.getElementById('config-pipeline-ai-batch-limit').value = pipeline['pipeline.ai_batch_limit'] || 200;
-                document.getElementById('config-pipeline-embedding-batch-limit').value = pipeline['pipeline.embedding_batch_limit'] || 500;
-                document.getElementById('config-pipeline-event-batch-limit').value = pipeline['pipeline.event_batch_limit'] || 500;
-                document.getElementById('config-pipeline-action-batch-limit').value = pipeline['pipeline.action_batch_limit'] || 200;
-                document.getElementById('config-pipeline-worker-interval').value = pipeline['pipeline.worker_interval_minutes'] || 10;
-
-                // Load pipeline feature toggles
+                // Load pipeline modules
                 loadPipelineFeatureToggles();
 
                 // Populate advanced settings
@@ -4354,54 +4246,206 @@
         }
 
         async function loadPipelineFeatureToggles() {
+            // 已重构为 loadPipelineModules()
+            await loadPipelineModules();
+        }
+
+        // Pipeline 模块配置
+        const PIPELINE_MODULES = [
+            {
+                key: 'feature.ai_processor',
+                name: 'AI 文章处理',
+                desc: '对文章进行摘要、分类、评分',
+                scheduleType: 'interval',
+                scheduleConfig: { intervalKey: 'scheduler.ai_process_interval_hours', baseKey: 'scheduler.ai_process_base_hour' },
+                batchKey: 'pipeline.ai_batch_limit',
+                triggerEndpoint: '/scheduler/jobs/ai_process_job/trigger',
+                statsQuery: 'ai_processed'
+            },
+            {
+                key: 'feature.translate',
+                name: '标题翻译',
+                desc: '翻译 arXiv 英文标题为中文（AI 分析时自动调用）',
+                scheduleType: 'manual',
+                batchKey: 'pipeline.translate_batch_limit',
+                triggerEndpoint: '/pipeline/translate',
+                isTranslate: true
+            },
+            {
+                key: 'feature.embedding',
+                name: '向量嵌入',
+                desc: '计算文章向量用于语义搜索',
+                scheduleType: 'interval',
+                scheduleConfig: { intervalKey: 'scheduler.embedding_interval_hours', baseKey: 'scheduler.embedding_base_hour' },
+                batchKey: 'pipeline.embedding_batch_limit',
+                triggerEndpoint: '/scheduler/jobs/embedding_job/trigger',
+                statsQuery: 'embedding'
+            },
+            {
+                key: 'feature.event_clustering',
+                name: '事件聚类',
+                desc: '聚类相似文章形成事件',
+                scheduleType: 'cron',
+                scheduleConfig: { hourKey: 'scheduler.event_cluster_hour' },
+                batchKey: 'pipeline.event_batch_limit',
+                triggerEndpoint: '/scheduler/jobs/event_cluster_job/trigger',
+                statsQuery: 'events'
+            },
+            {
+                key: 'feature.topic_radar',
+                name: '话题雷达',
+                desc: '发现热门话题趋势',
+                scheduleType: 'cron_weekly',
+                scheduleConfig: { dayKey: 'scheduler.topic_discovery_day', hourKey: 'scheduler.topic_discovery_hour' },
+                triggerEndpoint: '/scheduler/jobs/topic_discovery_job/trigger',
+                statsQuery: 'topics'
+            },
+            {
+                key: 'feature.action_items',
+                name: '行动项提取',
+                desc: '从文章中提取可执行的行动建议',
+                scheduleType: 'interval',
+                scheduleConfig: { intervalKey: 'scheduler.action_extract_interval_hours', baseKey: 'scheduler.action_extract_base_hour' },
+                batchKey: 'pipeline.action_batch_limit',
+                triggerEndpoint: '/scheduler/jobs/action_extract_job/trigger'
+            },
+            {
+                key: 'feature.report_generation',
+                name: '报告生成',
+                desc: '生成周报和月报',
+                scheduleType: 'cron_weekly',
+                scheduleConfig: { dayKey: 'scheduler.report_weekly_day', hourKey: 'scheduler.report_weekly_hour' },
+                triggerEndpoint: '/scheduler/jobs/weekly_report_job/trigger'
+            }
+        ];
+
+        // 存储 Pipeline 配置数据
+        let pipelineConfigData = {};
+        let pipelineFeaturesData = {};
+
+        async function loadPipelineModules() {
             const token = localStorage.getItem('access_token');
-            const container = document.getElementById('config-pipeline-feature-toggles');
+            const container = document.getElementById('pipeline-modules-container');
 
             try {
-                const res = await fetch(`${ADMIN_BASE}/features`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                // 并行加载配置和功能状态
+                const [configRes, featuresRes] = await Promise.all([
+                    fetch(`${ADMIN_BASE}/config/groups`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${ADMIN_BASE}/features`, { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+
+                const configData = await configRes.json();
+                const featuresData = await featuresRes.json();
+
+                pipelineConfigData = configData.groups || {};
+                pipelineFeaturesData = {};
+                (featuresData.features || []).forEach(f => {
+                    pipelineFeaturesData[f.key] = f.enabled;
                 });
-                const data = await res.json();
-                const features = data.features || [];
 
-                // 只显示 Pipeline 相关的功能开关
-                const pipelineFeatures = [
-                    'feature.ai_processor',
-                    'feature.embedding',
-                    'feature.event_clustering',
-                    'feature.topic_radar',
-                    'feature.action_items',
-                    'feature.report_generation'
-                ];
-
-                const featureNames = {
-                    'feature.ai_processor': 'AI 文章处理',
-                    'feature.embedding': '向量嵌入',
-                    'feature.event_clustering': '事件聚类',
-                    'feature.topic_radar': '话题雷达',
-                    'feature.action_items': '行动项提取',
-                    'feature.report_generation': '报告生成'
-                };
-
-                const filteredFeatures = features.filter(f => pipelineFeatures.includes(f.key));
-
-                container.innerHTML = filteredFeatures.map(f => `
-                    <div class="toggle-item">
-                        <div class="toggle-info">
-                            <h4>${featureNames[f.key] || f.key}</h4>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" ${f.enabled ? 'checked' : ''} onchange="togglePipelineFeature('${f.key}', this.checked)">
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                `).join('');
+                renderPipelineModules();
             } catch (e) {
-                container.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">加载失败</div>';
+                console.error('Failed to load pipeline modules:', e);
+                container.innerHTML = '<div style="text-align:center;color:#dc2626;padding:40px;">加载失败</div>';
             }
         }
 
-        async function togglePipelineFeature(key, enabled) {
+        function renderPipelineModules() {
+            const container = document.getElementById('pipeline-modules-container');
+            const scheduler = pipelineConfigData.scheduler || {};
+            const pipeline = pipelineConfigData.pipeline || {};
+
+            const dayNames = { mon: '周一', tue: '周二', wed: '周三', thu: '周四', fri: '周五', sat: '周六', sun: '周日' };
+
+            container.innerHTML = PIPELINE_MODULES.map(module => {
+                const enabled = pipelineFeaturesData[module.key] || false;
+                const batchValue = pipeline[module.batchKey] || 100;
+                const moduleStyle = enabled ? '' : 'opacity:0.6;';
+
+                // 调度配置
+                let scheduleHtml = '';
+                if (module.scheduleType === 'interval') {
+                    const interval = scheduler[module.scheduleConfig.intervalKey] || 1;
+                    const baseHour = scheduler[module.scheduleConfig.baseKey] || 0;
+                    scheduleHtml = `
+                        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                            <span style="font-size:12px;color:#888;">每隔</span>
+                            <input type="number" class="form-input" style="width:60px;" value="${interval}" min="1" id="sched-${module.key}-interval">
+                            <span style="font-size:12px;color:#888;">小时，基准时间</span>
+                            <input type="number" class="form-input" style="width:60px;" value="${baseHour}" min="0" max="23" id="sched-${module.key}-base">
+                            <span style="font-size:12px;color:#888;">点</span>
+                        </div>
+                    `;
+                } else if (module.scheduleType === 'cron') {
+                    const hour = scheduler[module.scheduleConfig.hourKey] || 2;
+                    scheduleHtml = `
+                        <div style="display:flex;gap:12px;align-items:center;">
+                            <span style="font-size:12px;color:#888;">每日</span>
+                            <input type="number" class="form-input" style="width:60px;" value="${hour}" min="0" max="23" id="sched-${module.key}-hour">
+                            <span style="font-size:12px;color:#888;">:00</span>
+                        </div>
+                    `;
+                } else if (module.scheduleType === 'cron_weekly') {
+                    const day = scheduler[module.scheduleConfig.dayKey] || 'mon';
+                    const hour = scheduler[module.scheduleConfig.hourKey] || 1;
+                    scheduleHtml = `
+                        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                            <span style="font-size:12px;color:#888;">每</span>
+                            <select class="form-input" style="width:80px;" id="sched-${module.key}-day">
+                                ${['mon','tue','wed','thu','fri','sat','sun'].map(d => `<option value="${d}" ${d===day?'selected':''}>${dayNames[d]}</option>`).join('')}
+                            </select>
+                            <input type="number" class="form-input" style="width:60px;" value="${hour}" min="0" max="23" id="sched-${module.key}-hour">
+                            <span style="font-size:12px;color:#888;">:00</span>
+                        </div>
+                    `;
+                } else if (module.scheduleType === 'manual') {
+                    scheduleHtml = `<span style="font-size:12px;color:#888;">手动触发（AI 分析时自动调用）</span>`;
+                }
+
+                // 批次配置
+                let batchHtml = '';
+                if (module.batchKey) {
+                    batchHtml = `
+                        <div style="display:flex;gap:12px;align-items:center;margin-top:8px;">
+                            <span style="font-size:12px;color:#888;">批次上限:</span>
+                            <input type="number" class="form-input" style="width:80px;" value="${batchValue}" min="1" id="batch-${module.key}">
+                            <span style="font-size:12px;color:#888;">篇</span>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <div class="card" style="margin-bottom:12px;${moduleStyle}">
+                        <div class="card-body" style="padding:16px;">
+                            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+                                <div>
+                                    <h4 style="margin:0 0 4px 0;font-size:15px;">${module.name}</h4>
+                                    <p style="margin:0;font-size:12px;color:#888;">${module.desc}</p>
+                                </div>
+                                <div style="display:flex;gap:8px;align-items:center;">
+                                    <label class="toggle-switch" style="margin:0;">
+                                        <input type="checkbox" ${enabled ? 'checked' : ''} onchange="togglePipelineModule('${module.key}', this.checked)">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <button class="btn btn-sm ${enabled ? 'btn-primary' : ''}" style="font-size:12px;padding:4px 10px;" ${!enabled ? 'disabled' : ''} onclick="triggerPipelineModule('${module.key}')">
+                                        触发
+                                    </button>
+                                </div>
+                            </div>
+                            <div style="border-top:1px solid #eee;padding-top:12px;">
+                                ${scheduleHtml}
+                                ${batchHtml}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // 加载 Worker 配置
+            document.getElementById('config-pipeline-worker-interval').value = pipeline['pipeline.worker_interval_minutes'] || 10;
+        }
+
+        async function togglePipelineModule(key, enabled) {
             const token = localStorage.getItem('access_token');
             try {
                 const res = await fetch(`${ADMIN_BASE}/features/${key}`, {
@@ -4412,13 +4456,120 @@
                     },
                     body: JSON.stringify({ enabled })
                 });
-                if (!res.ok) {
+                if (res.ok) {
+                    pipelineFeaturesData[key] = enabled;
+                    renderPipelineModules();
+                } else {
                     alert('更新失败');
-                    loadPipelineFeatureToggles();
                 }
             } catch (e) {
                 alert('更新失败');
             }
+        }
+
+        async function triggerPipelineModule(key) {
+            const token = localStorage.getItem('access_token');
+            const module = PIPELINE_MODULES.find(m => m.key === key);
+            if (!module) return;
+
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '执行中...';
+
+            try {
+                let endpoint = module.triggerEndpoint;
+                let options = {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                };
+
+                // 翻译需要传递 limit 参数
+                if (module.isTranslate) {
+                    const batchInput = document.getElementById(`batch-${key}`);
+                    const limit = batchInput ? batchInput.value : 100;
+                    endpoint = `${ADMIN_BASE}${endpoint}?limit=${limit}`;
+                } else {
+                    endpoint = `${ADMIN_BASE}${endpoint}`;
+                }
+
+                const res = await fetch(endpoint, options);
+                const data = await res.json();
+
+                if (res.ok) {
+                    let msg = data.message || '执行成功';
+                    if (data.translated !== undefined) {
+                        msg = `翻译完成: ${data.translated} 篇成功, ${data.skipped} 篇跳过`;
+                    }
+                    alert(msg);
+                } else {
+                    alert('执行失败: ' + (data.detail || '未知错误'));
+                }
+            } catch (e) {
+                alert('执行失败: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        async function saveAllPipelineConfig() {
+            const token = localStorage.getItem('access_token');
+            const configs = {};
+            const scheduler = pipelineConfigData.scheduler || {};
+            const pipeline = pipelineConfigData.pipeline || {};
+
+            // 收集所有模块的配置
+            PIPELINE_MODULES.forEach(module => {
+                if (module.scheduleType === 'interval') {
+                    const intervalEl = document.getElementById(`sched-${module.key}-interval`);
+                    const baseEl = document.getElementById(`sched-${module.key}-base`);
+                    if (intervalEl) configs[module.scheduleConfig.intervalKey] = intervalEl.value;
+                    if (baseEl) configs[module.scheduleConfig.baseKey] = baseEl.value;
+                } else if (module.scheduleType === 'cron') {
+                    const hourEl = document.getElementById(`sched-${module.key}-hour`);
+                    if (hourEl) configs[module.scheduleConfig.hourKey] = hourEl.value;
+                } else if (module.scheduleType === 'cron_weekly') {
+                    const dayEl = document.getElementById(`sched-${module.key}-day`);
+                    const hourEl = document.getElementById(`sched-${module.key}-hour`);
+                    if (dayEl) configs[module.scheduleConfig.dayKey] = dayEl.value;
+                    if (hourEl) configs[module.scheduleConfig.hourKey] = hourEl.value;
+                }
+
+                if (module.batchKey) {
+                    const batchEl = document.getElementById(`batch-${module.key}`);
+                    if (batchEl) configs[module.batchKey] = batchEl.value;
+                }
+            });
+
+            // Worker 配置
+            configs['pipeline.worker_interval_minutes'] = document.getElementById('config-pipeline-worker-interval').value;
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/config/batch`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ configs })
+                });
+
+                if (res.ok) {
+                    alert('配置保存成功');
+                    await loadPipelineModules();
+                } else {
+                    const err = await res.json();
+                    alert('保存失败: ' + (err.detail || '未知错误'));
+                }
+            } catch (e) {
+                alert('保存失败: ' + e.message);
+            }
+        }
+
+        async function togglePipelineFeature(key, enabled) {
+            // 已重构为 togglePipelineModule
+            await togglePipelineModule(key, enabled);
         }
 
         async function loadFeaturesList() {
@@ -4432,30 +4583,36 @@
                 const data = await res.json();
                 const features = data.features || [];
 
+                // Pipeline 相关功能已移至 Pipeline 管理，这里只显示非 Pipeline 功能
+                const pipelineFeatures = [
+                    'feature.ai_processor',
+                    'feature.embedding',
+                    'feature.event_clustering',
+                    'feature.topic_radar',
+                    'feature.action_items',
+                    'feature.report_generation'
+                ];
+
                 const featureNames = {
-                    'feature.ai_processor': 'AI 文章处理',
-                    'feature.embedding': '向量嵌入',
-                    'feature.event_clustering': '事件聚类',
-                    'feature.topic_radar': '话题雷达',
-                    'feature.action_items': '行动项提取',
-                    'feature.report_generation': '报告生成',
                     'feature.crawler': '数据爬取',
                     'feature.backup': '自动备份',
                     'feature.cleanup': '数据清理',
                     'feature.email_notification': '邮件通知'
                 };
 
+                const systemFeatures = features.filter(f => !pipelineFeatures.includes(f.key));
+
                 container.innerHTML = `
                     <div class="toggle-list">
-                        ${features.map(f => `
+                        ${systemFeatures.map(f => `
                             <div class="toggle-item">
                                 <div class="toggle-info">
                                     <h4>${featureNames[f.key] || f.key}</h4>
                                     <p>${f.key}</p>
                                 </div>
                                 <label class="toggle-switch">
-                                    <input type="checkbox" 
-                                        ${f.enabled ? 'checked' : ''} 
+                                    <input type="checkbox"
+                                        ${f.enabled ? 'checked' : ''}
                                         onchange="toggleFeature('${f.key}', this.checked)">
                                     <span class="toggle-slider"></span>
                                 </label>
@@ -4494,30 +4651,15 @@
                 configs['retention.archive_days'] = document.getElementById('config-retention-archive-days').value;
                 configs['retention.backup_enabled'] = document.getElementById('config-backup-enabled').checked ? 'true' : 'false';
             } else if (group === 'scheduler') {
+                // 基础调度配置（Pipeline 相关配置在 Pipeline 管理中保存）
                 configs['scheduler.crawl_interval_hours'] = document.getElementById('config-crawl-interval').value;
                 configs['scheduler.crawl_base_hour'] = document.getElementById('config-crawl-base-hour').value;
                 configs['scheduler.cleanup_hour'] = document.getElementById('config-cleanup-hour').value;
                 configs['scheduler.backup_hour'] = document.getElementById('config-backup-hour').value;
-                configs['scheduler.ai_process_interval_hours'] = document.getElementById('config-ai-interval').value;
-                configs['scheduler.ai_process_base_hour'] = document.getElementById('config-ai-base-hour').value;
-                configs['scheduler.embedding_interval_hours'] = document.getElementById('config-embedding-interval').value;
-                configs['scheduler.embedding_base_hour'] = document.getElementById('config-embedding-base-hour').value;
-                configs['scheduler.event_cluster_hour'] = document.getElementById('config-event-cluster-hour').value;
-                configs['scheduler.topic_discovery_day'] = document.getElementById('config-topic-day').value;
-                configs['scheduler.topic_discovery_hour'] = document.getElementById('config-topic-hour').value;
-                configs['scheduler.action_extract_interval_hours'] = document.getElementById('config-action-interval').value;
-                configs['scheduler.action_extract_base_hour'] = document.getElementById('config-action-base-hour').value;
-                configs['scheduler.report_weekly_day'] = document.getElementById('config-report-weekly-day').value;
-                configs['scheduler.report_weekly_hour'] = document.getElementById('config-report-weekly-hour').value;
-                configs['scheduler.report_monthly_hour'] = document.getElementById('config-report-monthly-hour').value;
                 configs['scheduler.notification_hour'] = document.getElementById('config-notification-hour').value;
                 configs['scheduler.notification_minute'] = document.getElementById('config-notification-minute').value;
             } else if (group === 'pipeline') {
-                configs['pipeline.ai_batch_limit'] = document.getElementById('config-pipeline-ai-batch-limit').value;
-                configs['pipeline.embedding_batch_limit'] = document.getElementById('config-pipeline-embedding-batch-limit').value;
-                configs['pipeline.event_batch_limit'] = document.getElementById('config-pipeline-event-batch-limit').value;
-                configs['pipeline.action_batch_limit'] = document.getElementById('config-pipeline-action-batch-limit').value;
-                configs['pipeline.worker_interval_minutes'] = document.getElementById('config-pipeline-worker-interval').value;
+                // 已移至 saveAllPipelineConfig()
             } else if (group === 'advanced') {
                 configs['cache.enabled'] = document.getElementById('config-cache-enabled').checked ? 'true' : 'false';
                 configs['cache.default_ttl'] = document.getElementById('config-cache-ttl').value;

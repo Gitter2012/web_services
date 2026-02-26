@@ -225,6 +225,15 @@ class AIProcessorService:
 
         processing_result["processing_method"] = "ai" if processing_result.get("success") else "failed"
 
+        # 英文标题翻译：检测后请求 AI 翻译
+        if processing_result.get("success") and _is_english(article.title or ""):
+            try:
+                translated_title = await self.provider.translate(article.title)
+                if translated_title:
+                    processing_result["_translated_title"] = translated_title
+            except Exception as e:
+                logger.debug(f"Title translation skipped for article {article_id}: {e}")
+
         # 英文 summary 翻译：检测后请求 AI 翻译，成功则存入 content
         if processing_result.get("success") and _is_english(article.summary or ""):
             try:
@@ -437,6 +446,9 @@ class AIProcessorService:
         translated_content = result.get("_translated_content")
         if translated_content:
             values["content"] = translated_content
+        translated_title = result.get("_translated_title")
+        if translated_title:
+            values["translated_title"] = translated_title
 
         await db.execute(
             update(Article)

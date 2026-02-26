@@ -48,6 +48,8 @@ from apps.topic import router as topic_router
 from apps.action import router as action_router
 # 报告生成模块路由
 from apps.report import router as report_router
+# 每日 arXiv 报告模块路由
+from apps.daily_report.api import router as daily_report_router
 # 定时任务调度器的启动和停止函数
 from apps.scheduler import start_scheduler, stop_scheduler
 # Pipeline models — imported to ensure table is registered with Base.metadata
@@ -176,6 +178,7 @@ app.include_router(event_router, prefix="/researchpulse/api/events", tags=["Even
 app.include_router(topic_router, prefix="/researchpulse/api/topics", tags=["Topics"])            # 话题发现与雷达
 app.include_router(action_router, prefix="/researchpulse/api/actions", tags=["Actions"])         # 行动项追踪
 app.include_router(report_router, prefix="/researchpulse/api/reports", tags=["Reports"])         # 报告自动生成
+app.include_router(daily_report_router, prefix="/researchpulse/api", tags=["Daily Reports"])    # 每日 arXiv 报告
 
 
 # 健康检查端点

@@ -243,6 +243,17 @@ action:
 report:
   enabled: false
 
+# Daily Report Configuration
+# 分类中文名称从数据库 arxiv_categories 表读取（name_zh 字段）
+daily_report:
+  enabled: true
+  hour: 8
+  minute: 0
+  categories: "cs.LG,cs.CV,cs.CL,cs.AI,cs.RO,cs.NE"
+  max_articles: 50
+  translate_title: true
+  offset_days: 1
+
 # Notification Configuration
 notification:
   wechat:

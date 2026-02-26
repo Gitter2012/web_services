@@ -11,6 +11,17 @@
 
 ### 新增
 
+- **每日 arXiv 报告模块** (`apps/daily_report/`)
+  - 自动生成每日 arXiv 论文报告，支持按分类分组
+  - AI 翻译论文标题和摘要为中文
+  - 生成微信公众号兼容的 Markdown 格式
+  - 前端页面支持查看、手动生成、导出报告
+  - 定时任务每天早上 8 点自动生成昨天报告
+  - 数据库表 `daily_reports` 存储报告内容
+  - Article 模型新增 `translated_title` 字段
+  - arxiv_categories 表新增 `name_zh` 中文名称字段
+  - 权限控制：`daily_report:read`、`daily_report:generate`、`daily_report:export`
+
 - **Pipeline 任务队列** (`apps/pipeline/`)
   - `pipeline_tasks` 数据库表：持久化流水线任务，进程重启不丢失
   - DAG 触发链：AI 完成 → 自动入队 Embedding + Action → Embedding 完成 → 入队 Event
