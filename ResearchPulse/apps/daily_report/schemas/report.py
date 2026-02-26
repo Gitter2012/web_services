@@ -104,3 +104,31 @@ class DailyExportResponse(BaseModel):
     categories: list[str]
     content: str
     reports: list[DailyReportResponse]
+
+
+# -----------------------------------------------------------------------------
+# 异步任务模型
+# -----------------------------------------------------------------------------
+
+class TaskStatusResponse(BaseModel):
+    """Response for task status query."""
+
+    task_id: str
+    task_type: str
+    name: str
+    status: str
+    progress: int
+    progress_message: str = ""
+    result: Optional[dict] = None
+    error_message: Optional[str] = None
+    created_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+
+class GenerateReportAsyncResponse(BaseModel):
+    """Response for async generate report request."""
+
+    task_id: str
+    message: str
+    status: str = "pending"

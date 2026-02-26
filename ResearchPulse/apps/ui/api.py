@@ -662,7 +662,8 @@ async def list_categories(
                 {
                     "id": cat.id,
                     "code": cat.code,         # 分类代码，如 "cs.AI"、"math.PR"
-                    "name": cat.name,         # 分类名称
+                    "name": cat.name,         # 分类名称（英文）
+                    "name_zh": cat.name_zh,   # 分类名称（中文）
                     "description": cat.description,  # 分类描述
                 }
                 for cat in categories

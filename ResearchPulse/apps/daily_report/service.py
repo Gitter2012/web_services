@@ -139,14 +139,27 @@ class DailyReportService:
         self,
         articles: list[Article],
         db: AsyncSession,
+        progress_callback: Optional[callable] = None,
+        base_progress: int = 0,
+        category_progress_range: float = 100,
+        category_index: int = 1,
+        total_categories: int = 1,
+        category: str = "",
     ) -> None:
         """Ensure articles have translated title and summary.
 
         确保文章标题和摘要已翻译。对于未翻译的文章，调用翻译服务。
+        采用批量翻译策略，减少 API 调用次数。
 
         Args:
             articles: List of articles.
             db: Database session.
+            progress_callback: Optional callback for progress updates.
+            base_progress: Base progress for this category.
+            category_progress_range: Progress range for this category.
+            category_index: Current category index.
+            total_categories: Total number of categories.
+            category: Category code (e.g., cs.LG).
         """
         if not articles:
             return
@@ -161,42 +174,107 @@ class DailyReportService:
         # 导入翻译服务（延迟导入避免循环依赖）
         from apps.ai_processor.service import get_ai_provider
 
+        total_articles = len(articles)
+
+        # 收集需要翻译的标题和摘要
+        titles_to_translate = []  # [(index, article, text), ...]
+        summaries_to_translate = []  # [(index, article, text), ...]
+
+        for idx, article in enumerate(articles):
+            if _is_english(article.title or "") and not article.translated_title:
+                titles_to_translate.append((idx, article, article.title))
+            if _is_english(article.summary or "") and not article.content_summary:
+                summaries_to_translate.append((idx, article, article.summary))
+
+        needs_translate_count = len(titles_to_translate) + len(summaries_to_translate)
+
+        if needs_translate_count == 0:
+            if progress_callback:
+                await progress_callback(base_progress + int(category_progress_range * 0.8),
+                    f"[{category_index}/{total_categories}] {category}: 文章已翻译，跳过")
+            return
+
         try:
             provider = get_ai_provider()
             needs_update = []
+            concurrency = feature_config.get_int("ai.translate_concurrency", 5)
+            batch_size = feature_config.get_int("daily_report.translate_batch_size", 10)
 
-            for article in articles:
-                updated = False
+            # 批量翻译标题（分批处理，显示详细进度）
+            if titles_to_translate:
+                total_titles = len(titles_to_translate)
+                translated_titles = []
 
-                # 翻译标题
-                if _is_english(article.title or "") and not article.translated_title:
+                for batch_start in range(0, total_titles, batch_size):
+                    batch_end = min(batch_start + batch_size, total_titles)
+                    batch = titles_to_translate[batch_start:batch_end]
+                    texts = [item[2] for item in batch]
+
+                    # 更新进度：正在翻译
+                    if progress_callback:
+                        progress = base_progress + int((0.1 + 0.4 * batch_start / total_titles) * category_progress_range)
+                        await progress_callback(progress,
+                            f"[{category_index}/{total_categories}] {category}: 翻译标题 {batch_start+1}-{batch_end}/{total_titles}")
+
                     try:
-                        translated_title = await provider.translate(article.title)
-                        if translated_title:
-                            article.translated_title = translated_title
-                            updated = True
-                    except Exception as e:
-                        logger.warning(f"Failed to translate title for article {article.id}: {e}")
+                        translated = await provider.translate_batch(texts, concurrency=concurrency)
+                        translated_titles.extend(translated)
 
-                # 翻译摘要（存储到 content_summary 字段）
-                if _is_english(article.summary or "") and not article.content_summary:
+                        # 更新文章
+                        for i, (idx, article, _) in enumerate(batch):
+                            if translated[i]:
+                                article.translated_title = translated[i]
+                                needs_update.append(article)
+                    except Exception as e:
+                        logger.warning(f"Batch translate titles failed at {batch_start}: {e}")
+
+                # 更新进度：标题翻译完成
+                if progress_callback:
+                    success_count = sum(1 for t in translated_titles if t)
+                    await progress_callback(base_progress + int(category_progress_range * 0.5),
+                        f"[{category_index}/{total_categories}] {category}: 标题翻译完成 {success_count}/{total_titles}")
+
+            # 批量翻译摘要（分批处理，显示详细进度）
+            if summaries_to_translate:
+                total_summaries = len(summaries_to_translate)
+                translated_summaries = []
+
+                for batch_start in range(0, total_summaries, batch_size):
+                    batch_end = min(batch_start + batch_size, total_summaries)
+                    batch = summaries_to_translate[batch_start:batch_end]
+                    texts = [item[2] for item in batch]
+
+                    # 更新进度：正在翻译
+                    if progress_callback:
+                        progress = base_progress + int((0.5 + 0.3 * batch_start / total_summaries) * category_progress_range)
+                        await progress_callback(progress,
+                            f"[{category_index}/{total_categories}] {category}: 翻译摘要 {batch_start+1}-{batch_end}/{total_summaries}")
+
                     try:
-                        translated_summary = await provider.translate(article.summary)
-                        if translated_summary:
-                            article.content_summary = translated_summary
-                            updated = True
-                    except Exception as e:
-                        logger.warning(f"Failed to translate summary for article {article.id}: {e}")
+                        translated = await provider.translate_batch(texts, concurrency=concurrency)
+                        translated_summaries.extend(translated)
 
-                if updated:
-                    needs_update.append(article)
+                        # 更新文章
+                        for i, (idx, article, _) in enumerate(batch):
+                            if translated[i]:
+                                article.content_summary = translated[i]
+                                if article not in needs_update:
+                                    needs_update.append(article)
+                    except Exception as e:
+                        logger.warning(f"Batch translate summaries failed at {batch_start}: {e}")
+
+                # 更新进度：摘要翻译完成
+                if progress_callback:
+                    success_count = sum(1 for t in translated_summaries if t)
+                    await progress_callback(base_progress + int(category_progress_range * 0.8),
+                        f"[{category_index}/{total_categories}] {category}: 摘要翻译完成 {success_count}/{total_summaries}")
 
             # 批量更新到数据库
             if needs_update:
                 for article in needs_update:
                     db.add(article)
                 await db.commit()
-                logger.info(f"Translated {len(needs_update)} articles")
+                logger.info(f"Translated {len(needs_update)} articles (batch mode)")
 
         except Exception as e:
             logger.error(f"Translation service error: {e}")
@@ -211,6 +289,9 @@ class DailyReportService:
         db: AsyncSession,
         report_date: date,
         category: str,
+        progress_callback: Optional[callable] = None,
+        category_index: int = 1,
+        total_categories: int = 1,
     ) -> Optional[DailyReport]:
         """Generate a daily report for a specific category.
 
@@ -220,15 +301,37 @@ class DailyReportService:
             db: Database session.
             report_date: Report date.
             category: arXiv category code.
+            progress_callback: Optional callback for progress updates.
+            category_index: Current category index (for progress calculation).
+            total_categories: Total number of categories.
 
         Returns:
             Generated DailyReport or None if no articles.
         """
+        # 计算基础进度（每个分类的起始进度）
+        base_progress = int((category_index - 1) / total_categories * 100)
+        category_progress_range = 100 / total_categories  # 每个分类占的进度范围
+
+        def calc_progress(step: int, total_steps: int) -> int:
+            """Calculate progress within category."""
+            step_progress = int(step / total_steps * category_progress_range * 0.9)  # 90% for processing
+            return min(base_progress + step_progress, 99)
+
+        # 更新进度：开始处理分类
+        if progress_callback:
+            await progress_callback(base_progress, f"[{category_index}/{total_categories}] {category}: 检查报告...")
+
         # 检查是否已存在报告
         existing = await self.get_report(db, report_date, category)
         if existing:
             logger.info(f"Report already exists for {report_date} / {category}")
+            if progress_callback:
+                await progress_callback(base_progress + int(category_progress_range), f"[{category_index}/{total_categories}] {category}: 已存在，跳过")
             return existing
+
+        # 更新进度：加载分类名称
+        if progress_callback:
+            await progress_callback(base_progress + 1, f"[{category_index}/{total_categories}] {category}: 加载配置...")
 
         # 加载分类名称
         category_names = await self._load_category_names(db)
@@ -237,6 +340,10 @@ class DailyReportService:
         max_articles = feature_config.get_int("daily_report.max_articles", 50)
         category_name = self._get_category_name(category, category_names)
 
+        # 更新进度：查询文章
+        if progress_callback:
+            await progress_callback(base_progress + 2, f"[{category_index}/{total_categories}] {category}: 查询文章...")
+
         # 获取文章
         articles = await self.get_articles_for_date(
             db, report_date, category, max_articles
@@ -244,10 +351,25 @@ class DailyReportService:
 
         if not articles:
             logger.info(f"No articles found for {report_date} / {category}")
+            if progress_callback:
+                await progress_callback(base_progress + int(category_progress_range), f"[{category_index}/{total_categories}] {category}: 无文章")
             return None
 
-        # 确保翻译
-        await self.ensure_translated(articles, db)
+        # 更新进度：翻译文章
+        total_articles = len(articles)
+        if progress_callback:
+            await progress_callback(base_progress + 3, f"[{category_index}/{total_categories}] {category}: 开始翻译 {total_articles} 篇文章...")
+
+        # 确保翻译（带进度更新）
+        await self.ensure_translated(
+            articles, db, progress_callback, base_progress, category_progress_range,
+            category_index, total_categories, category
+        )
+
+        # 更新进度：生成报告内容
+        if progress_callback:
+            progress = calc_progress(9, 10)
+            await progress_callback(progress, f"[{category_index}/{total_categories}] {category}: 生成报告内容...")
 
         # 生成报告
         title = f"【每日 arXiv】{report_date.strftime('%Y年%m月%d日')} {category_name}领域新论文"
@@ -273,6 +395,10 @@ class DailyReportService:
         await db.commit()
         await db.refresh(report)
 
+        # 更新进度：完成
+        if progress_callback:
+            await progress_callback(base_progress + int(category_progress_range), f"[{category_index}/{total_categories}] {category}: 完成 ({total_articles} 篇)")
+
         logger.info(f"Generated report for {report_date} / {category} with {len(articles)} articles")
         return report
 
@@ -280,6 +406,7 @@ class DailyReportService:
         self,
         report_date: Optional[date] = None,
         categories: Optional[list[str]] = None,
+        progress_callback: Optional[callable] = None,
     ) -> list[DailyReport]:
         """Generate daily reports for all configured categories.
 
@@ -288,6 +415,7 @@ class DailyReportService:
         Args:
             report_date: Report date, defaults to yesterday.
             categories: Categories to generate, defaults to config.
+            progress_callback: Optional callback for progress updates (progress, message).
 
         Returns:
             List of generated reports.
@@ -309,17 +437,34 @@ class DailyReportService:
 
         logger.info(f"Generating daily reports for {report_date}, categories: {categories}")
 
+        # 更新进度：开始
+        if progress_callback:
+            await progress_callback(0, f"开始生成报告，共 {len(categories)} 个分类...")
+
         session_factory = get_session_factory()
         reports = []
+        total_categories = len(categories)
 
         async with session_factory() as db:
-            for category in categories:
+            for idx, category in enumerate(categories, 1):
                 try:
-                    report = await self.generate_report(db, report_date, category)
+                    report = await self.generate_report(
+                        db, report_date, category,
+                        progress_callback=progress_callback,
+                        category_index=idx,
+                        total_categories=total_categories,
+                    )
                     if report:
                         reports.append(report)
                 except Exception as e:
                     logger.error(f"Failed to generate report for {category}: {e}")
+                    if progress_callback:
+                        progress = int(idx / total_categories * 100)
+                        await progress_callback(progress, f"[{idx}/{total_categories}] {category}: 失败 - {str(e)[:50]}")
+
+            # 最终进度
+            if progress_callback:
+                await progress_callback(100, f"完成，共生成 {len(reports)}/{total_categories} 份报告")
 
         return reports
 

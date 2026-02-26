@@ -67,6 +67,89 @@ setup_logging(settings.debug, None)
 logger = logging.getLogger(__name__)
 
 
+# =============================================================================
+# 后台任务恢复函数
+# =============================================================================
+async def resume_background_tasks():
+    """Resume incomplete background tasks after server restart.
+
+    服务重启后恢复未完成的后台任务。
+    对于 pending 或 running 状态的任务，重新启动执行。
+    """
+    import asyncio
+    from sqlalchemy import select
+    from core.database import get_session_factory
+    from apps.task_manager import BackgroundTask
+    from apps.task_manager.service import TaskManager
+
+    session_factory = get_session_factory()
+    task_manager = TaskManager()
+
+    async with session_factory() as db:
+        # 查找所有未完成的任务
+        query = select(BackgroundTask).where(
+            BackgroundTask.status.in_(["pending", "running"])
+        )
+        result = await db.execute(query)
+        incomplete_tasks = list(result.scalars().all())
+
+        if not incomplete_tasks:
+            return
+
+        logger.info(f"Found {len(incomplete_tasks)} incomplete background tasks")
+
+        for task in incomplete_tasks:
+            # 根据任务类型恢复执行
+            if task.task_type == "daily_report":
+                await _resume_daily_report_task(task, task_manager)
+            else:
+                # 其他类型任务标记为失败
+                await task_manager.fail_task(
+                    task.task_id,
+                    "任务因服务重启而中断，请手动重新执行"
+                )
+
+
+async def _resume_daily_report_task(task: BackgroundTask, task_manager: TaskManager):
+    """Resume a daily report generation task."""
+    import asyncio
+    from datetime import date
+    from apps.daily_report.service import DailyReportService
+
+    params = task.params or {}
+    report_date_str = params.get("report_date")
+    categories = params.get("categories")
+
+    if not report_date_str:
+        await task_manager.fail_task(task.task_id, "任务参数丢失")
+        return
+
+    report_date = date.fromisoformat(report_date_str)
+
+    # 定义后台执行的协程
+    async def run_generate():
+        service = DailyReportService()
+
+        async def update_progress(progress: int, message: str):
+            await task_manager.update_progress(task.task_id, progress, message)
+
+        reports = await service.generate_daily_reports(
+            report_date=report_date,
+            categories=categories,
+            progress_callback=update_progress,
+        )
+        return {
+            "report_date": report_date.isoformat(),
+            "categories": categories,
+            "generated_count": len(reports),
+            "report_ids": [r.id for r in reports],
+        }
+
+    # 重新启动后台任务
+    asyncio.create_task(task_manager.run_in_background(task, run_generate))
+    logger.info(f"Resumed daily_report task: {task.task_id}")
+
+
 # 使用 asynccontextmanager 装饰器定义应用的生命周期管理器
 # 这是 FastAPI 推荐的方式，替代了旧版的 on_event("startup") 和 on_event("shutdown")
 @asynccontextmanager
@@ -104,6 +187,10 @@ async def lifespan(app: FastAPI):
     # 调度器负责定时爬取、数据清理、备份、AI处理等任务
     await start_scheduler()
     logger.info("Scheduler started")
+
+    # 第七步：恢复未完成的后台任务
+    await resume_background_tasks()
+    logger.info("Background tasks resumed")
 
     logger.info("ResearchPulse v2 started successfully")
 

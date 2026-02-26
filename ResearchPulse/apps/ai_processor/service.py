@@ -445,7 +445,8 @@ class AIProcessorService:
         )
         translated_content = result.get("_translated_content")
         if translated_content:
-            values["content"] = translated_content
+            # 翻译后的摘要存储到 content_summary 字段（与报告生成保持一致）
+            values["content_summary"] = translated_content
         translated_title = result.get("_translated_title")
         if translated_title:
             values["translated_title"] = translated_title

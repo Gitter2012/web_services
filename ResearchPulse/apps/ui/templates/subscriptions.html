@@ -412,6 +412,8 @@
             if (currentUser.is_superuser || featureStatus.report_generation) {
                 navHtml += `<a href="${APP_BASE}/reports">报告中心</a>`;
             }
+            // 每日报告
+            navHtml += `<a href="${APP_BASE}/daily-reports">每日报告</a>`;
             if (currentUser.is_superuser) {
                 navHtml += `<a href="${APP_BASE}/admin">管理后台</a>`;
             }

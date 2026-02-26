@@ -112,6 +112,17 @@ actionable_items: 仅importance>=7时提取
 # 翻译 Prompt —— 用于将英文内容翻译为中文
 TRANSLATE_PROMPT = "将以下英文翻译成中文，只返回翻译结果，不要解释或添加额外内容：\n\n{text}"
 
+# 批量翻译 Prompt —— 用于一次翻译多个文本
+BATCH_TRANSLATE_PROMPT = """将以下 {count} 段英文分别翻译成中文，按序号返回翻译结果，每段翻译占一行，格式为：
+[编号] 翻译内容
+
+例如：
+[1] 第一段翻译
+[2] 第二段翻译
+
+待翻译内容：
+{items}"""
+
 
 def normalize_category(category: str) -> str:
     """Normalize category to a valid value.
@@ -302,6 +313,35 @@ class BaseAIProvider(ABC):
     async def translate(self, text: str) -> str | None:
         """Translate text to Chinese. Returns None if not implemented."""
         return None
+
+    async def translate_batch(self, texts: list[str], concurrency: int = 5) -> list[str | None]:
+        """Translate multiple texts to Chinese concurrently.
+
+        批量翻译（并发实现），提高翻译效率。
+        使用 asyncio.gather 并发调用 translate()，失败的项目返回 None。
+
+        Args:
+            texts: List of texts to translate.
+            concurrency: Maximum concurrent translations (default 5).
+
+        Returns:
+            List of translated texts (None for failed items).
+        """
+        import asyncio
+
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def translate_with_limit(text: str) -> str | None:
+            async with semaphore:
+                try:
+                    return await self.translate(text)
+                except Exception:
+                    return None
+
+        # 并发执行所有翻译任务
+        tasks = [translate_with_limit(text) for text in texts]
+        results = await asyncio.gather(*tasks)
+        return list(results)
 
     async def close(self) -> None:
         """Release resources held by the provider.

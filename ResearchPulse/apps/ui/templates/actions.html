@@ -185,6 +185,11 @@
                             link.textContent = '报告中心';
                             navMenu.appendChild(link);
                         }
+                        // 每日报告
+                        const dailyLink = document.createElement('a');
+                        dailyLink.href = APP_BASE + '/daily-reports';
+                        dailyLink.textContent = '每日报告';
+                        navMenu.appendChild(dailyLink);
                         if (user.is_superuser) {
                             const adminLink = document.createElement('a');
                             adminLink.href = APP_BASE + '/admin';

@@ -148,32 +148,48 @@ async def _run_ai(limit: int, verbose: bool) -> dict:
 
 
 async def _run_translate(limit: int, verbose: bool) -> dict:
-    """Run arXiv title translation stage.
+    """Run arXiv title and summary translation stage.
 
-    翻译 source_type='arxiv' 且标题为英文、且尚未翻译的文章标题。
+    翻译 source_type='arxiv' 且标题/摘要为英文、且尚未翻译的文章。
+    标题翻译存入 translated_title，摘要翻译存入 content_summary。
     """
     from core.database import get_session_factory
-    from sqlalchemy import and_, select, update
+    from sqlalchemy import and_, or_, select, update
     from apps.crawler.models.article import Article
     from apps.ai_processor.service import get_ai_provider, _is_english
 
     session_factory = get_session_factory()
     provider = get_ai_provider()
-    translated = 0
+    translated_titles = 0
+    translated_summaries = 0
     skipped = 0
     failed = 0
 
     try:
         async with session_factory() as session:
-            # 查询待翻译的 arXiv 文章：英文标题 + 未翻译
+            # 查询待翻译的 arXiv 文章：标题或摘要未翻译
             result = await session.execute(
-                select(Article.id, Article.title)
+                select(
+                    Article.id,
+                    Article.title,
+                    Article.summary,
+                    Article.translated_title,
+                    Article.content_summary,
+                )
                 .where(
                     and_(
                         Article.source_type == "arxiv",
-                        Article.translated_title.is_(None),
                         Article.title.isnot(None),
                         Article.title != "",
+                        # 标题或摘要至少有一个需要翻译
+                        or_(
+                            Article.translated_title.is_(None),
+                            and_(
+                                Article.summary.isnot(None),
+                                Article.summary != "",
+                                Article.content_summary.is_(None),
+                            ),
+                        ),
                     )
                 )
                 .order_by(Article.crawl_time.desc())
@@ -182,34 +198,59 @@ async def _run_translate(limit: int, verbose: bool) -> dict:
             articles = result.all()
 
             if not articles:
-                return {"translated": 0, "skipped": 0, "failed": 0, "total": 0}
+                return {"translated_titles": 0, "translated_summaries": 0, "skipped": 0, "failed": 0, "total": 0}
 
-            for article_id, title in articles:
-                # 跳过非英文标题
-                if not _is_english(title):
-                    skipped += 1
-                    continue
-
+            for article_id, title, summary, existing_translated_title, existing_content_summary in articles:
                 try:
-                    translated_title = await provider.translate(title)
-                    if translated_title:
+                    update_values = {}
+
+                    # 翻译标题（如果未翻译且为英文）
+                    if not existing_translated_title and _is_english(title):
+                        translated_title = await provider.translate(title)
+                        if translated_title:
+                            update_values["translated_title"] = translated_title
+                            translated_titles += 1
+                        else:
+                            skipped += 1
+
+                    # 翻译摘要（如果未翻译、有内容且为英文）
+                    if not existing_content_summary and summary and _is_english(summary):
+                        translated_summary = await provider.translate(summary)
+                        if translated_summary:
+                            update_values["content_summary"] = translated_summary
+                            translated_summaries += 1
+                        else:
+                            skipped += 1
+
+                    # 更新数据库
+                    if update_values:
                         await session.execute(
                             update(Article)
                             .where(Article.id == article_id)
-                            .values(translated_title=translated_title)
+                            .values(**update_values)
                         )
-                        translated += 1
-                    else:
-                        skipped += 1
                 except Exception as e:
                     logger.warning(f"Failed to translate article {article_id}: {e}")
                     failed += 1
 
             await session.commit()
-            return {"translated": translated, "skipped": skipped, "failed": failed, "total": len(articles)}
+            return {
+                "translated_titles": translated_titles,
+                "translated_summaries": translated_summaries,
+                "skipped": skipped,
+                "failed": failed,
+                "total": len(articles),
+            }
     except Exception as e:
         logger.error(f"Translation stage failed: {e}", exc_info=verbose)
-        return {"error": str(e), "translated": translated, "skipped": skipped, "failed": failed, "total": 0}
+        return {
+            "error": str(e),
+            "translated_titles": translated_titles,
+            "translated_summaries": translated_summaries,
+            "skipped": skipped,
+            "failed": failed,
+            "total": 0,
+        }
     finally:
         await provider.close()
 
@@ -476,7 +517,8 @@ def _format_result(stage: str, result: dict) -> str:
         )
     elif stage == "translate":
         return (
-            f"  翻译: {result.get('translated', 0)} | "
+            f"  标题: {result.get('translated_titles', 0)} | "
+            f"摘要: {result.get('translated_summaries', 0)} | "
             f"跳过: {result.get('skipped', 0)} | "
             f"失败: {result.get('failed', 0)} | "
             f"总计: {result.get('total', 0)}"

@@ -13,6 +13,8 @@ from apps.daily_report.schemas.report import (
     GenerateReportResponse,
     ExportResponse,
     DailyExportResponse,
+    TaskStatusResponse,
+    GenerateReportAsyncResponse,
 )
 
 __all__ = [
@@ -23,4 +25,6 @@ __all__ = [
     "GenerateReportResponse",
     "ExportResponse",
     "DailyExportResponse",
+    "TaskStatusResponse",
+    "GenerateReportAsyncResponse",
 ]

@@ -847,6 +847,8 @@
                 if (currentUser.is_superuser || featureStatus.report_generation) {
                     navHtml += `<a href="${APP_BASE}/reports">报告中心</a>`;
                 }
+                // 每日报告
+                navHtml += `<a href="${APP_BASE}/daily-reports">每日报告</a>`;
                 // 仅超级管理员显示管理后台
                 if (currentUser.is_superuser) {
                     navHtml += '<a href="#" onclick="goTo(\'admin\')">管理后台</a>';

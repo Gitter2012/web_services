@@ -418,8 +418,8 @@ CREATE TABLE `daily_reports` (
   `category` VARCHAR(50) NOT NULL COMMENT 'arXiv 分类代码，如 cs.LG, cs.CV',
   `category_name` VARCHAR(100) NOT NULL COMMENT '分类中文名称，如 机器学习',
   `title` VARCHAR(200) NOT NULL COMMENT '报告标题',
-  `content_markdown` TEXT NOT NULL COMMENT 'Markdown 格式的报告内容',
-  `content_wechat` TEXT DEFAULT NULL COMMENT '微信公众号专用格式内容',
+  `content_markdown` MEDIUMTEXT NOT NULL COMMENT 'Markdown 格式的报告内容',
+  `content_wechat` MEDIUMTEXT DEFAULT NULL COMMENT '微信公众号专用格式内容',
   `article_count` INT NOT NULL DEFAULT 0 COMMENT '收录文章数量',
   `article_ids` JSON DEFAULT NULL COMMENT '收录的文章 ID 列表',
   `status` VARCHAR(20) NOT NULL DEFAULT 'draft' COMMENT '状态: draft/published/archived',
@@ -666,6 +666,33 @@ CREATE TABLE `email_configs` (
   INDEX `idx_priority` (`priority`),
   INDEX `idx_is_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='邮件推送配置表（支持多后端多配置）';
+
+-- -----------------------------------------------------------------------------
+-- background_tasks 表 - 后台任务追踪
+-- -----------------------------------------------------------------------------
+DROP TABLE IF EXISTS `background_tasks`;
+CREATE TABLE `background_tasks` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `task_id` VARCHAR(36) NOT NULL COMMENT '任务唯一标识符（UUID）',
+  `task_type` VARCHAR(50) NOT NULL COMMENT '任务类型（如 daily_report, ai_pipeline）',
+  `name` VARCHAR(255) NOT NULL COMMENT '任务名称/描述',
+  `status` VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '状态: pending/running/completed/failed/cancelled',
+  `progress` INT NOT NULL DEFAULT 0 COMMENT '进度百分比（0-100）',
+  `progress_message` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '进度消息',
+  `params` JSON DEFAULT NULL COMMENT '任务参数',
+  `result` JSON DEFAULT NULL COMMENT '任务结果',
+  `error_message` TEXT DEFAULT NULL COMMENT '错误信息',
+  `created_by` INT DEFAULT NULL COMMENT '创建者用户ID',
+  `started_at` DATETIME DEFAULT NULL COMMENT '任务开始时间',
+  `completed_at` DATETIME DEFAULT NULL COMMENT '任务完成时间',
+  `is_read` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已读',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `ix_background_tasks_task_id` (`task_id`),
+  KEY `ix_background_tasks_type` (`task_type`),
+  KEY `ix_background_tasks_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='后台任务追踪表';
 
 -- -----------------------------------------------------------------------------
 -- pipeline_tasks 表 - 流水线任务队列
@@ -1268,7 +1295,9 @@ INSERT INTO `system_config` (`config_key`, `config_value`, `description`, `is_se
 ('daily_report.categories', 'cs.LG,cs.CV,cs.CL,cs.AI,cs.RO,cs.NE', '要生成报告的 arXiv 分类（逗号分隔）', 0),
 ('daily_report.max_articles', '50', '每个分类最大文章数', 0),
 ('daily_report.translate_title', 'true', '是否翻译标题', 0),
-('daily_report.report_offset_days', '1', '报告相对于今天的偏移天数（1=昨天）', 0);
+('daily_report.translate_batch_size', '10', '翻译分批大小（每批处理后更新进度）', 0),
+('daily_report.report_offset_days', '1', '报告相对于今天的偏移天数（1=昨天）', 0),
+('ai.translate_concurrency', '5', '批量翻译并发数', 0);
 
 -- =============================================================================
 -- Superuser 配置说明

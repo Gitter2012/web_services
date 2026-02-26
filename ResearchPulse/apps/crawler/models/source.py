@@ -62,6 +62,13 @@ class ArxivCategory(Base, TimestampMixin):
         nullable=False,
         comment="Full category name",
     )
+    # 分类的中文名称（如 "人工智能"）
+    name_zh: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+        nullable=False,
+        comment="Chinese category name",
+    )
     # 父分类代码，用于构建分类层级树（如 "cs" 是 "cs.AI" 的父分类）
     parent_code: Mapped[str] = mapped_column(
         String(50),
