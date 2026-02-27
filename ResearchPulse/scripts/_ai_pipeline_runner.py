@@ -265,6 +265,8 @@ async def _run_translate(limit: int, verbose: bool, concurrency: int = 1) -> dic
     failed = 0
     conflict = 0  # 乐观锁冲突计数
     counter_lock = asyncio.Lock()
+    progress_counter = [0]  # 使用列表以便在闭包中修改
+    total_count = len(article_versions)
 
     async def translate_article(article_id: int, version_timestamp) -> tuple[int, int, int, int, int]:
         """翻译单篇文章，使用乐观锁。返回 (titles, summaries, skipped, failed, conflict)"""
@@ -356,6 +358,11 @@ async def _run_translate(limit: int, verbose: bool, concurrency: int = 1) -> dic
             skipped += result[2]
             failed += result[3]
             conflict += result[4]
+            # 更新进度
+            progress_counter[0] += 1
+            current = progress_counter[0]
+            pct = (current / total_count) * 100
+            logger.info(f"[translate] 进度: {current}/{total_count} ({pct:.1f}%) - 标题: {translated_titles}, 摘要: {translated_summaries}")
 
     # 使用信号量控制并发
     semaphore = asyncio.Semaphore(concurrency)
