@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ResearchPulse{% endblock %}</title>
+    {% include "components/init_script.html" %}
+    {% include "components/global_styles.html" %}
+    {% block extra_styles %}{% endblock %}
+</head>
+<body>
+    {% include "components/header.html" %}
+
+    {% block content %}{% endblock %}
+
+    {% include "components/auth_script.html" %}
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,46 @@
+<div class="header">
+    <div class="header-inner">
+        <div class="logo">
+            <h1><a href="" id="home-link">ResearchPulse</a></h1>
+            <span class="badge">V2</span>
+        </div>
+        <button class="mobile-menu-btn" id="mobile-menu-btn" onclick="toggleMobileMenu()">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+        <div class="nav" id="nav-menu">
+            <a href="" id="nav-home">首页</a>
+            <a href="" id="nav-subscriptions">订阅管理</a>
+        </div>
+        <div class="auth-area" id="auth-area">
+            <a href="#" onclick="showModal('login')">登录</a>
+            <a href="#" onclick="showModal('register')">注册</a>
+        </div>
+    </div>
+</div>
+<div class="mobile-overlay" id="mobile-overlay" onclick="closeMobileMenu()"></div>
+<div class="mobile-nav" id="mobile-nav"></div>
+
+<script>
+// Header Navigation Links
+document.getElementById('home-link').href = APP_BASE + '/';
+document.getElementById('nav-home').href = APP_BASE + '/';
+document.getElementById('nav-subscriptions').href = APP_BASE + '/subscriptions';
+
+// Mobile Menu Toggle
+function toggleMobileMenu() {
+    const btn = document.getElementById('mobile-menu-btn');
+    const overlay = document.getElementById('mobile-overlay');
+    const mobileNav = document.getElementById('mobile-nav');
+    btn.classList.toggle('active');
+    overlay.classList.toggle('show');
+    mobileNav.classList.toggle('show');
+}
+
+function closeMobileMenu() {
+    document.getElementById('mobile-menu-btn').classList.remove('active');
+    document.getElementById('mobile-overlay').classList.remove('show');
+    document.getElementById('mobile-nav').classList.remove('show');
+}
+</script>

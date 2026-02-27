@@ -1,0 +1,342 @@
+<!-- Login Modal -->
+<div class="modal" id="login-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>登录</h2>
+            <span class="modal-close" onclick="hideModal('login')">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div id="login-error" class="error-msg"></div>
+            <input type="text" id="login-username" placeholder="用户名或邮箱">
+            <input type="password" id="login-password" placeholder="密码">
+            <button onclick="doLogin()">登录</button>
+            <div class="switch-link">
+                <a onclick="hideModal('login');showModal('reset-password')" style="float: left;">忘记密码？</a>
+                没有账号？<a onclick="hideModal('login');showModal('register')">立即注册</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reset Password Modal -->
+<div class="modal" id="reset-password-modal">
+    <div class="modal-content" style="width: 420px;">
+        <div class="modal-header">
+            <h2>重置密码</h2>
+            <span class="modal-close" onclick="hideModal('reset-password')">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div id="reset-error" class="error-msg"></div>
+            <div id="reset-success" class="success-msg"></div>
+            <div id="reset-step1">
+                <div class="input-row">
+                    <input type="email" id="reset-email" placeholder="注册邮箱地址">
+                    <button id="send-reset-btn" onclick="sendResetCode()">发送验证码</button>
+                </div>
+                <div id="reset-code-row" style="display: none;">
+                    <div class="input-row">
+                        <input type="text" id="reset-code" placeholder="6位验证码" maxlength="6" style="letter-spacing: 4px; text-align: center;">
+                        <button onclick="verifyResetCode()">验证</button>
+                    </div>
+                </div>
+            </div>
+            <div id="reset-step2" style="display: none;">
+                <input type="password" id="reset-new-password" placeholder="新密码 (至少6位)">
+                <input type="password" id="reset-confirm-password" placeholder="确认新密码">
+                <button onclick="doResetPassword()">重置密码</button>
+            </div>
+            <div class="switch-link">想起密码了？<a onclick="hideModal('reset-password');showModal('login')">返回登录</a></div>
+        </div>
+    </div>
+</div>
+
+<!-- Register Modal -->
+<div class="modal" id="register-modal">
+    <div class="modal-content" style="width: 420px;">
+        <div class="modal-header">
+            <h2>注册</h2>
+            <span class="modal-close" onclick="hideModal('register')">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div id="register-error" class="error-msg"></div>
+            <div id="register-success" class="success-msg"></div>
+            <div id="register-step1">
+                <div class="input-row">
+                    <input type="email" id="reg-email" placeholder="邮箱地址">
+                    <button id="send-code-btn" onclick="sendVerificationCode()">发送验证码</button>
+                </div>
+                <div id="code-input-row" style="display: none;">
+                    <div class="input-row">
+                        <input type="text" id="reg-code" placeholder="6位验证码" maxlength="6" style="letter-spacing: 4px; text-align: center;">
+                        <button onclick="verifyEmail()">验证</button>
+                    </div>
+                </div>
+            </div>
+            <div id="register-step2" style="display: none;">
+                <input type="text" id="reg-username" placeholder="用户名 (3-50位字母数字)">
+                <input type="password" id="reg-password" placeholder="密码 (至少6位)">
+                <button onclick="doRegister()">注册</button>
+            </div>
+            <div class="switch-link">已有账号？<a onclick="hideModal('register');showModal('login')">立即登录</a></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ========== Modal Functions ==========
+function showModal(name) {
+    document.getElementById(`${name}-modal`).classList.add('active');
+}
+
+function hideModal(name) {
+    document.getElementById(`${name}-modal`).classList.remove('active');
+}
+
+// ========== Login ==========
+async function doLogin() {
+    const username = document.getElementById('login-username').value;
+    const password = document.getElementById('login-password').value;
+    const errorEl = document.getElementById('login-error');
+
+    if (!username || !password) {
+        errorEl.textContent = '请填写用户名和密码';
+        return;
+    }
+
+    try {
+        const res = await fetch(`${AUTH_BASE}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            localStorage.setItem('access_token', data.access_token);
+            location.reload();
+        } else {
+            errorEl.textContent = data.detail || '登录失败';
+        }
+    } catch (e) {
+        errorEl.textContent = '网络错误';
+    }
+}
+
+// ========== Register ==========
+let verifiedEmail = null;
+
+async function sendVerificationCode() {
+    const email = document.getElementById('reg-email').value;
+    const errorEl = document.getElementById('register-error');
+    const successEl = document.getElementById('register-success');
+    const btn = document.getElementById('send-code-btn');
+
+    if (!email) {
+        errorEl.textContent = '请输入邮箱地址';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '发送中...';
+
+    try {
+        const res = await fetch(`${AUTH_BASE}/auth/send-verification`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            successEl.style.display = 'block';
+            successEl.textContent = data.message || '验证码已发送';
+            errorEl.textContent = '';
+            document.getElementById('code-input-row').style.display = 'block';
+        } else {
+            errorEl.textContent = data.detail || '发送失败';
+        }
+    } catch (e) {
+        errorEl.textContent = '网络错误';
+    }
+
+    btn.disabled = false;
+    btn.textContent = '发送验证码';
+}
+
+async function verifyEmail() {
+    const email = document.getElementById('reg-email').value;
+    const code = document.getElementById('reg-code').value;
+    const errorEl = document.getElementById('register-error');
+
+    if (!code || code.length !== 6) {
+        errorEl.textContent = '请输入6位验证码';
+        return;
+    }
+
+    try {
+        const res = await fetch(`${AUTH_BASE}/auth/verify-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, code })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            verifiedEmail = email;
+            document.getElementById('register-step1').style.display = 'none';
+            document.getElementById('register-step2').style.display = 'block';
+            errorEl.textContent = '';
+        } else {
+            errorEl.textContent = data.detail || '验证失败';
+        }
+    } catch (e) {
+        errorEl.textContent = '网络错误';
+    }
+}
+
+async function doRegister() {
+    const username = document.getElementById('reg-username').value;
+    const password = document.getElementById('reg-password').value;
+    const errorEl = document.getElementById('register-error');
+
+    if (!username || !password) {
+        errorEl.textContent = '请填写用户名和密码';
+        return;
+    }
+
+    if (!verifiedEmail) {
+        errorEl.textContent = '请先验证邮箱';
+        return;
+    }
+
+    try {
+        const res = await fetch(`${AUTH_BASE}/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, email: verifiedEmail })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            // Auto login after registration
+            const loginRes = await fetch(`${AUTH_BASE}/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const loginData = await loginRes.json();
+            if (loginRes.ok) {
+                localStorage.setItem('access_token', loginData.access_token);
+                location.reload();
+            } else {
+                hideModal('register');
+                showModal('login');
+            }
+        } else {
+            errorEl.textContent = data.detail || '注册失败';
+        }
+    } catch (e) {
+        errorEl.textContent = '网络错误';
+    }
+}
+
+// ========== Reset Password ==========
+let resetVerifiedEmail = null;
+
+async function sendResetCode() {
+    const email = document.getElementById('reset-email').value;
+    const errorEl = document.getElementById('reset-error');
+    const successEl = document.getElementById('reset-success');
+    const btn = document.getElementById('send-reset-btn');
+
+    if (!email) {
+        errorEl.textContent = '请输入邮箱地址';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '发送中...';
+
+    try {
+        const res = await fetch(`${AUTH_BASE}/auth/send-reset-code`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            successEl.style.display = 'block';
+            successEl.textContent = data.message || '验证码已发送';
+            errorEl.textContent = '';
+            document.getElementById('reset-code-row').style.display = 'block';
+            resetVerifiedEmail = email;
+        } else {
+            errorEl.textContent = data.detail || '发送失败';
+        }
+    } catch (e) {
+        errorEl.textContent = '网络错误';
+    }
+
+    btn.disabled = false;
+    btn.textContent = '发送验证码';
+}
+
+async function verifyResetCode() {
+    const code = document.getElementById('reset-code').value;
+    const errorEl = document.getElementById('reset-error');
+
+    if (!code || code.length !== 6) {
+        errorEl.textContent = '请输入6位验证码';
+        return;
+    }
+
+    try {
+        const res = await fetch(`${AUTH_BASE}/auth/verify-reset-code`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: resetVerifiedEmail, code })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            document.getElementById('reset-step1').style.display = 'none';
+            document.getElementById('reset-step2').style.display = 'block';
+            errorEl.textContent = '';
+        } else {
+            errorEl.textContent = data.detail || '验证失败';
+        }
+    } catch (e) {
+        errorEl.textContent = '网络错误';
+    }
+}
+
+async function doResetPassword() {
+    const newPassword = document.getElementById('reset-new-password').value;
+    const confirmPassword = document.getElementById('reset-confirm-password').value;
+    const errorEl = document.getElementById('reset-error');
+
+    if (!newPassword || newPassword.length < 6) {
+        errorEl.textContent = '密码至少6位';
+        return;
+    }
+
+    if (newPassword !== confirmPassword) {
+        errorEl.textContent = '两次密码不一致';
+        return;
+    }
+
+    try {
+        const res = await fetch(`${AUTH_BASE}/auth/reset-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: resetVerifiedEmail, new_password: newPassword })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            hideModal('reset-password');
+            showModal('login');
+            document.getElementById('login-error').textContent = '';
+            alert('密码重置成功，请重新登录');
+        } else {
+            errorEl.textContent = data.detail || '重置失败';
+        }
+    } catch (e) {
+        errorEl.textContent = '网络错误';
+    }
+}
+</script>

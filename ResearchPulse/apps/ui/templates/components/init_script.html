@@ -1,0 +1,11 @@
+<script>
+    // 动态检测代理前缀（提前执行，供静态 HTML 使用）
+    (function() {
+        var path = window.location.pathname;
+        var rpIndex = path.indexOf('/researchpulse');
+        var prefix = rpIndex > 0 ? path.substring(0, rpIndex) : '';
+        window.APP_BASE = prefix + '/researchpulse';
+        window.API_BASE = prefix + '/researchpulse/api';
+        window.AUTH_BASE = prefix + '/api/v1';
+    })();
+</script>

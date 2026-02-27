@@ -1,320 +1,183 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>话题趋势 - ResearchPulse</title>
-    <script>
-        (function() {
-            var path = window.location.pathname;
-            var rpIndex = path.indexOf('/researchpulse');
-            var prefix = rpIndex > 0 ? path.substring(0, rpIndex) : '';
-            window.APP_BASE = prefix + '/researchpulse';
-            window.API_BASE = prefix + '/researchpulse/api';
-            window.AUTH_BASE = prefix + '/api/v1';
-        })();
-    </script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; min-height: 100vh; }
+{% extends "base.html" %}
 
-        .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; padding: 0; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .header-inner { max-width: 1200px; margin: 0 auto; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
-        .logo { display: flex; align-items: center; gap: 12px; }
-        .logo h1 { font-size: 22px; font-weight: 600; }
-        .logo h1 a { color: white; text-decoration: none; }
-        .logo .badge { background: #e94560; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
-        .nav { display: flex; gap: 20px; }
-        .nav a { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 14px; transition: color 0.2s; }
-        .nav a:hover { color: white; }
-        .nav a.active { color: #4ecdc4; }
-        .auth-area { display: flex; align-items: center; gap: 16px; }
-        .auth-area a { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 14px; }
+{% block title %}话题趋势 - ResearchPulse{% endblock %}
 
-        .main { max-width: 1200px; margin: 0 auto; padding: 24px; }
-        .page-header { margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; }
-        .page-header h2 { font-size: 24px; color: #1a1a2e; }
+{% block extra_styles %}
+<style>
+    .topic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 16px; }
+    .topic-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); transition: box-shadow 0.2s; cursor: pointer; }
+    .topic-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .topic-card.active-topic { border-left: 4px solid #4ecdc4; }
+    .topic-card.inactive-topic { border-left: 4px solid #e0e0e0; opacity: 0.7; }
+    .topic-name { font-size: 18px; font-weight: 600; color: #1a1a2e; margin-bottom: 6px; }
+    .topic-desc { font-size: 13px; color: #666; margin-bottom: 10px; line-height: 1.5; }
+    .topic-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; font-size: 12px; }
+    .topic-meta .badge-auto { background: #dbeafe; color: #2563eb; padding: 3px 8px; border-radius: 3px; }
+    .topic-meta .badge-manual { background: #fef3c7; color: #d97706; padding: 3px 8px; border-radius: 3px; }
+    .topic-meta .badge-active { background: #dcfce7; color: #059669; padding: 3px 8px; border-radius: 3px; }
+    .topic-meta .badge-inactive { background: #fee2e2; color: #dc2626; padding: 3px 8px; border-radius: 3px; }
+    .topic-keywords { display: flex; flex-wrap: wrap; gap: 6px; }
+    .keyword-tag { padding: 3px 10px; background: #f3f0ff; border-radius: 12px; font-size: 11px; color: #7c3aed; }
 
-        .topic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 16px; }
-        .topic-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); transition: box-shadow 0.2s; cursor: pointer; }
-        .topic-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .topic-card.active-topic { border-left: 4px solid #4ecdc4; }
-        .topic-card.inactive-topic { border-left: 4px solid #e0e0e0; opacity: 0.7; }
-        .topic-name { font-size: 18px; font-weight: 600; color: #1a1a2e; margin-bottom: 6px; }
-        .topic-desc { font-size: 13px; color: #666; margin-bottom: 10px; line-height: 1.5; }
-        .topic-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; font-size: 12px; }
-        .topic-meta .badge-auto { background: #dbeafe; color: #2563eb; padding: 3px 8px; border-radius: 3px; }
-        .topic-meta .badge-manual { background: #fef3c7; color: #d97706; padding: 3px 8px; border-radius: 3px; }
-        .topic-meta .badge-active { background: #dcfce7; color: #059669; padding: 3px 8px; border-radius: 3px; }
-        .topic-meta .badge-inactive { background: #fee2e2; color: #dc2626; padding: 3px 8px; border-radius: 3px; }
-        .topic-keywords { display: flex; flex-wrap: wrap; gap: 6px; }
-        .keyword-tag { padding: 3px 10px; background: #f3f0ff; border-radius: 12px; font-size: 11px; color: #7c3aed; }
+    .topic-detail { background: white; border-radius: 12px; padding: 24px; margin-top: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: none; }
+    .topic-detail.show { display: block; }
+    .topic-detail h3 { font-size: 18px; color: #1a1a2e; margin-bottom: 16px; }
+    .topic-articles { margin-top: 12px; }
+    .topic-article-item { padding: 10px 0; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
+    .topic-article-item:last-child { border-bottom: none; }
+    .topic-article-item a { color: #1a1a2e; text-decoration: none; font-size: 14px; flex: 1; }
+    .topic-article-item a:hover { color: #4ecdc4; }
+    .match-score { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #f5f5f5; color: #888; }
+    .matched-kw { display: flex; gap: 4px; flex-wrap: wrap; }
+    .matched-kw span { font-size: 10px; padding: 2px 6px; border-radius: 3px; background: #ede9fe; color: #7c3aed; }
 
-        .topic-detail { background: white; border-radius: 12px; padding: 24px; margin-top: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: none; }
-        .topic-detail.show { display: block; }
-        .topic-detail h3 { font-size: 18px; color: #1a1a2e; margin-bottom: 16px; }
-        .topic-articles { margin-top: 12px; }
-        .topic-article-item { padding: 10px 0; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
-        .topic-article-item:last-child { border-bottom: none; }
-        .topic-article-item a { color: #1a1a2e; text-decoration: none; font-size: 14px; flex: 1; }
-        .topic-article-item a:hover { color: #4ecdc4; }
-        .match-score { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #f5f5f5; color: #888; }
-        .matched-kw { display: flex; gap: 4px; flex-wrap: wrap; }
-        .matched-kw span { font-size: 10px; padding: 2px 6px; border-radius: 3px; background: #ede9fe; color: #7c3aed; }
+    .trend-info { margin-top: 12px; padding: 12px; background: #faf8ff; border-radius: 8px; }
+    .trend-info .trend-direction { font-weight: 600; }
+    .trend-info .trend-up { color: #059669; }
+    .trend-info .trend-down { color: #dc2626; }
+    .trend-info .trend-stable { color: #d97706; }
 
-        .trend-info { margin-top: 12px; padding: 12px; background: #faf8ff; border-radius: 8px; }
-        .trend-info .trend-direction { font-weight: 600; }
-        .trend-info .trend-up { color: #059669; }
-        .trend-info .trend-down { color: #dc2626; }
-        .trend-info .trend-stable { color: #d97706; }
+    @media (max-width: 768px) {
+        .topic-grid { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
 
-        .empty-state { text-align: center; padding: 60px 20px; color: #888; }
-        .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
-
-        .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 24px; }
-        .page-btn { padding: 8px 14px; border: 1px solid #e0e0e0; background: white; border-radius: 6px; cursor: pointer; font-size: 14px; }
-        .page-btn.active { background: #1a1a2e; color: white; border-color: #1a1a2e; }
-        .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        @media (max-width: 768px) {
-            .header-inner { padding: 12px 16px; }
-            .nav { display: none; }
-            .main { padding: 16px; }
-            .topic-grid { grid-template-columns: 1fr; }
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="header-inner">
-            <div class="logo">
-                <h1><a href="" id="home-link">ResearchPulse</a></h1>
-                <span class="badge">v2</span>
-            </div>
-            <div class="nav" id="nav-menu">
-                <a href="" id="nav-home">首页</a>
-                <a href="" id="nav-subscriptions">订阅管理</a>
-            </div>
-            <div class="auth-area" id="auth-area"></div>
+{% block content %}
+<div class="main">
+    <div class="page-header">
+        <h2>话题趋势</h2>
+    </div>
+    <div class="topic-grid" id="topic-grid">
+        <div class="empty-state" style="grid-column:1/-1;">
+            <div class="icon">&#9203;</div>
+            <div class="text">加载中...</div>
         </div>
     </div>
+    <div class="topic-detail" id="topic-detail"></div>
+    <div class="pagination" id="pagination"></div>
+</div>
+{% endblock %}
 
-    <div class="main">
-        <div class="page-header">
-            <h2>话题趋势</h2>
-        </div>
-        <div class="topic-grid" id="topic-grid">
-            <div class="empty-state" style="grid-column:1/-1;">
-                <div class="icon">&#9203;</div>
-                <div class="text">加载中...</div>
-            </div>
-        </div>
-        <div class="topic-detail" id="topic-detail"></div>
-        <div class="pagination" id="pagination"></div>
-    </div>
+{% block scripts %}
+<script>
+    const NAV_ACTIVE = 'topics';
+    let currentPage = 1;
+    const pageSize = 50;
+    let totalTopics = 0;
 
-    <script>
-        document.getElementById('home-link').href = APP_BASE + '/';
-        document.getElementById('nav-home').href = APP_BASE + '/';
-        document.getElementById('nav-subscriptions').href = APP_BASE + '/subscriptions';
-
-        let currentPage = 1;
-        const pageSize = 50;
-        let totalTopics = 0;
-
-        async function checkAuth() {
-            // 获取功能开关状态
-            let featureStatus = {};
-            try {
-                const fsRes = await fetch(`${API_BASE}/feature-status`);
-                if (fsRes.ok) featureStatus = await fsRes.json();
-            } catch(e) {}
-
-            const token = localStorage.getItem('access_token');
-            const area = document.getElementById('auth-area');
-            const navMenu = document.getElementById('nav-menu');
-            if (token) {
-                try {
-                    const res = await fetch(`${AUTH_BASE}/auth/me`, { headers: { 'Authorization': `Bearer ${token}` }});
-                    if (res.ok) {
-                        const user = await res.json();
-                        area.innerHTML = `<span style="color:#4ecdc4;font-size:14px;">&#128100; ${user.username}</span><a href="#" onclick="logout()">退出</a>`;
-                        // 根据功能开关和用户权限动态显示导航 tab
-                        if (user.is_superuser || featureStatus.event_clustering) {
-                            const link = document.createElement('a');
-                            link.href = APP_BASE + '/events';
-                            link.textContent = '事件聚类';
-                            navMenu.appendChild(link);
-                        }
-                        if (user.is_superuser || featureStatus.topic_radar) {
-                            const link = document.createElement('a');
-                            link.href = APP_BASE + '/topics';
-                            link.textContent = '话题趋势';
-                            link.className = 'active';
-                            navMenu.appendChild(link);
-                        }
-                        if (user.is_superuser || featureStatus.action_items) {
-                            const link = document.createElement('a');
-                            link.href = APP_BASE + '/actions';
-                            link.textContent = '行动建议';
-                            navMenu.appendChild(link);
-                        }
-                        if (user.is_superuser || featureStatus.report_generation) {
-                            const link = document.createElement('a');
-                            link.href = APP_BASE + '/reports';
-                            link.textContent = '报告中心';
-                            navMenu.appendChild(link);
-                        }
-                        // 每日报告
-                        const dailyLink = document.createElement('a');
-                        dailyLink.href = APP_BASE + '/daily-reports';
-                        dailyLink.textContent = '每日报告';
-                        navMenu.appendChild(dailyLink);
-                        if (user.is_superuser) {
-                            const adminLink = document.createElement('a');
-                            adminLink.href = APP_BASE + '/admin';
-                            adminLink.textContent = '管理后台';
-                            navMenu.appendChild(adminLink);
-                        }
-                        return;
-                    }
-                } catch(e) {}
-            }
-            area.innerHTML = `<a href="${APP_BASE}/">登录</a>`;
-        }
-
-        function logout() { localStorage.removeItem('access_token'); location.reload(); }
-
-        function getHeaders() {
-            const token = localStorage.getItem('access_token');
-            return token ? { 'Authorization': `Bearer ${token}` } : {};
-        }
-
-        async function loadTopics() {
-            const offset = (currentPage - 1) * pageSize;
-            try {
-                const res = await fetch(`${API_BASE}/topics?limit=${pageSize}&offset=${offset}`, { headers: getHeaders() });
-                if (!res.ok) {
-                    const err = await res.json().catch(() => ({}));
-                    let errMsg = err.detail || '加载失败，请确认已登录且功能已启用';
-                    if (res.status === 503 && err.detail && err.detail.includes('not enabled')) {
-                        errMsg = '话题雷达功能尚未启用，请联系管理员在管理后台开启此功能。';
-                    }
-                    document.getElementById('topic-grid').innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="icon">&#128274;</div><div class="text">${errMsg}</div></div>`;
-                    return;
+    async function loadTopics() {
+        const offset = (currentPage - 1) * pageSize;
+        try {
+            const res = await fetch(`${API_BASE}/topics?limit=${pageSize}&offset=${offset}`, { headers: getAuthHeaders() });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                let errMsg = err.detail || '加载失败，请确认已登录且功能已启用';
+                if (res.status === 503 && err.detail && err.detail.includes('not enabled')) {
+                    errMsg = '话题雷达功能尚未启用，请联系管理员在管理后台开启此功能。';
                 }
-                const data = await res.json();
-                totalTopics = data.total;
-                renderTopics(data.topics);
-                renderPagination();
-            } catch(e) {
-                document.getElementById('topic-grid').innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="icon">&#10060;</div><div class="text">网络错误</div></div>';
-            }
-        }
-
-        function renderTopics(topics) {
-            const container = document.getElementById('topic-grid');
-            if (!topics || topics.length === 0) {
-                container.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="icon">&#128269;</div><div class="text">暂无话题数据</div></div>';
+                document.getElementById('topic-grid').innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="icon">&#128274;</div><div class="text">${errMsg}</div></div>`;
                 return;
             }
-            container.innerHTML = topics.map(t => {
-                const cls = t.is_active ? 'active-topic' : 'inactive-topic';
-                const typeBadge = t.is_auto_discovered ? '<span class="badge-auto">自动发现</span>' : '<span class="badge-manual">手动创建</span>';
-                const statusBadge = t.is_active ? '<span class="badge-active">活跃</span>' : '<span class="badge-inactive">已停用</span>';
-                const keywords = (t.keywords && Array.isArray(t.keywords)) ? t.keywords.slice(0, 8).map(kw => `<span class="keyword-tag">${escapeHtml(String(kw))}</span>`).join('') : '';
-                return `
-                    <div class="topic-card ${cls}" onclick="loadTopicDetail(${t.id})">
-                        <div class="topic-name">${escapeHtml(t.name)}</div>
-                        ${t.description ? `<div class="topic-desc">${escapeHtml(t.description)}</div>` : ''}
-                        <div class="topic-meta">${typeBadge} ${statusBadge}</div>
-                        ${keywords ? `<div class="topic-keywords">${keywords}</div>` : ''}
-                    </div>
-                `;
-            }).join('');
+            const data = await res.json();
+            totalTopics = data.total;
+            renderTopics(data.topics);
+            renderPaginationFn();
+        } catch(e) {
+            document.getElementById('topic-grid').innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="icon">&#10060;</div><div class="text">网络错误</div></div>';
         }
+    }
 
-        async function loadTopicDetail(topicId) {
-            const detailEl = document.getElementById('topic-detail');
-            detailEl.classList.add('show');
-            detailEl.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">加载中...</div>';
+    function renderTopics(topics) {
+        const container = document.getElementById('topic-grid');
+        if (!topics || topics.length === 0) {
+            container.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="icon">&#128269;</div><div class="text">暂无话题数据</div></div>';
+            return;
+        }
+        container.innerHTML = topics.map(t => {
+            const cls = t.is_active ? 'active-topic' : 'inactive-topic';
+            const typeBadge = t.is_auto_discovered ? '<span class="badge-auto">自动发现</span>' : '<span class="badge-manual">手动创建</span>';
+            const statusBadge = t.is_active ? '<span class="badge-active">活跃</span>' : '<span class="badge-inactive">已停用</span>';
+            const keywords = (t.keywords && Array.isArray(t.keywords)) ? t.keywords.slice(0, 8).map(kw => `<span class="keyword-tag">${escapeHtml(String(kw))}</span>`).join('') : '';
+            return `
+                <div class="topic-card ${cls}" onclick="loadTopicDetail(${t.id})">
+                    <div class="topic-name">${escapeHtml(t.name)}</div>
+                    ${t.description ? `<div class="topic-desc">${escapeHtml(t.description)}</div>` : ''}
+                    <div class="topic-meta">${typeBadge} ${statusBadge}</div>
+                    ${keywords ? `<div class="topic-keywords">${keywords}</div>` : ''}
+                </div>
+            `;
+        }).join('');
+    }
 
-            try {
-                // Load topic articles and trend in parallel
-                const [articlesRes, trendRes] = await Promise.all([
-                    fetch(`${API_BASE}/topics/${topicId}/articles?limit=20`, { headers: getHeaders() }),
-                    fetch(`${API_BASE}/topics/${topicId}/trend`, { headers: getHeaders() }).catch(() => null),
-                ]);
+    async function loadTopicDetail(topicId) {
+        const detailEl = document.getElementById('topic-detail');
+        detailEl.classList.add('show');
+        detailEl.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">加载中...</div>';
 
-                let articlesHtml = '';
-                if (articlesRes.ok) {
-                    const articlesData = await articlesRes.json();
-                    const articles = articlesData.articles || [];
-                    if (articles.length > 0) {
-                        articlesHtml = '<h4 style="font-size:13px;color:#888;margin-bottom:8px;">关联文章</h4>' +
-                            articles.map(a => `
-                                <div class="topic-article-item">
-                                    <a href="${escapeHtml(a.url || '#')}" target="_blank">${escapeHtml(a.title || '文章 #' + a.article_id)}</a>
-                                    <div style="display:flex;gap:8px;align-items:center;">
-                                        ${a.matched_keywords ? `<div class="matched-kw">${(Array.isArray(a.matched_keywords) ? a.matched_keywords : []).map(kw => `<span>${escapeHtml(String(kw))}</span>`).join('')}</div>` : ''}
-                                        <span class="match-score">${(a.match_score || 0).toFixed(2)}</span>
-                                    </div>
+        try {
+            const [articlesRes, trendRes] = await Promise.all([
+                fetch(`${API_BASE}/topics/${topicId}/articles?limit=20`, { headers: getAuthHeaders() }),
+                fetch(`${API_BASE}/topics/${topicId}/trend`, { headers: getAuthHeaders() }).catch(() => null),
+            ]);
+
+            let articlesHtml = '';
+            if (articlesRes.ok) {
+                const articlesData = await articlesRes.json();
+                const articles = articlesData.articles || [];
+                if (articles.length > 0) {
+                    articlesHtml = '<h4 style="font-size:13px;color:#888;margin-bottom:8px;">关联文章</h4>' +
+                        articles.map(a => `
+                            <div class="topic-article-item">
+                                <a href="${escapeHtml(a.url || '#')}" target="_blank">${escapeHtml(a.title || '文章 #' + a.article_id)}</a>
+                                <div style="display:flex;gap:8px;align-items:center;">
+                                    ${a.matched_keywords ? `<div class="matched-kw">${(Array.isArray(a.matched_keywords) ? a.matched_keywords : []).map(kw => `<span>${escapeHtml(String(kw))}</span>`).join('')}</div>` : ''}
+                                    <span class="match-score">${(a.match_score || 0).toFixed(2)}</span>
                                 </div>
-                            `).join('');
-                    } else {
-                        articlesHtml = '<div style="color:#999;font-size:13px;">暂无关联文章</div>';
-                    }
+                            </div>
+                        `).join('');
+                } else {
+                    articlesHtml = '<div style="color:#999;font-size:13px;">暂无关联文章</div>';
                 }
-
-                let trendHtml = '';
-                if (trendRes && trendRes.ok) {
-                    const trendData = await trendRes.json();
-                    const dir = trendData.direction || 'stable';
-                    const dirClass = dir === 'up' ? 'trend-up' : dir === 'down' ? 'trend-down' : 'trend-stable';
-                    const dirLabel = dir === 'up' ? '&#9650; 上升' : dir === 'down' ? '&#9660; 下降' : '&#9644; 稳定';
-                    const change = trendData.change_percent !== undefined ? `${trendData.change_percent > 0 ? '+' : ''}${trendData.change_percent.toFixed(1)}%` : '';
-                    trendHtml = `
-                        <div class="trend-info">
-                            <span class="trend-direction ${dirClass}">${dirLabel}</span>
-                            ${change ? `<span style="margin-left:12px;font-size:13px;color:#666;">变化: ${change}</span>` : ''}
-                            ${trendData.current_count !== undefined ? `<span style="margin-left:12px;font-size:13px;color:#666;">当前: ${trendData.current_count} 篇</span>` : ''}
-                        </div>
-                    `;
-                }
-
-                detailEl.innerHTML = `
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <h3>话题详情</h3>
-                        <span style="cursor:pointer;font-size:20px;color:#999;" onclick="document.getElementById('topic-detail').classList.remove('show')">&#10005;</span>
-                    </div>
-                    ${trendHtml}
-                    <div class="topic-articles">${articlesHtml}</div>
-                `;
-            } catch(e) {
-                detailEl.innerHTML = '<div style="color:#dc2626;padding:20px;text-align:center;">加载失败</div>';
             }
 
-            detailEl.scrollIntoView({ behavior: 'smooth' });
+            let trendHtml = '';
+            if (trendRes && trendRes.ok) {
+                const trendData = await trendRes.json();
+                const dir = trendData.direction || 'stable';
+                const dirClass = dir === 'up' ? 'trend-up' : dir === 'down' ? 'trend-down' : 'trend-stable';
+                const dirLabel = dir === 'up' ? '&#9650; 上升' : dir === 'down' ? '&#9660; 下降' : '&#9644; 稳定';
+                const change = trendData.change_percent !== undefined ? `${trendData.change_percent > 0 ? '+' : ''}${trendData.change_percent.toFixed(1)}%` : '';
+                trendHtml = `
+                    <div class="trend-info">
+                        <span class="trend-direction ${dirClass}">${dirLabel}</span>
+                        ${change ? `<span style="margin-left:12px;font-size:13px;color:#666;">变化: ${change}</span>` : ''}
+                        ${trendData.current_count !== undefined ? `<span style="margin-left:12px;font-size:13px;color:#666;">当前: ${trendData.current_count} 篇</span>` : ''}
+                    </div>
+                `;
+            }
+
+            detailEl.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <h3>话题详情</h3>
+                    <span style="cursor:pointer;font-size:20px;color:#999;" onclick="document.getElementById('topic-detail').classList.remove('show')">&#10005;</span>
+                </div>
+                ${trendHtml}
+                <div class="topic-articles">${articlesHtml}</div>
+            `;
+        } catch(e) {
+            detailEl.innerHTML = '<div style="color:#dc2626;padding:20px;text-align:center;">加载失败</div>';
         }
 
-        function renderPagination() {
-            const totalPages = Math.ceil(totalTopics / pageSize);
-            const container = document.getElementById('pagination');
-            if (totalPages <= 1) { container.innerHTML = `<span style="color:#888;font-size:14px;">共 ${totalTopics} 个话题</span>`; return; }
-            let html = `<button class="page-btn" onclick="goToPage(${currentPage-1})" ${currentPage===1?'disabled':''}>上一页</button>`;
-            const start = Math.max(1, currentPage - 2), end = Math.min(totalPages, currentPage + 2);
-            for (let i = start; i <= end; i++) { html += `<button class="page-btn ${i===currentPage?'active':''}" onclick="goToPage(${i})">${i}</button>`; }
-            html += `<button class="page-btn" onclick="goToPage(${currentPage+1})" ${currentPage===totalPages?'disabled':''}>下一页</button>`;
-            container.innerHTML = html;
-        }
+        detailEl.scrollIntoView({ behavior: 'smooth' });
+    }
 
-        function goToPage(p) { currentPage = p; loadTopics(); window.scrollTo({top:0,behavior:'smooth'}); }
+    function renderPaginationFn() {
+        renderPagination(document.getElementById('pagination'), totalTopics, pageSize, currentPage, 'goToPage');
+    }
 
-        function escapeHtml(str) { if (!str) return ''; const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
-        function formatDate(iso) { if (!iso) return ''; try { const d = new Date(iso); return d.toLocaleDateString('zh-CN', {year:'numeric',month:'2-digit',day:'2-digit'}); } catch(e) { return iso; } }
+    function goToPage(p) { currentPage = p; loadTopics(); window.scrollTo({top:0,behavior:'smooth'}); }
 
-        checkAuth();
-        loadTopics();
-    </script>
-</body>
-</html>
+    checkAuth().then(() => loadTopics());
+</script>
+{% endblock %}
