@@ -66,12 +66,18 @@
     .article-meta span { display: flex; align-items: center; gap: 4px; }
     .article-meta .icon { font-size: 14px; }
 
-    .article-content { color: #444; line-height: 1.8; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+    /* Original Content Section */
+    .original-content-section { border-left: 3px solid #d1d5db; margin: 0; padding: 0; border-radius: 0 8px 8px 0; background: #fafafa; }
+    .original-content-header { padding: 8px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #eee; }
+    .original-tag { display: inline-block; background: linear-gradient(135deg, #9ca3af 0%, #6b7280 100%); color: white; font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600; letter-spacing: 0.5px; vertical-align: middle; }
+    .original-label { font-size: 12px; color: #6b7280; font-weight: 500; }
+
+    .article-content { color: #444; line-height: 1.8; font-size: 14px; white-space: pre-wrap; word-break: break-word; padding: 12px 14px; }
     .article-content.collapsed { max-height: 80px; overflow: hidden; position: relative; }
-    .article-content.collapsed::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 40px; background: linear-gradient(transparent, white); }
+    .article-content.collapsed::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 40px; background: linear-gradient(transparent, #fafafa); }
     
-    .expand-btn { color: #4ecdc4; font-size: 12px; cursor: pointer; margin-top: 4px; }
-    .expand-btn:hover { text-decoration: underline; }
+    .expand-btn { color: #6b7280; font-size: 12px; cursor: pointer; padding: 4px 14px 10px; }
+    .expand-btn:hover { color: #4ecdc4; text-decoration: underline; }
 
     .article-footer { margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
     .article-tags { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -127,6 +133,16 @@
     .act-priority.medium { background: #fef3c7; color: #d97706; }
     .act-priority.low { background: #dcfce7; color: #059669; }
     .ai-meta { margin-top: 10px; padding-top: 8px; border-top: 1px solid #ede9fe; font-size: 11px; color: #999; display: flex; gap: 12px; flex-wrap: wrap; }
+
+    /* Translation Section */
+    .translation-section { border-left: 3px solid #4ecdc4; margin: 12px 0 0 0; padding: 0; border-radius: 0 8px 8px 0; background: #f0faf9; }
+    .translation-header { cursor: pointer; font-size: 13px; color: #1a9a8c; font-weight: 500; padding: 10px 14px; display: flex; align-items: center; gap: 8px; user-select: none; }
+    .translation-header:hover { background: #e6f7f5; }
+    .translation-header .toggle-arrow { transition: transform 0.2s; font-size: 10px; }
+    .translation-header .toggle-arrow.open { transform: rotate(90deg); }
+    .translation-tag { display: inline-block; background: linear-gradient(135deg, #4ecdc4 0%, #2ab7a9 100%); color: white; font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600; letter-spacing: 0.5px; vertical-align: middle; }
+    .translation-body { padding: 0 14px 14px 14px; font-size: 13px; color: #444; line-height: 1.7; }
+    .translation-content { color: #333; }
 
     /* Pipeline Status Indicator */
     .pipeline-indicator { display: flex; align-items: center; gap: 2px; margin-top: 8px; }

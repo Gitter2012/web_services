@@ -645,6 +645,11 @@ function renderArticle(article) {
     }
     const hasLongSummary = sourceType !== 'aigc' && (cleanSummary || '').length > 300;
 
+    // 翻译内容处理
+    const hasTranslation = article.content_summary && article.content_summary.trim();
+    const cleanTranslation = hasTranslation ? stripHtml(article.content_summary) : '';
+    const translationHtml = cleanTranslation ? escapeHtml(cleanTranslation) : '';
+
     const publishTime = article.publish_time ? formatDate(article.publish_time) : '';
     const updatedTime = article.arxiv_updated_time ? formatDate(article.arxiv_updated_time) : '';
     const crawlTime = article.crawl_time ? formatDate(article.crawl_time) : '';
@@ -699,6 +704,7 @@ function renderArticle(article) {
     const contentClass = hasLongSummary ? 'article-content collapsed' : 'article-content';
     const isStarred = userStars.has(article.id);
     const aiInsight = renderAiInsight(article);
+    const translationSection = renderTranslationSection(article, translationHtml, cleanTranslation);
 
     return `
         <div class="article-card">
@@ -717,9 +723,16 @@ function renderArticle(article) {
             </div>
             ${sourceType === 'aigc'
                 ? `<div class="article-content aigc-content">${displayHtml}</div>`
-                : `<div class="${contentClass}" data-full="${escapeHtml(cleanSummary)}">${displayHtml}</div>`
+                : `<div class="original-content-section">
+                        <div class="original-content-header">
+                            <span class="original-tag">原文</span>
+                            <span class="original-label">Abstract</span>
+                        </div>
+                        <div class="${contentClass}" data-full="${escapeHtml(cleanSummary)}">${displayHtml}</div>
+                        ${expandBtn}
+                   </div>`
             }
-            ${expandBtn}
+            ${translationSection}
             ${arxivDetails}
             ${aiInsight}
             <div class="article-footer">
@@ -771,6 +784,40 @@ function renderAiInsight(article) {
 }
 
 function toggleAiInsight(cardId) {
+    const body = document.getElementById(cardId + '-body');
+    const arrow = document.getElementById(cardId + '-arrow');
+    if (body.style.display === 'none') {
+        body.style.display = 'block';
+        arrow.classList.add('open');
+    } else {
+        body.style.display = 'none';
+        arrow.classList.remove('open');
+    }
+}
+
+// ========== 翻译内容渲染 ==========
+function renderTranslationSection(article, translationHtml, cleanTranslation) {
+    if (!cleanTranslation) return '';
+
+    const cardId = `translation-${article.id}`;
+    const previewText = cleanTranslation.length > 80 ? cleanTranslation.substring(0, 80) + '...' : cleanTranslation;
+
+    return `
+        <div class="translation-section" id="${cardId}">
+            <div class="translation-header" onclick="toggleTranslation('${cardId}')">
+                <span class="toggle-arrow" id="${cardId}-arrow">&#9654;</span>
+                <span class="translation-tag">翻译</span>
+                <span>中文摘要</span>
+                <span style="color:#888;font-weight:normal;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">&mdash; ${escapeHtml(previewText)}</span>
+            </div>
+            <div class="translation-body" id="${cardId}-body" style="display:none;">
+                <div class="translation-content">${translationHtml}</div>
+            </div>
+        </div>
+    `;
+}
+
+function toggleTranslation(cardId) {
     const body = document.getElementById(cardId + '-body');
     const arrow = document.getElementById(cardId + '-arrow');
     if (body.style.display === 'none') {
