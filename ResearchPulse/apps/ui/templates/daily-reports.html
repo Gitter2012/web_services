@@ -64,19 +64,52 @@
 
         .report-content { padding: 0 20px 20px; display: none; border-top: 1px solid #f0f0f0; }
         .report-content.open { display: block; }
-        .report-body { padding-top: 16px; font-size: 14px; color: #444; line-height: 1.8; max-height: 600px; overflow-y: auto; }
-        .report-body h1, .report-body h2, .report-body h3 { color: #1a1a2e; margin: 16px 0 8px; }
-        .report-body h1 { font-size: 20px; }
-        .report-body h2 { font-size: 17px; }
-        .report-body h3 { font-size: 15px; }
-        .report-body ul, .report-body ol { padding-left: 24px; margin: 8px 0; }
-        .report-body li { margin: 4px 0; }
-        .report-body p { margin: 8px 0; }
-        .report-body code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
-        .report-body blockquote { border-left: 3px solid #764ba2; padding-left: 12px; color: #666; margin: 8px 0; }
-        .report-body a { color: #2563eb; text-decoration: none; }
-        .report-body a:hover { text-decoration: underline; }
-        .report-body hr { border: none; border-top: 1px solid #e0e0e0; margin: 16px 0; }
+        .report-body { padding-top: 16px; font-size: 14px; color: #444; line-height: 1.8; max-height: 800px; overflow-y: auto; }
+
+        /* 报告摘要徽章 */
+        .report-summary-badge { display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 25px; font-size: 14px; font-weight: 500; margin: 16px 0; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3); }
+
+        /* 论文卡片容器 */
+        .articles-container { display: flex; flex-direction: column; gap: 16px; margin: 20px 0; }
+
+        /* 论文卡片 */
+        .article-card { background: #ffffff; border: 1px solid #e8e8e8; border-radius: 12px; padding: 20px; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+        .article-card:hover { box-shadow: 0 8px 25px rgba(0,0,0,0.08); border-color: #d0d0d0; transform: translateY(-2px); }
+
+        .article-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+        .article-index { background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); color: white; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 15px; flex-shrink: 0; }
+        .article-title { font-size: 16px; font-weight: 600; color: #1a1a2e; margin: 0; line-height: 1.5; flex: 1; }
+
+        .article-original-title { font-size: 13px; color: #666; background: #f8f9fa; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; font-style: italic; }
+
+        .article-meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 16px; }
+        .article-authors { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #666; }
+        .article-authors svg { opacity: 0.6; }
+        .article-link { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #2563eb; text-decoration: none; padding: 4px 12px; background: #eff6ff; border-radius: 15px; transition: all 0.2s; }
+        .article-link:hover { background: #dbeafe; }
+
+        .article-content { background: #fafbfc; border-radius: 8px; padding: 16px; }
+        .article-summary-label { font-size: 12px; font-weight: 600; color: #764ba2; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .article-summary { font-size: 14px; color: #555; line-height: 1.8; }
+
+        /* 统计区域 */
+        .report-stats-section { background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 12px; padding: 20px; margin: 20px 0; }
+        .stats-title { font-size: 16px; font-weight: 600; color: #1a1a2e; margin: 0 0 16px 0; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+        .stat-item { background: white; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .stat-label { font-size: 13px; color: #666; }
+        .stat-value { font-size: 14px; font-weight: 600; color: #1a1a2e; }
+
+        /* 报告底部 */
+        .report-footer { text-align: center; padding: 16px 0; margin-top: 16px; border-top: 1px dashed #e0e0e0; }
+        .report-footer span { display: block; font-size: 12px; color: #888; margin: 4px 0; }
+
+        /* 响应式适配 */
+        @media (max-width: 600px) {
+            .article-header { flex-direction: column; gap: 8px; }
+            .article-meta-row { flex-direction: column; align-items: flex-start; gap: 8px; }
+            .stats-grid { grid-template-columns: 1fr; }
+        }
 
         .empty-state { text-align: center; padding: 60px 20px; color: #888; }
         .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
@@ -704,6 +737,140 @@
 
         function renderMarkdown(md) {
             if (!md) return '<p style="color:#999;">暂无内容</p>';
+
+            // 使用增强的渲染方式，生成美观的卡片式布局
+            // 先解析 Markdown 结构，再进行 HTML 转义
+            let html = parseReportToHtml(md);
+
+            return html;
+        }
+
+        // 将 Markdown 报告解析为美化的 HTML 结构
+        function parseReportToHtml(md) {
+            const lines = md.split('\n');
+            let result = [];
+            let currentArticle = null;
+            let inArticle = false;
+            let articleMeta = {};
+            let articleContent = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+
+                // 主标题 (# 标题)
+                if (line.match(/^#\s+/)) {
+                    continue; // 跳过主标题
+                }
+
+                // 引用块（论文数量）
+                if (line.match(/^&gt;\s+/) || line.match(/^>\s+/)) {
+                    const count = line.replace(/^(&gt;|>)\s*/, '').trim();
+                    result.push(`<div class="report-summary-badge">${escapeHtml(count)}</div>`);
+                    continue;
+                }
+
+                // 分隔线
+                if (line.match(/^---+$/)) {
+                    continue;
+                }
+
+                // 论文列表标题 (## 📌 论文列表)
+                if (line.match(/^##\s+.*论文列表/)) {
+                    result.push('<div class="articles-container">');
+                    continue;
+                }
+
+                // 统计信息标题 (## 📊 统计信息)
+                if (line.match(/^##\s+.*统计/)) {
+                    if (currentArticle) {
+                        result.push(renderArticleCard(currentArticle, articleMeta, articleContent));
+                        currentArticle = null;
+                        articleMeta = {};
+                        articleContent = [];
+                    }
+                    result.push('</div>'); // 关闭 articles-container
+
+                    // 收集统计信息
+                    let stats = [];
+                    for (let j = i + 1; j < lines.length; j++) {
+                        const statLine = lines[j];
+                        if (statLine.match(/^---+$/)) break;
+                        if (statLine.match(/^-\s+/)) {
+                            const stat = statLine.replace(/^-\s*/, '').trim();
+                            stats.push(stat);
+                        }
+                    }
+                    if (stats.length > 0) {
+                        result.push(renderStatsSection(stats));
+                    }
+                    break;
+                }
+
+                // 论文标题 (### 数字. 标题)
+                const articleMatch = line.match(/^###\s+(\d+)\.\s*(.+)$/);
+                if (articleMatch) {
+                    if (currentArticle) {
+                        result.push(renderArticleCard(currentArticle, articleMeta, articleContent));
+                    }
+                    currentArticle = { index: articleMatch[1], title: articleMatch[2] };
+                    articleMeta = {};
+                    articleContent = [];
+                    inArticle = true;
+                    continue;
+                }
+
+                // 论文元信息
+                if (inArticle && currentArticle) {
+                    const trimmedLine = line.trim();
+
+                    // 原文标题
+                    if (trimmedLine.match(/^\*\*原文\*\*/)) {
+                        const val = trimmedLine.replace(/^\*\*原文\*\*:\s*/, '').replace(/\*\*/g, '');
+                        articleMeta.originalTitle = val;
+                    }
+                    // 作者
+                    else if (trimmedLine.match(/^\*\*作者\*\*/)) {
+                        const val = trimmedLine.replace(/^\*\*作者\*\*:\s*/, '').replace(/\*\*/g, '');
+                        articleMeta.authors = val;
+                    }
+                    // 链接
+                    else if (trimmedLine.match(/^\*\*链接\*\*/)) {
+                        const linkMatch = trimmedLine.match(/\[([^\]]+)\]\(([^)]+)\)/);
+                        if (linkMatch) {
+                            articleMeta.link = linkMatch[2];
+                            articleMeta.arxivId = linkMatch[1];
+                        }
+                    }
+                    // 摘要标记
+                    else if (trimmedLine.match(/^\*\*摘要\*\*/)) {
+                        continue;
+                    }
+                    // 空行
+                    else if (!trimmedLine) {
+                        continue;
+                    }
+                    // 摘要内容
+                    else {
+                        articleContent.push(trimmedLine);
+                    }
+                }
+            }
+
+            // 处理最后的文章
+            if (currentArticle) {
+                result.push(renderArticleCard(currentArticle, articleMeta, articleContent));
+            }
+
+            // 如果没有解析出任何内容，返回简单渲染
+            if (result.length === 0) {
+                return renderSimpleMarkdown(md);
+            }
+
+            return result.join('\n');
+        }
+
+        // 简单 Markdown 渲染（作为后备）
+        function renderSimpleMarkdown(md) {
             let html = escapeHtml(md);
             html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
             html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
@@ -715,12 +882,57 @@
             html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
             html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
             html = html.replace(/^---$/gm, '<hr>');
-            // Links
             html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
             html = html.replace(/\n\n/g, '</p><p>');
             html = '<p>' + html + '</p>';
             html = html.replace(/<p>\s*<\/p>/g, '');
             return html;
+        }
+
+        // 渲染单篇论文卡片
+        function renderArticleCard(article, meta, content) {
+            const contentHtml = content.map(c => escapeHtml(c)).join('<br>');
+            const title = escapeHtml(article.title);
+            const originalTitle = meta.originalTitle ? escapeHtml(meta.originalTitle) : '';
+            const authors = meta.authors ? escapeHtml(meta.authors) : '';
+
+            return `
+                <div class="article-card">
+                    <div class="article-header">
+                        <span class="article-index">#${article.index}</span>
+                        <h4 class="article-title">${title}</h4>
+                    </div>
+                    ${originalTitle ? `<div class="article-original-title">原文: ${originalTitle}</div>` : ''}
+                    <div class="article-meta-row">
+                        ${meta.link ? `<a class="article-link" href="${escapeHtml(meta.link)}" target="_blank"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg> 查看原文</a>` : ''}
+                        ${authors ? `<span class="article-authors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg> ${authors}</span>` : ''}
+                    </div>
+                    <div class="article-content">
+                        <div class="article-summary-label">摘要</div>
+                        <div class="article-summary">${contentHtml || '<em>暂无摘要</em>'}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 渲染统计区域
+        function renderStatsSection(stats) {
+            const statsHtml = stats.map(s => {
+                const parts = s.split(':');
+                const label = escapeHtml(parts[0] || s);
+                const value = parts.length >= 2 ? escapeHtml(parts.slice(1).join(':')) : '';
+                if (value) {
+                    return `<div class="stat-item"><span class="stat-label">${label}</span><span class="stat-value">${value}</span></div>`;
+                }
+                return `<div class="stat-item">${label}</div>`;
+            }).join('');
+
+            return `
+                <div class="report-stats-section">
+                    <h3 class="stats-title">📊 统计信息</h3>
+                    <div class="stats-grid">${statsHtml}</div>
+                </div>
+            `;
         }
 
         function renderPagination() {
