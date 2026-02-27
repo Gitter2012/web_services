@@ -65,20 +65,6 @@ logging.getLogger("sqlalchemy.pool.impl.AsyncAdaptedQueuePool").addFilter(
 from settings import settings
 
 # ---------------------------------------------------------------------------
-# 日志配置
-# ---------------------------------------------------------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger(__name__)
-
-# 对 root logger 也加上同样的过滤器，
-# 因为 basicConfig 把所有日志都路由到 root handler
-logging.getLogger().addFilter(_pool_gc_filter)
-
-# ---------------------------------------------------------------------------
 # ANSI 颜色
 # ---------------------------------------------------------------------------
 RED = "\033[0;31m"
@@ -86,6 +72,50 @@ GREEN = "\033[0;32m"
 YELLOW = "\033[1;33m"
 CYAN = "\033[0;36m"
 NC = "\033[0m"
+
+
+class ColoredFormatter(logging.Formatter):
+    """Custom formatter that adds ANSI colors based on log level."""
+
+    LEVEL_COLORS = {
+        logging.DEBUG: CYAN,
+        logging.INFO: CYAN,
+        logging.WARNING: YELLOW,
+        logging.ERROR: RED,
+        logging.CRITICAL: RED,
+    }
+
+    def format(self, record):
+        # 保存原始 levelname
+        orig_levelname = record.levelname
+        # 添加颜色
+        color = self.LEVEL_COLORS.get(record.levelno, NC)
+        record.levelname = f"{color}{record.levelname}{NC}"
+        result = super().format(record)
+        # 恢复原始 levelname
+        record.levelname = orig_levelname
+        return result
+
+
+# ---------------------------------------------------------------------------
+# 日志配置
+# ---------------------------------------------------------------------------
+# 创建带颜色的 formatter
+_colored_formatter = ColoredFormatter(
+    fmt="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+# 配置 root logger
+_handler = logging.StreamHandler()
+_handler.setFormatter(_colored_formatter)
+_handler.addFilter(_pool_gc_filter)
+
+logging.basicConfig(
+    level=logging.INFO,
+    handlers=[_handler],
+)
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # 流水线阶段定义（按依赖顺序）
@@ -113,11 +143,29 @@ STAGE_FEATURES = {
 }
 
 
-def _print(msg: str, level: str = "info") -> None:
-    """Print colored message to stdout."""
-    colors = {"info": CYAN, "success": GREEN, "warn": YELLOW, "error": RED}
+def _log(msg: str, level: str = "info") -> None:
+    """Log colored message using logging module.
+
+    Args:
+        msg: Message to log.
+        level: Log level - 'info', 'success', 'warn', 'error', 'debug'.
+    """
+    level_map = {
+        "info": logging.INFO,
+        "success": logging.INFO,  # success 也用 INFO 级别
+        "warn": logging.WARNING,
+        "error": logging.ERROR,
+        "debug": logging.DEBUG,
+    }
+    colors = {"info": CYAN, "success": GREEN, "warn": YELLOW, "error": RED, "debug": CYAN}
     color = colors.get(level, NC)
-    print(f"{color}{msg}{NC}")
+    log_level = level_map.get(level, logging.INFO)
+
+    # 为 success 消息添加绿色前缀
+    if level == "success":
+        logger.log(log_level, f"{color}{msg}{NC}")
+    else:
+        logger.log(log_level, msg)
 
 
 # ---------------------------------------------------------------------------
@@ -131,14 +179,23 @@ async def _run_ai(limit: int, verbose: bool) -> dict:
 
     session_factory = get_session_factory()
     service = AIProcessorService()
+
+    def progress_callback(current: int, total: int, message: str) -> None:
+        """Progress callback for AI processing."""
+        if total > 0:
+            pct = (current / total) * 100
+            logger.info(f"[ai] 进度: {current}/{total} ({pct:.0f}%) - {message}")
+
     try:
         # 预热模型，避免首次请求因冷启动超时
         warmup_ok = await service.warmup()
         if not warmup_ok:
-            _print("[ai] 模型预热未完成，继续处理", "warn")
+            _log("[ai] 模型预热未完成，继续处理", "warn")
 
         async with session_factory() as session:
-            result = await service.process_unprocessed(session, limit=limit)
+            result = await service.process_unprocessed(
+                session, limit=limit, progress_callback=progress_callback
+            )
             return result
     except Exception as e:
         logger.error(f"AI processing failed: {e}", exc_info=verbose)
@@ -342,10 +399,19 @@ async def _run_embedding(limit: int, verbose: bool) -> dict:
     from apps.embedding.service import EmbeddingService
 
     session_factory = get_session_factory()
+
+    def progress_callback(current: int, total: int, message: str) -> None:
+        """Progress callback for embedding computation."""
+        if total > 0:
+            pct = (current / total) * 100
+            logger.info(f"[embedding] 进度: {current}/{total} ({pct:.0f}%) - {message}")
+
     async with session_factory() as session:
         service = EmbeddingService()
         try:
-            result = await service.compute_uncomputed(session, limit=limit)
+            result = await service.compute_uncomputed(
+                session, limit=limit, progress_callback=progress_callback
+            )
             await session.commit()
             return result
         except Exception as e:
@@ -681,12 +747,12 @@ async def run_pipeline(
             enabled = feature_config.get_bool(feature_key, False)
 
             if not enabled and skip_disabled:
-                _print(f"[{stage}] 功能未启用 ({feature_key}=false)，跳过", "warn")
+                _log(f"[{stage}] 功能未启用 ({feature_key}=false)，跳过", "warn")
                 results[stage] = {"skipped": True, "reason": "feature disabled"}
                 continue
 
             if not enabled and not skip_disabled:
-                _print(
+                _log(
                     f"[{stage}] 功能未启用 ({feature_key}=false)，"
                     f"--force 模式下强制运行",
                     "warn",
@@ -694,9 +760,9 @@ async def run_pipeline(
 
             desc = STAGE_DESCRIPTIONS.get(stage, stage)
             if trigger_mode:
-                _print(f"[{stage}] 入队: {desc}")
+                _log(f"[{stage}] 入队: {desc}")
             else:
-                _print(f"[{stage}] 开始: {desc} (limit={limit})")
+                _log(f"[{stage}] 开始: {desc} (limit={limit})")
 
             t0 = time.time()
             try:
@@ -716,11 +782,11 @@ async def run_pipeline(
 
             # 打印阶段结果
             if "error" in result:
-                _print(f"[{stage}] 失败 ({elapsed:.1f}s)", "error")
+                _log(f"[{stage}] 失败 ({elapsed:.1f}s)", "error")
             elif result.get("enqueued"):
-                _print(f"[{stage}] 已入队 ({elapsed:.1f}s)", "success")
+                _log(f"[{stage}] 已入队 ({elapsed:.1f}s)", "success")
             else:
-                _print(f"[{stage}] 完成 ({elapsed:.1f}s)", "success")
+                _log(f"[{stage}] 完成 ({elapsed:.1f}s)", "success")
             print(_format_result(stage, result))
             print()
     finally:
@@ -820,9 +886,9 @@ def main():
 
     # 打印运行信息
     print()
-    _print("=" * 50, "info")
-    _print("ResearchPulse v2 AI 流水线", "info")
-    _print("=" * 50, "info")
+    _log("=" * 50, "info")
+    _log("ResearchPulse v2 AI 流水线", "info")
+    _log("=" * 50, "info")
     print(f"阶段: {' → '.join(stages)}")
     print(f"Limit: {args.limit}")
     if args.concurrency > 0:
@@ -831,7 +897,7 @@ def main():
         print(f"{CYAN}模式: 队列触发 (入队到 pipeline_tasks){NC}")
     if args.force:
         print(f"{YELLOW}模式: 强制运行 (忽略功能开关){NC}")
-    _print("-" * 50, "info")
+    _log("-" * 50, "info")
     print()
 
     t_start = time.time()
@@ -848,10 +914,10 @@ def main():
             )
         )
     except KeyboardInterrupt:
-        _print("\n用户中断", "warn")
+        _log("\n用户中断", "warn")
         sys.exit(130)
     except Exception as e:
-        _print(f"流水线执行失败: {e}", "error")
+        _log(f"流水线执行失败: {e}", "error")
         if args.verbose:
             import traceback
             traceback.print_exc()
@@ -865,9 +931,9 @@ def main():
         sys.exit(0)
 
     # 汇总
-    _print("=" * 50, "info")
-    _print("流水线执行完毕", "info")
-    _print("=" * 50, "info")
+    _log("=" * 50, "info")
+    _log("流水线执行完毕", "info")
+    _log("=" * 50, "info")
 
     has_error = False
     for stage in stages:

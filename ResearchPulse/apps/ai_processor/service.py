@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Callable, Optional
 from urllib.parse import urlparse
 
 from sqlalchemy import select, update
@@ -268,12 +268,24 @@ class AIProcessorService:
         return result_dict
 
     async def batch_process(
-        self, article_ids: list[int], force: bool = False
+        self,
+        article_ids: list[int],
+        force: bool = False,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
     ) -> dict:
         """Process multiple articles, dispatching to serial or concurrent path.
 
         根据 settings.ai_batch_concurrency 配置选择串行或并行处理路径。
         默认值为 1（串行），可通过 .env 中 AI_BATCH_CONCURRENCY 修改。
+
+        Args:
+            article_ids: List of article IDs to process.
+            force: Force reprocessing even if already processed.
+            progress_callback: Optional callback for progress updates.
+                Called with (current_index, total_count, message).
+
+        Returns:
+            dict: Summary with total, processed, cached, failed counts.
         """
         if not article_ids:
             return {"total": 0, "processed": 0, "cached": 0, "failed": 0, "results": []}
@@ -285,26 +297,37 @@ class AIProcessorService:
                 f"with concurrency={concurrency}"
             )
             results = await self._batch_process_concurrent(
-                article_ids, force=force, concurrency=concurrency
+                article_ids, force=force, concurrency=concurrency, progress_callback=progress_callback
             )
         else:
             logger.info(f"Batch processing {len(article_ids)} articles serially")
-            results = await self._batch_process_serial(article_ids, force=force)
+            results = await self._batch_process_serial(article_ids, force=force, progress_callback=progress_callback)
 
         return self._summarize_results(results)
 
     async def _batch_process_serial(
-        self, article_ids: list[int], force: bool = False
+        self,
+        article_ids: list[int],
+        force: bool = False,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
     ) -> list[dict]:
         """Process articles one by one, each with an independent DB session.
 
         串行逐篇处理，每篇文章使用独立 session，安全可靠。
+
+        Args:
+            article_ids: List of article IDs to process.
+            force: Force reprocessing.
+            progress_callback: Optional progress callback.
         """
         session_factory = get_session_factory()
         results: list[dict] = []
+        total = len(article_ids)
 
-        for article_id in article_ids:
+        for idx, article_id in enumerate(article_ids, 1):
             try:
+                if progress_callback:
+                    progress_callback(idx, total, f"Processing article {article_id}")
                 async with session_factory() as session:
                     result = await self.process_article(article_id, session, force=force)
                     await session.commit()
@@ -322,16 +345,30 @@ class AIProcessorService:
         return results
 
     async def _batch_process_concurrent(
-        self, article_ids: list[int], force: bool = False, concurrency: int = 3
+        self,
+        article_ids: list[int],
+        force: bool = False,
+        concurrency: int = 3,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
     ) -> list[dict]:
         """Process articles concurrently with independent service instances.
 
         并行处理文章。每个并发任务创建独立的 AIProcessorService 实例
         （含独立的 Provider 和 httpx.AsyncClient），彻底避免共享状态。
         使用 asyncio.Semaphore 控制并发上限。
+
+        Args:
+            article_ids: List of article IDs to process.
+            force: Force reprocessing.
+            concurrency: Max concurrent tasks.
+            progress_callback: Optional progress callback.
         """
         semaphore = asyncio.Semaphore(concurrency)
         session_factory = get_session_factory()
+        total = len(article_ids)
+        # 使用计数器追踪进度
+        progress_counter = [0]  # 使用列表以便在闭包中修改
+        progress_lock = asyncio.Lock()
 
         async def _process_one(article_id: int) -> dict:
             async with semaphore:
@@ -344,10 +381,29 @@ class AIProcessorService:
                         )
                         await session.commit()
                         result.pop("_log", None)
+
+                        # 更新进度
+                        if progress_callback:
+                            async with progress_lock:
+                                progress_counter[0] += 1
+                                progress_callback(
+                                    progress_counter[0],
+                                    total,
+                                    f"Completed article {article_id}"
+                                )
+
                         return result
                 except Exception as e:
                     logger.error(f"Error processing article {article_id}: {e}")
                     await self._mark_article_failed(article_id, e)
+                    if progress_callback:
+                        async with progress_lock:
+                            progress_counter[0] += 1
+                            progress_callback(
+                                progress_counter[0],
+                                total,
+                                f"Failed article {article_id}"
+                            )
                     return {
                         "success": False,
                         "article_id": article_id,
@@ -405,9 +461,21 @@ class AIProcessorService:
         }
 
     async def process_unprocessed(
-        self, db: AsyncSession, limit: int = 50
+        self,
+        db: AsyncSession,
+        limit: int = 50,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
     ) -> dict:
-        """Process articles that haven't been AI-processed yet."""
+        """Process articles that haven't been AI-processed yet.
+
+        Args:
+            db: Async database session.
+            limit: Max number of articles to process.
+            progress_callback: Optional callback for progress updates.
+
+        Returns:
+            dict: Batch processing summary.
+        """
         # 查询尚未经过 AI 处理的文章（未归档的），按爬取时间倒序排列
         # 此方法通常由定时调度任务调用
         result = await db.execute(
@@ -421,7 +489,7 @@ class AIProcessorService:
         article_ids = [row[0] for row in result.all()]
         if not article_ids:
             return {"total": 0, "processed": 0, "cached": 0, "failed": 0, "results": []}
-        return await self.batch_process(article_ids)
+        return await self.batch_process(article_ids, progress_callback=progress_callback)
 
     async def _save_result(
         self, article: Article, result: dict, db: AsyncSession

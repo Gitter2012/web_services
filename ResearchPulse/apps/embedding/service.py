@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
+from typing import Callable, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -184,7 +185,10 @@ class EmbeddingService:
         }
 
     async def batch_compute(
-        self, article_ids: list[int], db: AsyncSession
+        self,
+        article_ids: list[int],
+        db: AsyncSession,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
     ) -> dict:
         """Batch compute embeddings using bulk encoding.
 
@@ -194,6 +198,8 @@ class EmbeddingService:
         Args:
             article_ids: Article ID list.
             db: Async database session.
+            progress_callback: Optional callback for progress updates.
+                Called with (current_index, total_count, message).
 
         Returns:
             dict: Summary of computed/skipped/failed counts.
@@ -204,14 +210,19 @@ class EmbeddingService:
         computed = 0
         skipped = 0
         failed = 0
+        total = len(article_ids)
 
         # 第一步：批量查询文章
+        if progress_callback:
+            progress_callback(0, total, "Querying articles")
         result = await db.execute(
             select(Article).where(Article.id.in_(article_ids))
         )
         articles = {a.id: a for a in result.scalars().all()}
 
         # 第二步：批量检查已有嵌入（幂等性保障）
+        if progress_callback:
+            progress_callback(0, total, "Checking existing embeddings")
         existing_result = await db.execute(
             select(ArticleEmbedding.article_id).where(
                 ArticleEmbedding.article_id.in_(article_ids)
@@ -220,6 +231,8 @@ class EmbeddingService:
         existing_ids = {row[0] for row in existing_result.all()}
 
         # 第三步：构建待编码的文本列表
+        if progress_callback:
+            progress_callback(0, total, "Preparing texts for encoding")
         to_encode_ids: list[int] = []
         to_encode_texts: list[str] = []
         for aid in article_ids:
@@ -240,13 +253,19 @@ class EmbeddingService:
             return {"total": len(article_ids), "computed": computed, "skipped": skipped, "failed": failed}
 
         # 第四步：批量编码（使用 encode_batch，通过线程池避免阻塞事件循环）
+        if progress_callback:
+            progress_callback(0, total, f"Encoding {len(to_encode_texts)} texts")
         try:
             embeddings = await asyncio.to_thread(self.provider.encode_batch, to_encode_texts)
+            if progress_callback:
+                progress_callback(len(to_encode_texts), total, "Encoding completed")
         except Exception as e:
             logger.error(f"Batch encoding failed: {e}")
             return {"total": len(article_ids), "computed": 0, "skipped": skipped, "failed": failed + len(to_encode_texts)}
 
         # 第五步：批量写入 Milvus
+        if progress_callback:
+            progress_callback(len(to_encode_texts), total, "Writing to Milvus")
         milvus = self._get_milvus()
         milvus_ids_map: dict[int, str] = {}
         if milvus:
@@ -260,6 +279,8 @@ class EmbeddingService:
                 logger.warning(f"Milvus batch insert failed: {e}")
 
         # 第六步：批量创建 MySQL 元数据记录
+        if progress_callback:
+            progress_callback(len(to_encode_texts), total, "Writing metadata to MySQL")
         dimension = len(embeddings[0]) if embeddings else feature_config.get_int("embedding.dimension", settings.embedding_dimension)
         now = datetime.now(timezone.utc)
         meta_records = []
@@ -275,6 +296,9 @@ class EmbeddingService:
             computed += 1
         db.add_all(meta_records)
 
+        if progress_callback:
+            progress_callback(total, total, f"Batch compute completed: {computed} computed, {skipped} skipped")
+
         return {
             "total": len(article_ids),
             "computed": computed,
@@ -282,7 +306,12 @@ class EmbeddingService:
             "failed": failed,
         }
 
-    async def compute_uncomputed(self, db: AsyncSession, limit: int = 100) -> dict:
+    async def compute_uncomputed(
+        self,
+        db: AsyncSession,
+        limit: int = 100,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    ) -> dict:
         """Compute embeddings for articles missing them.
 
         查找未计算嵌入的文章并进行批量计算。
@@ -290,6 +319,7 @@ class EmbeddingService:
         Args:
             db: Async database session.
             limit: Max number of articles to process.
+            progress_callback: Optional callback for progress updates.
 
         Returns:
             dict: Batch computation summary.
@@ -316,7 +346,7 @@ class EmbeddingService:
         article_ids = [row[0] for row in result.all()]
         if not article_ids:
             return {"total": 0, "computed": 0, "skipped": 0, "failed": 0}
-        return await self.batch_compute(article_ids, db)
+        return await self.batch_compute(article_ids, db, progress_callback=progress_callback)
 
     async def find_similar(
         self, article_id: int, db: AsyncSession, top_k: int = 10
