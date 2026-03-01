@@ -7,9 +7,23 @@
 
 ---
 
-## [Unreleased]
+## [2.2.0] - 2026-03-01
 
 ### 新增
+
+- **AIGC 内容写入模块** (`apps/aigc/article_writer.py`)
+  - 统一的 AI 生成内容写入工具，供事件聚类、话题发现、行动项提取、报告生成模块调用
+  - 以 `source_type='aigc'` 将 AI 生成摘要写入 articles 表
+  - 利用 `(source_type, source_id, external_id)` 唯一约束保证幂等性，重复运行不创建重复记录
+  - 自动标记 `ai_processed_at`，防止 AI 流水线对 AIGC 文章重复处理
+  - 支持 4 种内容来源：`event_clustering`（事件聚类日报）、`topic_radar`（话题趋势日报）、`action_items`（行动建议日报）、`report`（报告中心摘要）
+  - 前端新增 AIGC 分组入口，渲染 Markdown 格式内容，独立样式展示
+
+- **后台任务管理模块** (`apps/task_manager/`)
+  - `TaskManager` 类负责创建、异步执行、更新任务状态和进度查询
+  - `BackgroundTask` ORM 模型持久化任务记录，支持进度回调
+  - 主要用于每日报告（`daily_report`）等长耗时后台任务的状态追踪
+  - 支持任务类型扩展，通过 `task_type` 字段区分不同业务任务
 
 - **每日 arXiv 报告模块** (`apps/daily_report/`)
   - 自动生成每日 arXiv 论文报告，支持按分类分组
@@ -301,7 +315,7 @@
 
 ## 版本规划
 
-### [2.2.0] - 计划中
+### [2.3.0] - 计划中
 
 - [ ] 文章推荐算法（基于用户行为 + 向量相似度）
 - [ ] 阅读进度追踪

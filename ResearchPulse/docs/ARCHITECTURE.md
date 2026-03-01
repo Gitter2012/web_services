@@ -50,6 +50,11 @@ ResearchPulse 采用分层架构设计，从上到下分为用户界面层、API
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
 │  │ 话题发现   │  │ 行动项服务 │  │ 报告服务   │              │
 │  └─────────────┘  └─────────────┘  └─────────────┘              │
+│  ┌─────────────┐  ┌─────────────┐                               │
+│  │ AIGC 写入  │  │ 后台任务   │                               │
+│  │(article_    │  │(TaskManager)│                               │
+│  │ writer)     │  │             │                               │
+│  └─────────────┘  └─────────────┘                               │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -89,12 +94,20 @@ ResearchPulse 采用分层架构设计，从上到下分为用户界面层、API
                 │  Action  │    │  Report  │
                 │ 行动项   │    │ 报告生成 │
                 └──────────┘    └──────────┘
-                                     │
-                                     ▼
-                                ┌──────────┐
-                                │  Email   │
-                                │ 邮件推送 │
-                                └──────────┘
+                     │               │
+                     └───────┬───────┘
+                             ▼
+                        ┌──────────┐
+                        │  AIGC    │
+                        │ 摘要写入 │
+                        │(articles)│
+                        └──────────┘
+                             │
+                             ▼
+                        ┌──────────┐
+                        │  Email   │
+                        │ 邮件推送 │
+                        └──────────┘
 ```
 
 **阶段说明：**
@@ -494,7 +507,66 @@ pipeline/
 | feature.cleanup | true | 清理定时任务 |
 | feature.email_notification | false | 邮件推送 |
 
-### 11. 邮件模块 (common/email.py)
+### 11. AIGC 内容写入模块 (apps/aigc)
+
+```
+aigc/
+└── article_writer.py    # AI 生成内容写入工具（幂等写入）
+```
+
+**定位：**
+
+`apps/aigc/article_writer.py` 是各 AI 分析模块的公共工具函数，负责将分析结果以 Markdown 格式写回 `articles` 表（`source_type='aigc'`），供前端统一展示。
+
+**写入流程：**
+
+```
+AI 分析完成（事件聚类 / 话题发现 / 行动项提取 / 报告生成）
+    → 调用 save_aigc_article(session, source_id=..., external_id=..., title=..., content=...)
+    → 检查幂等（source_type='aigc' + source_id + external_id 三元组唯一约束）
+    → 若已存在 → 跳过，返回 None
+    → 若不存在 → 创建 Article，标记 ai_processed_at（防止 AI 流水线重复处理）
+    → 前端 "AI 生成" 分组展示（渲染 Markdown）
+```
+
+**支持的来源：**
+
+| source_id | 内容说明 | 触发时机 |
+|-----------|---------|---------|
+| `event_clustering` | 事件聚类日报 | 事件聚类任务完成后 |
+| `topic_radar` | 话题趋势日报 | 话题发现任务完成后 |
+| `action_items` | 行动建议日报 | 行动项提取任务完成后 |
+| `report` | 报告中心摘要 | 周报/月报生成后 |
+
+### 12. 后台任务管理模块 (apps/task_manager)
+
+```
+task_manager/
+├── service.py           # TaskManager 类（创建/执行/查询后台任务）
+└── models/              # BackgroundTask ORM 模型
+```
+
+**TaskManager 功能：**
+
+```python
+class TaskManager:
+    async def create_task(task_type, name, params, created_by) → BackgroundTask
+    async def run_task(task_id, coro_func, *args)  # 异步执行并追踪状态
+    async def get_task(task_id) → BackgroundTask
+    async def update_progress(task_id, progress, message)
+```
+
+**任务状态流转：**
+
+```
+pending → running → completed
+                  → failed
+```
+
+**主要使用场景：**
+- 每日 arXiv 报告生成（`daily_report` 模块）：前端触发后立即返回任务 ID，任务在后台异步执行，前端轮询状态
+
+### 13. 邮件模块 (common/email.py)
 
 **支持的后端：**
 

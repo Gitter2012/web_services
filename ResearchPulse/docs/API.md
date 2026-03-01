@@ -26,6 +26,22 @@
 - [报告 API](#报告-api)
 - [每日报告 API](#每日报告-api)
 - [管理员 API](#管理员-api)
+  - [统计与用户管理](#统计与用户管理)
+  - [爬虫管理](#爬虫管理)
+  - [功能开关管理](#功能开关管理)
+  - [系统配置管理](#系统配置管理)
+  - [调度任务管理](#调度任务管理)
+  - [备份管理](#备份管理)
+  - [邮件配置管理](#邮件配置管理)
+  - [AI 配置管理](#ai-配置管理)
+  - [向量嵌入管理](#向量嵌入管理)
+  - [数据源管理](#数据源管理)
+  - [事件管理（Admin）](#事件管理admin)
+  - [话题管理（Admin）](#话题管理admin)
+  - [报告管理（Admin）](#报告管理admin)
+  - [审计日志](#审计日志)
+  - [角色与权限管理](#角色与权限管理)
+  - [Pipeline 触发](#pipeline-触发)
 - [健康检查 API](#健康检查-api)
 - [错误响应](#错误响应)
 
@@ -250,7 +266,7 @@ GET /researchpulse/api/articles
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| source_type | string | 否 | 来源类型: arxiv, rss, wechat, weibo, twitter, hackernews, reddit |
+| source_type | string | 否 | 来源类型: arxiv, rss, wechat, weibo, twitter, hackernews, reddit, aigc |
 | category | string | 否 | 分类代码（如 cs.LG） |
 | keyword | string | 否 | 搜索关键词（匹配标题和摘要） |
 | from_date | string | 否 | 起始日期 (YYYY-MM-DD) |
@@ -1142,7 +1158,7 @@ Authorization: Bearer <token>
 ### 手动触发话题匹配
 
 ```
-POST /admin/topic/match
+POST /api/v1/admin/topic/match
 Authorization: Bearer <token>
 ```
 
@@ -1439,8 +1455,10 @@ Authorization: Bearer <token>
 ## 每日报告 API
 
 > **功能开关:** `daily_report.enabled`（默认启用）
+>
+> **权限要求:** `daily_report:read`（查看）、`daily_report:generate`（生成）、`daily_report:export`（导出）
 
-每日 arXiv 论文报告，自动按分类生成当天论文信息，支持 AI 翻译和微信公众号格式导出。
+每日 arXiv 论文报告，自动按分类生成当天论文信息，支持 AI 翻译和微信公众号格式导出。生成接口为异步模式，返回 `task_id` 供前端轮询进度。
 
 ### 获取报告列表
 
@@ -1542,12 +1560,14 @@ Authorization: Bearer <token>
 
 ---
 
-### 手动生成报告
+### 手动生成报告（异步）
 
 ```
 POST /researchpulse/api/daily-reports/generate
 Authorization: Bearer <token>
 ```
+
+> 接口立即返回，后台异步执行。使用返回的 `task_id` 轮询任务状态。
 
 **Body:**
 
@@ -1569,12 +1589,84 @@ Authorization: Bearer <token>
 
 ```json
 {
-  "success": true,
-  "message": "成功生成 2 份报告",
-  "reports": [...],
-  "errors": []
+  "task_id": "abc123...",
+  "message": "报告生成任务已提交，请轮询任务状态",
+  "status": "pending"
 }
 ```
+
+---
+
+### 获取任务列表
+
+```
+GET /researchpulse/api/daily-reports/tasks
+Authorization: Bearer <token>
+```
+
+> 用于页面刷新后恢复正在进行或最近完成的任务状态。
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| status | string | 否 | 任务状态过滤：pending / running / completed / failed |
+| limit | int | 否 | 返回数量，1-20，默认 10 |
+
+**Response (200):**
+
+```json
+[
+  {
+    "task_id": "abc123...",
+    "status": "running",
+    "progress": 50,
+    "progress_message": "正在处理 cs.LG...",
+    "result": null,
+    "error_message": null,
+    "created_at": "2026-02-26T08:00:00",
+    "updated_at": "2026-02-26T08:01:30"
+  }
+]
+```
+
+---
+
+### 查询任务进度
+
+```
+GET /researchpulse/api/daily-reports/tasks/{task_id}
+Authorization: Bearer <token>
+```
+
+**Response (200):**
+
+```json
+{
+  "task_id": "abc123...",
+  "status": "completed",
+  "progress": 100,
+  "progress_message": "报告生成完成",
+  "result": {
+    "success": true,
+    "message": "成功生成 2 份报告",
+    "reports": [...],
+    "errors": []
+  },
+  "error_message": null,
+  "created_at": "2026-02-26T08:00:00",
+  "updated_at": "2026-02-26T08:02:00"
+}
+```
+
+**任务状态说明:**
+
+| status | 说明 |
+|--------|------|
+| pending | 任务已创建，等待执行 |
+| running | 任务正在执行 |
+| completed | 任务已完成 |
+| failed | 任务失败，见 error_message |
 
 ---
 
@@ -1609,13 +1701,16 @@ Authorization: Bearer <token>
 
 ## 管理员 API
 
-> **权限要求:** 以下 API 均需要 admin 或 superuser 权限
+> **权限要求:** 以下 API 均需要 admin 或 superuser 权限，通过 `Authorization: Bearer <admin_token>` 传入
 
-### 获取统计数据
+---
+
+### 统计与用户管理
+
+#### 获取统计数据
 
 ```
 GET /api/v1/admin/stats
-Authorization: Bearer <token>
 ```
 
 **Response (200):**
@@ -1625,33 +1720,51 @@ Authorization: Bearer <token>
   "users": 100,
   "articles": 5000,
   "sources": 50,
-  "subscriptions": 500
+  "subscriptions": 500,
+  "today_articles": 120
 }
 ```
 
 ---
 
-### 用户管理
-
 #### 获取用户列表
 
 ```
 GET /api/v1/admin/users
-Authorization: Bearer <token>
 ```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| page | int | 否 | 页码，默认 1 |
+| page_size | int | 否 | 每页数量，默认 20 |
+| search | string | 否 | 按用户名/邮箱搜索 |
+| role | string | 否 | 角色过滤 |
+| is_active | bool | 否 | 激活状态过滤 |
+
+---
 
 #### 更新用户信息
 
 ```
 PATCH /api/v1/admin/users/{user_id}
-Authorization: Bearer <token>
 ```
+
+**Body:**
+
+```json
+{
+  "is_active": false
+}
+```
+
+---
 
 #### 更新用户角色
 
 ```
 PUT /api/v1/admin/users/{user_id}/role
-Authorization: Bearer <token>
 ```
 
 **Body:**
@@ -1671,11 +1784,12 @@ Authorization: Bearer <token>
 | admin | 完全管理 |
 | superuser | 超级管理员 |
 
+---
+
 #### 切换用户激活状态
 
 ```
 PUT /api/v1/admin/users/{user_id}/toggle-active
-Authorization: Bearer <token>
 ```
 
 ---
@@ -1686,7 +1800,6 @@ Authorization: Bearer <token>
 
 ```
 GET /api/v1/admin/crawler/status
-Authorization: Bearer <token>
 ```
 
 **Response (200):**
@@ -1707,12 +1820,29 @@ Authorization: Bearer <token>
 }
 ```
 
+---
+
 #### 手动触发爬取
 
 ```
 POST /api/v1/admin/crawler/trigger
-Authorization: Bearer <token>
 ```
+
+**Body:**
+
+```json
+{
+  "source_type": "arxiv",
+  "source_id": null
+}
+```
+
+**字段说明:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| source_type | string | 否 | 指定来源类型；为空则爬取全部 |
+| source_id | int | 否 | 指定来源 ID（配合 source_type 使用） |
 
 ---
 
@@ -1722,7 +1852,6 @@ Authorization: Bearer <token>
 
 ```
 GET /api/v1/admin/features
-Authorization: Bearer <token>
 ```
 
 **Response (200):**
@@ -1733,6 +1862,7 @@ Authorization: Bearer <token>
   "feature.embedding": false,
   "feature.event_clustering": false,
   "feature.topic_radar": false,
+  "feature.topic_match": false,
   "feature.action_items": false,
   "feature.report_generation": false,
   "feature.crawler": true,
@@ -1742,11 +1872,12 @@ Authorization: Bearer <token>
 }
 ```
 
+---
+
 #### 切换功能开关
 
 ```
 PUT /api/v1/admin/features/{feature_key}
-Authorization: Bearer <token>
 ```
 
 **Body:**
@@ -1767,23 +1898,24 @@ Authorization: Bearer <token>
 
 ```
 GET /api/v1/admin/config
-Authorization: Bearer <token>
 ```
+
+---
 
 #### 获取分组配置
 
 ```
 GET /api/v1/admin/config/groups
-Authorization: Bearer <token>
 ```
 
-按前缀分组返回所有配置项（如 `ai.*`、`embedding.*`、`scheduler.*`）。
+按前缀分组返回所有配置项（如 `ai.*`、`embedding.*`、`scheduler.*`、`pipeline.*`）。
+
+---
 
 #### 更新单项配置
 
 ```
 PUT /api/v1/admin/config/{key}
-Authorization: Bearer <token>
 ```
 
 **Body:**
@@ -1795,11 +1927,12 @@ Authorization: Bearer <token>
 }
 ```
 
+---
+
 #### 批量更新配置
 
 ```
 PUT /api/v1/admin/config/batch
-Authorization: Bearer <token>
 ```
 
 **Body:**
@@ -1822,7 +1955,6 @@ Authorization: Bearer <token>
 
 ```
 GET /api/v1/admin/scheduler/jobs
-Authorization: Bearer <token>
 ```
 
 **Response (200):**
@@ -1836,23 +1968,16 @@ Authorization: Bearer <token>
     "interval_hours": 6,
     "next_run": "2026-01-01T06:00:00",
     "is_active": true
-  },
-  {
-    "id": "cleanup_job",
-    "name": "Clean up expired articles",
-    "trigger": "cron",
-    "cron_hour": 3,
-    "next_run": "2026-01-02T03:00:00",
-    "is_active": true
   }
 ]
 ```
+
+---
 
 #### 修改任务调度
 
 ```
 PUT /api/v1/admin/scheduler/jobs/{job_id}
-Authorization: Bearer <token>
 ```
 
 **Body:**
@@ -1865,11 +1990,12 @@ Authorization: Bearer <token>
 }
 ```
 
+---
+
 #### 手动触发任务
 
 ```
 POST /api/v1/admin/scheduler/jobs/{job_id}/trigger
-Authorization: Bearer <token>
 ```
 
 **可触发的任务:**
@@ -1883,6 +2009,7 @@ Authorization: Bearer <token>
 | embedding_job | 向量嵌入 |
 | event_cluster_job | 事件聚类 |
 | topic_discovery_job | 话题发现 |
+| topic_match_job | 话题匹配 |
 
 ---
 
@@ -1892,17 +2019,750 @@ Authorization: Bearer <token>
 
 ```
 GET /api/v1/admin/backups
-Authorization: Bearer <token>
 ```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| page | int | 否 | 页码，默认 1 |
+| page_size | int | 否 | 每页数量，默认 20 |
+
+---
 
 #### 创建备份
 
 ```
 POST /api/v1/admin/backups/create
-Authorization: Bearer <token>
 ```
 
 ---
+
+#### 获取备份详情
+
+```
+GET /api/v1/admin/backups/{backup_id}
+```
+
+---
+
+#### 下载备份
+
+```
+GET /api/v1/admin/backups/{backup_id}/download
+```
+
+返回 JSON 格式备份文件（FileResponse）。
+
+---
+
+#### 恢复备份
+
+```
+POST /api/v1/admin/backups/{backup_id}/restore
+```
+
+**Response (200):**
+
+```json
+{
+  "status": "ok",
+  "restored_count": 500,
+  "skipped_count": 12
+}
+```
+
+---
+
+#### 删除备份
+
+```
+DELETE /api/v1/admin/backups/{backup_id}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| delete_file | bool | 否 | 是否同时删除备份文件，默认 false |
+
+---
+
+### 邮件配置管理
+
+#### 获取邮件配置列表
+
+```
+GET /api/v1/admin/email/configs
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| backend_type | string | 否 | 过滤后端类型: smtp / sendgrid / mailgun / brevo |
+
+---
+
+#### 创建邮件配置
+
+```
+POST /api/v1/admin/email/configs
+```
+
+**Body (SMTP 示例):**
+
+```json
+{
+  "backend_type": "smtp",
+  "name": "Gmail SMTP",
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": 587,
+  "smtp_user": "your@gmail.com",
+  "smtp_password": "app-password",
+  "use_tls": true
+}
+```
+
+---
+
+#### 更新邮件配置
+
+```
+PUT /api/v1/admin/email/configs/{config_id}
+```
+
+---
+
+#### 删除邮件配置
+
+```
+DELETE /api/v1/admin/email/configs/{config_id}
+```
+
+---
+
+#### 测试邮件配置
+
+```
+POST /api/v1/admin/email/configs/{config_id}/test
+```
+
+**Body:**
+
+```json
+{
+  "to_email": "test@example.com"
+}
+```
+
+---
+
+#### 获取邮件推送设置
+
+```
+GET /api/v1/admin/email/settings
+```
+
+**Response (200):**
+
+```json
+{
+  "status": "ok",
+  "settings": {
+    "email_enabled": true,
+    "push_frequency": "daily",
+    "push_time": "08:00"
+  }
+}
+```
+
+---
+
+#### 更新邮件推送设置
+
+```
+PUT /api/v1/admin/email/settings
+```
+
+**Body:**
+
+```json
+{
+  "email_enabled": true,
+  "push_frequency": "daily",
+  "push_time": "08:00"
+}
+```
+
+---
+
+### AI 配置管理
+
+#### 获取 AI 配置
+
+```
+GET /api/v1/admin/ai/config
+```
+
+**Response (200):**
+
+```json
+{
+  "status": "ok",
+  "config": {
+    "provider": "ollama",
+    "ollama_model": "qwen3:32b",
+    "ollama_base_url": "http://localhost:11434",
+    "openai_model": "gpt-4o",
+    "temperature": 0.7
+  }
+}
+```
+
+---
+
+#### 更新 AI 配置
+
+```
+PUT /api/v1/admin/ai/config
+```
+
+**Body:**
+
+```json
+{
+  "provider": "openai",
+  "openai_model": "gpt-4o",
+  "temperature": 0.5
+}
+```
+
+---
+
+#### 测试 AI 配置
+
+```
+POST /api/v1/admin/ai/test
+```
+
+验证当前 AI Provider 是否可正常调用，返回连通性结果。
+
+---
+
+### 向量嵌入管理
+
+#### 获取嵌入统计
+
+```
+GET /api/v1/admin/embeddings/stats
+```
+
+**Response (200):**
+
+```json
+{
+  "total_articles": 5000,
+  "embedded_count": 4800,
+  "missing_count": 200
+}
+```
+
+---
+
+#### 获取未嵌入文章列表
+
+```
+GET /api/v1/admin/embeddings/missing
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| page | int | 否 | 页码，默认 1 |
+| page_size | int | 否 | 每页数量，默认 20 |
+
+---
+
+#### 重新计算嵌入
+
+```
+POST /api/v1/admin/embeddings/recompute
+```
+
+**Body:**
+
+```json
+{
+  "limit": 100
+}
+```
+
+---
+
+### 数据源管理
+
+#### 获取数据源统计
+
+```
+GET /api/v1/admin/sources/stats
+```
+
+**Response (200):**
+
+```json
+{
+  "arxiv": {"total": 20, "active": 18},
+  "rss": {"total": 50, "active": 45},
+  "wechat": {"total": 30, "active": 28},
+  "weibo": {"total": 1, "active": 1},
+  "twitter": {"total": 5, "active": 0},
+  "hackernews": {"total": 1, "active": 1},
+  "reddit": {"total": 10, "active": 8}
+}
+```
+
+---
+
+#### arXiv 分类管理
+
+```
+GET    /api/v1/admin/sources/arxiv              # 获取分类列表（支持 page/page_size）
+PUT    /api/v1/admin/sources/arxiv/{category_id}  # 更新分类（is_active 等）
+PUT    /api/v1/admin/sources/arxiv/batch        # 批量更新（category_ids[], is_active）
+```
+
+---
+
+#### RSS 源管理
+
+```
+GET    /api/v1/admin/sources/rss               # 获取 RSS 源列表
+POST   /api/v1/admin/sources/rss               # 创建 RSS 源
+PUT    /api/v1/admin/sources/rss/{feed_id}     # 更新 RSS 源
+DELETE /api/v1/admin/sources/rss/{feed_id}     # 删除 RSS 源
+```
+
+**创建 RSS 源 Body:**
+
+```json
+{
+  "feed_url": "https://example.com/feed.xml",
+  "name": "示例 RSS",
+  "description": "来源说明"
+}
+```
+
+---
+
+#### 微信公众号管理
+
+```
+GET    /api/v1/admin/sources/wechat                   # 获取公众号列表
+POST   /api/v1/admin/sources/wechat                   # 添加公众号
+PUT    /api/v1/admin/sources/wechat/{account_id}      # 更新公众号
+DELETE /api/v1/admin/sources/wechat/{account_id}      # 删除公众号
+```
+
+---
+
+#### 其他数据源管理
+
+以下数据源提供类似的管理接口（列表/更新/批量更新）：
+
+```
+/api/v1/admin/sources/weibo      # 微博热搜
+/api/v1/admin/sources/hackernews # HackerNews
+/api/v1/admin/sources/reddit     # Reddit
+/api/v1/admin/sources/twitter    # Twitter
+```
+
+---
+
+### 事件管理（Admin）
+
+#### 获取事件列表
+
+```
+GET /api/v1/admin/events
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| page | int | 否 | 页码 |
+| page_size | int | 否 | 每页数量 |
+| is_resolved | bool | 否 | 是否已解决 |
+
+---
+
+#### 获取事件详情
+
+```
+GET /api/v1/admin/events/{event_id}
+```
+
+---
+
+#### 更新事件
+
+```
+PUT /api/v1/admin/events/{event_id}
+```
+
+**Body:**
+
+```json
+{
+  "name": "新名称",
+  "description": "更新描述",
+  "is_resolved": true
+}
+```
+
+---
+
+#### 删除事件
+
+```
+DELETE /api/v1/admin/events/{event_id}
+```
+
+---
+
+#### 合并事件
+
+```
+POST /api/v1/admin/events/merge
+```
+
+**Body:**
+
+```json
+{
+  "event_ids": [1, 2, 3]
+}
+```
+
+---
+
+#### 获取事件聚类配置
+
+```
+GET /api/v1/admin/events/config
+```
+
+---
+
+#### 更新事件聚类配置
+
+```
+PUT /api/v1/admin/events/config
+```
+
+**Body:**
+
+```json
+{
+  "rule_weight": 0.4,
+  "semantic_weight": 0.6,
+  "min_similarity": 0.7
+}
+```
+
+---
+
+### 话题管理（Admin）
+
+> 注意：以下为管理后台视图，用户面向的话题 API 参见[话题雷达 API](#话题雷达-api)。
+
+#### 获取话题列表
+
+```
+GET /api/v1/admin/topics
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| is_active | bool | 否 | 是否活跃 |
+| is_auto | bool | 否 | 是否自动发现 |
+| search | string | 否 | 名称搜索 |
+| page | int | 否 | 页码 |
+| page_size | int | 否 | 每页数量 |
+
+---
+
+#### 创建话题
+
+```
+POST /api/v1/admin/topics
+```
+
+**Body:**
+
+```json
+{
+  "name": "大语言模型",
+  "keywords": ["LLM", "GPT", "大模型"],
+  "description": "LLM 相关研究进展"
+}
+```
+
+---
+
+#### 更新话题
+
+```
+PUT /api/v1/admin/topics/{topic_id}
+```
+
+---
+
+#### 删除话题
+
+```
+DELETE /api/v1/admin/topics/{topic_id}
+```
+
+---
+
+#### 获取话题快照
+
+```
+GET /api/v1/admin/topics/{topic_id}/snapshots
+```
+
+返回话题的历史快照数据，用于趋势分析。
+
+---
+
+### 报告管理（Admin）
+
+#### 获取报告列表
+
+```
+GET /api/v1/admin/reports
+```
+
+---
+
+#### 获取报告详情
+
+```
+GET /api/v1/admin/reports/{report_id}
+```
+
+---
+
+#### 生成报告
+
+```
+POST /api/v1/admin/reports/generate
+```
+
+**Body:**
+
+```json
+{
+  "report_type": "weekly",
+  "date_range": "2026-01-01"
+}
+```
+
+---
+
+#### 删除报告
+
+```
+DELETE /api/v1/admin/reports/{report_id}
+```
+
+---
+
+### 审计日志
+
+#### 获取审计日志列表
+
+```
+GET /api/v1/admin/audit-logs
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| user_id | int | 否 | 按用户 ID 过滤 |
+| action | string | 否 | 按操作类型过滤 |
+| resource_type | string | 否 | 按资源类型过滤 |
+| start_date | date | 否 | 起始日期 |
+| end_date | date | 否 | 结束日期 |
+| page | int | 否 | 页码 |
+| page_size | int | 否 | 每页数量 |
+
+**Response (200):**
+
+```json
+{
+  "total": 200,
+  "logs": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "username": "admin",
+      "action": "feature.toggle",
+      "resource_type": "feature",
+      "resource_id": "feature.ai_processor",
+      "detail": {"enabled": true},
+      "created_at": "2026-01-01T10:00:00"
+    }
+  ]
+}
+```
+
+---
+
+#### 获取操作类型列表
+
+```
+GET /api/v1/admin/audit-logs/actions
+```
+
+---
+
+#### 获取资源类型列表
+
+```
+GET /api/v1/admin/audit-logs/resource-types
+```
+
+---
+
+### 角色与权限管理
+
+#### 获取角色列表
+
+```
+GET /api/v1/admin/roles
+```
+
+---
+
+#### 创建角色
+
+```
+POST /api/v1/admin/roles
+```
+
+**Body:**
+
+```json
+{
+  "name": "analyst",
+  "description": "数据分析师",
+  "permissions": ["articles:read", "reports:read"]
+}
+```
+
+---
+
+#### 更新角色
+
+```
+PUT /api/v1/admin/roles/{role_id}
+```
+
+---
+
+#### 删除角色
+
+```
+DELETE /api/v1/admin/roles/{role_id}
+```
+
+---
+
+#### 获取权限列表
+
+```
+GET /api/v1/admin/permissions
+```
+
+---
+
+### Pipeline 触发
+
+#### 触发话题匹配
+
+```
+POST /api/v1/admin/topic/match
+```
+
+> **功能开关:** `feature.topic_match`（需启用后方可使用）
+
+**Body:**
+
+```json
+{
+  "days": 7,
+  "limit": 500
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "total_articles": 150,
+  "matched_articles": 45,
+  "total_matches": 67,
+  "message": "成功匹配 45 篇文章到话题"
+}
+```
+
+---
+
+#### 触发文章翻译
+
+```
+POST /api/v1/admin/pipeline/translate
+```
+
+对尚未翻译标题的 arXiv 文章执行批量翻译（AI 翻译为中文）。
+
+**Body:**
+
+```json
+{
+  "limit": 200
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "translated": 180,
+  "skipped": 15,
+  "failed": 5,
+  "total": 200,
+  "message": "翻译完成：180 成功，15 跳过，5 失败"
+}
+```
+
+---
+
+#### AI 日志查询
+
+```
+GET /api/v1/admin/ai-logs
+```
+
+查询最近的 AI 处理日志记录，用于监控 AI 分析状态和质量。
 
 ## 健康检查 API
 

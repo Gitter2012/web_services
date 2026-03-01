@@ -59,6 +59,7 @@ class CrawlResult:
     status: str = "pending"
     error: Optional[str] = None
     timestamp: str = ""
+    saved_ids: List[int] = field(default_factory=list)  # 保存的文章 ID 列表
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -86,6 +87,7 @@ class CrawlSummary:
     results: Dict[str, List[CrawlResult]] = field(default_factory=dict)
     errors: List[str] = field(default_factory=list)
     timestamp: str = ""
+    saved_ids: List[int] = field(default_factory=list)  # 所有保存的文章 ID 列表
 
     def __post_init__(self):
         # 初始化各源类型的结果列表
@@ -106,6 +108,9 @@ class CrawlSummary:
             self.results[source_type] = []
         self.results[source_type].append(result)
         self.total_articles += result.saved_count
+        # 收集保存的文章 ID
+        if result.saved_ids:
+            self.saved_ids.extend(result.saved_ids)
 
     def add_error(self, error: str) -> None:
         """Add an error to the summary."""
@@ -411,6 +416,16 @@ class CrawlerRunner:
         summary.status = "completed" if not summary.errors else "completed_with_errors"
         summary.timestamp = datetime.now(timezone.utc).isoformat()
 
+        # 抓取完成后，检查是否需要翻译
+        if summary.total_articles > 0 and summary.saved_ids:
+            try:
+                from apps.crawler.translate_hook import translate_after_crawl
+                translate_result = await translate_after_crawl(summary.saved_ids)
+                if not translate_result.get("skipped"):
+                    logger.info(f"Post-crawl translation: {translate_result}")
+            except Exception as e:
+                logger.warning(f"Post-crawl translation failed: {e}")
+
         return summary
 
     async def _run_crawler(
@@ -446,6 +461,7 @@ class CrawlerRunner:
                     status=run_result.get("status", "error"),
                     error=run_result.get("error"),
                     timestamp=run_result.get("timestamp", ""),
+                    saved_ids=run_result.get("saved_ids", []),
                 )
 
         except Exception as e:

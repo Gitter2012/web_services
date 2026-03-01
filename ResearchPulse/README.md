@@ -9,7 +9,7 @@ ResearchPulse 是一个面向学术研究与技术资讯领域的聚合分析平
 ### 核心特性
 
 **数据采集**
-- 多源聚合 - 支持 arXiv、RSS、微信公众号、微博热搜、Twitter、HackerNews、Reddit 共 7 种数据源
+- 多源聚合 - 支持 arXiv、RSS、微信公众号、微博热搜、Twitter、HackerNews、Reddit 共 7 种外部数据源，以及 AIGC 内部生成来源
 - 智能防爬 - UA 轮换、连接池轮换、自动重试、指数退避、请求抖动
 - 定时调度 - 基于 APScheduler 的后台自动抓取与任务编排
 
@@ -30,6 +30,7 @@ ResearchPulse 是一个面向学术研究与技术资讯领域的聚合分析平
 - 话题匹配 - 自动将文章关联到相关话题，支持关键词权重匹配
 - 行动项提取 - 从文章中提取可执行任务，支持优先级和状态管理
 - 报告生成 - 自动生成周报/月报，汇总研究动态和统计数据
+- AIGC 内容 - 各 AI 分析模块（事件聚类/话题发现/行动项/报告）自动生成摘要文章，以 `source_type=aigc` 写回文章表，前端独立展示
 
 **用户系统**
 - 认证授权 - JWT Token + RBAC 角色权限（admin / editor / viewer）
@@ -69,7 +70,7 @@ ResearchPulse 是一个面向学术研究与技术资讯领域的聚合分析平
 
 ```
 ResearchPulse/
-├── apps/                           # 应用模块（11 个功能模块）
+├── apps/                           # 应用模块（16 个功能模块）
 │   ├── auth/                       # 用户认证与授权
 │   │   ├── api.py                  # 认证路由（注册/登录/刷新/登出）
 │   │   ├── service.py              # 认证业务逻辑
@@ -129,6 +130,11 @@ ResearchPulse/
 │   │   ├── models.py               # PipelineTask ORM 模型
 │   │   ├── triggers.py             # 下游任务入队触发函数
 │   │   └── worker.py               # 任务队列轮询 Worker
+│   ├── aigc/                       # AIGC 内容写入
+│   │   └── article_writer.py       # AI 生成摘要写入文章表（幂等）
+│   ├── task_manager/               # 后台任务管理
+│   │   ├── service.py              # TaskManager（创建/执行/查询后台任务）
+│   │   └── models/                 # BackgroundTask ORM 模型
 │   └── ui/                         # 前端界面
 │       ├── api.py                  # UI 路由与模板渲染
 │       └── templates/              # Jinja2 模板
@@ -306,6 +312,7 @@ ollama pull qwen3:32b
 | Twitter | 国际社交 | 通过 TwitterAPI.io 第三方 API | API 速率限制 |
 | HackerNews | 技术资讯 | Hacker News 热帖聚合 | 标准延迟策略 |
 | Reddit | 社区讨论 | Reddit 热门帖子聚合 | 标准延迟策略 |
+| AIGC | AI 生成 | 事件聚类/话题发现/行动项/报告等模块生成的摘要文章 | 内部生成，无外部请求 |
 
 ## API 概览
 

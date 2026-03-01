@@ -92,7 +92,7 @@ class BaseCrawler(ABC):
         # 以便 save() 方法能直接创建或更新数据库记录
         pass
 
-    async def save(self, articles: List[Dict[str, Any]], session: AsyncSession) -> int:
+    async def save(self, articles: List[Dict[str, Any]], session: AsyncSession) -> tuple[int, List[int]]:
         """将文章列表保存到数据库，带有去重逻辑。
 
         去重策略:
@@ -105,13 +105,14 @@ class BaseCrawler(ABC):
             session: Database session
 
         Returns:
-            Number of new articles saved
+            Tuple of (Number of new articles saved, List of saved article IDs)
         """
         # 空列表直接返回，避免不必要的数据库操作
         if not articles:
-            return 0
+            return 0, []
 
         saved_count = 0
+        saved_ids: List[int] = []
         for article_data in articles:
             try:
                 # 提取文章的外部唯一标识，用于去重判断
@@ -159,6 +160,9 @@ class BaseCrawler(ABC):
                                     setattr(existing, key, value)
                     # 更新修改时间，用于追踪数据变化
                     existing.updated_at = datetime.now(timezone.utc)
+                    # 记录已存在文章的 ID（用于翻译钩子）
+                    if existing.id:
+                        saved_ids.append(existing.id)
                 else:
                     # 文章不存在：创建新记录
                     # 自动填入 source_type、source_id 和 crawl_time
@@ -187,8 +191,36 @@ class BaseCrawler(ABC):
                 continue
 
         # flush() 将挂起的操作发送到数据库，但不提交事务
+        # 这样可以获取新创建文章的 ID
         await session.flush()
-        return saved_count
+
+        # 收集新创建文章的 ID
+        for article_data in articles:
+            # 新创建的文章没有 ID，需要从 session 中获取
+            # 通过 arxiv_id 或 external_id 查询刚保存的文章 ID
+            arxiv_id = article_data.get("arxiv_id", "")
+            external_id = article_data.get("external_id", "")
+            if arxiv_id and self.source_type == "arxiv":
+                stmt = select(Article.id).where(
+                    Article.source_type == self.source_type,
+                    Article.arxiv_id == arxiv_id,
+                )
+                result = await session.execute(stmt)
+                article_id = result.scalar_one_or_none()
+                if article_id and article_id not in saved_ids:
+                    saved_ids.append(article_id)
+            elif external_id:
+                stmt = select(Article.id).where(
+                    Article.source_type == self.source_type,
+                    Article.source_id == self.source_id,
+                    Article.external_id == external_id,
+                )
+                result = await session.execute(stmt)
+                article_id = result.scalar_one_or_none()
+                if article_id and article_id not in saved_ids:
+                    saved_ids.append(article_id)
+
+        return saved_count, saved_ids
 
     async def run(self) -> Dict[str, Any]:
         """执行完整的爬取流程（主入口方法）。
@@ -221,7 +253,7 @@ class BaseCrawler(ABC):
             from core.database import get_session_factory
             factory = get_session_factory()
             async with factory() as session:
-                saved_count = await self.save(articles, session)
+                saved_count, saved_ids = await self.save(articles, session)
                 # 提交事务，确保所有数据持久化
                 await session.commit()
 
@@ -235,6 +267,7 @@ class BaseCrawler(ABC):
                 "source_id": self.source_id,
                 "fetched_count": len(articles),   # 总共获取的文章数
                 "saved_count": saved_count,        # 新增保存的文章数（去重后）
+                "saved_ids": saved_ids,            # 保存的文章 ID 列表（用于后续翻译）
                 "duration_seconds": duration,      # 爬取总耗时（秒）
                 "status": "success",
                 "timestamp": end_time.isoformat(),
