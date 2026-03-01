@@ -422,6 +422,7 @@ def _parse_retry_after(value: Optional[str]) -> float:
 # =============================================================================
 
 import asyncio
+import ssl
 
 # 全局共享的异步 httpx 客户端实例（惰性创建）
 _async_client: Optional[httpx.AsyncClient] = None
@@ -458,6 +459,50 @@ def get_async_client(timeout: float = 10.0) -> httpx.AsyncClient:
             ),
         )
     return _async_client
+
+
+def _is_ssl_error(exc: Exception) -> bool:
+    """Check whether an exception is caused by an SSL handshake failure.
+
+    判断异常是否由 SSL 握手失败引起（如 record layer failure、协议版本不兼容等）。
+    这类错误通常无法通过简单重试解决，需要使用宽松的 SSL 上下文重试。
+
+    Args:
+        exc: Exception to inspect.
+
+    Returns:
+        bool: True if the root cause is an SSL error.
+    """
+    cause = exc
+    while cause is not None:
+        msg = str(cause).lower()
+        if any(kw in msg for kw in ("ssl", "record layer", "handshake", "certificate")):
+            return True
+        cause = getattr(cause, "__cause__", None) or getattr(cause, "__context__", None)
+        if cause is exc:
+            break
+    return False
+
+
+def _make_relaxed_ssl_context() -> ssl.SSLContext:
+    """Create a permissive SSL context that tolerates legacy TLS configurations.
+
+    创建宽松的 SSL 上下文，允许较旧的 TLS 协议版本（TLS 1.0/1.1）和加密套件。
+    仅在标准 SSL 握手失败时作为后备使用，不影响全局客户端配置。
+
+    Returns:
+        ssl.SSLContext: Permissive SSL context.
+    """
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    # 允许旧版 TLS 协议（部分国内站点仍使用 TLS 1.0/1.1）
+    ctx.options &= ~ssl.OP_NO_SSLv3
+    try:
+        ctx.minimum_version = ssl.TLSVersion.TLSv1
+    except AttributeError:
+        pass  # 低版本 OpenSSL 不支持此设置，忽略即可
+    return ctx
 
 
 async def rotate_async_client() -> None:
@@ -613,6 +658,68 @@ async def get_text_async(
 
         except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError) as exc:
             last_error = exc
+
+            # SSL 握手失败（record layer failure / 协议不兼容）无法通过普通重试解决。
+            # 降级策略（依次尝试）：
+            #   1. 宽松 SSL 上下文（允许旧 TLS 版本）
+            #   2. 回退 HTTP 明文请求（部分国内站点 443 端口未启用 TLS）
+            if isinstance(exc, httpx.ConnectError) and _is_ssl_error(exc):
+                logger.warning(
+                    "SSL handshake failed for %s, retrying with relaxed SSL context", url
+                )
+                try:
+                    relaxed_ctx = _make_relaxed_ssl_context()
+                    async with httpx.AsyncClient(
+                        timeout=req_timeout,
+                        follow_redirects=True,
+                        http2=False,
+                        verify=relaxed_ctx,
+                    ) as relaxed_client:
+                        ua = _get_user_agent()
+                        req_headers = _build_headers(ua, referer=referer)
+                        relaxed_resp = await relaxed_client.get(
+                            url, params=params, timeout=req_timeout, headers=req_headers
+                        )
+                        relaxed_resp.raise_for_status()
+                        if cache_ttl > 0:
+                            cache_response(url, relaxed_resp.text, params)
+                        _consecutive_errors = 0
+                        return relaxed_resp.text
+                except Exception as ssl_retry_exc:
+                    logger.debug(
+                        "Relaxed SSL retry also failed for %s: %s", url, ssl_retry_exc
+                    )
+
+                # 宽松 SSL 也失败：尝试回退到 HTTP 明文（某些站点 443 端口未启用 TLS）
+                if url.startswith("https://"):
+                    http_url = "http://" + url[len("https://"):]
+                    logger.warning(
+                        "SSL unavailable for %s, falling back to HTTP: %s", url, http_url
+                    )
+                    try:
+                        async with httpx.AsyncClient(
+                            timeout=req_timeout,
+                            follow_redirects=True,
+                            http2=False,
+                        ) as plain_client:
+                            ua = _get_user_agent()
+                            req_headers = _build_headers(ua, referer=referer)
+                            plain_resp = await plain_client.get(
+                                http_url, params=params, timeout=req_timeout, headers=req_headers
+                            )
+                            plain_resp.raise_for_status()
+                            if cache_ttl > 0:
+                                cache_response(url, plain_resp.text, params)
+                            _consecutive_errors = 0
+                            return plain_resp.text
+                    except Exception as http_retry_exc:
+                        logger.debug(
+                            "HTTP fallback also failed for %s: %s", http_url, http_retry_exc
+                        )
+                        last_error = http_retry_exc
+
+                break  # SSL 和 HTTP 均失败，继续重试无意义
+
             _consecutive_errors += 1
             if _consecutive_errors >= _CONSECUTIVE_ERRORS_BEFORE_ROTATE:
                 logger.debug(
