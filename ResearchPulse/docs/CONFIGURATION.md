@@ -366,6 +366,7 @@ topic:
 | `feature.embedding` | false | 向量嵌入 | 嵌入 API + 定时任务 + Milvus |
 | `feature.event_clustering` | false | 事件聚类 | 事件 API + 定时任务 |
 | `feature.topic_radar` | false | 话题雷达 | 话题 API + 定时任务 |
+| `feature.topic_match` | false | 话题匹配 | 话题匹配定时任务 |
 | `feature.action_items` | false | 行动项提取 | 行动项 API |
 | `feature.report_generation` | false | 报告生成 | 报告 API |
 | `feature.crawler` | true | 爬虫 | 爬取定时任务 |
@@ -385,6 +386,10 @@ topic:
 | `scheduler.event_cluster_hour` | 2 | 事件聚类执行小时 | CronTrigger |
 | `scheduler.topic_discovery_day` | mon | 话题发现执行星期几 | CronTrigger |
 | `scheduler.topic_discovery_hour` | 1 | 话题发现执行小时 | CronTrigger |
+| `scheduler.topic_match_interval_hours` | 2 | 话题匹配间隔（小时） | IntervalTrigger |
+| `scheduler.topic_match_base_hour` | 0 | 话题匹配基准小时 | IntervalTrigger |
+| `scheduler.topic_match_days` | 7 | 话题匹配回溯天数 | 任务参数 |
+| `scheduler.topic_match_limit` | 500 | 话题匹配批处理上限 | 任务参数 |
 
 ### 流水线批处理配置键
 

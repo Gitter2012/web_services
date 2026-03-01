@@ -143,6 +143,7 @@ class AIProcessorService:
                 "article_id": article_id,
                 "summary": article.ai_summary or "",
                 "category": article.ai_category or "",
+                "subcategory": article.ai_subcategory or "",
                 "importance_score": article.importance_score or 5,
                 "processing_method": "cached",
             }
@@ -501,6 +502,7 @@ class AIProcessorService:
         values = dict(
             ai_summary=result.get("summary", ""),
             ai_category=result.get("category", "其他"),
+            ai_subcategory=result.get("subcategory", ""),
             importance_score=result.get("importance_score", 5),
             one_liner=result.get("one_liner", ""),
             key_points=result.get("key_points"),

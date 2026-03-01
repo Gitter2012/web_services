@@ -27,6 +27,7 @@ ResearchPulse 是一个面向学术研究与技术资讯领域的聚合分析平
 **高级分析**
 - 事件聚类 - 混合聚类算法（40% 规则 + 60% 语义），自动聚合相关文章
 - 话题雷达 - 自动发现新兴话题，追踪趋势变化（上升/下降/稳定）
+- 话题匹配 - 自动将文章关联到相关话题，支持关键词权重匹配
 - 行动项提取 - 从文章中提取可执行任务，支持优先级和状态管理
 - 报告生成 - 自动生成周报/月报，汇总研究动态和统计数据
 
@@ -122,7 +123,8 @@ ResearchPulse/
 │   │       ├── embedding_job.py    # 向量嵌入任务
 │   │       ├── event_cluster_job.py # 事件聚类任务
 │   │       ├── action_extract_job.py # 行动项提取任务
-│   │       └── topic_discovery_job.py # 话题发现任务
+│   │       ├── topic_discovery_job.py # 话题发现任务
+│   │       └── topic_match_job.py    # 话题匹配任务
 │   ├── pipeline/                   # 流水线任务队列
 │   │   ├── models.py               # PipelineTask ORM 模型
 │   │   ├── triggers.py             # 下游任务入队触发函数
@@ -382,6 +384,7 @@ DELETE /researchpulse/api/topics/{topic_id}          # 删除话题
 GET    /researchpulse/api/topics/{id}/articles       # 关联文章
 POST   /researchpulse/api/topics/discover            # 自动发现（需 admin）
 GET    /researchpulse/api/topics/{id}/trend          # 趋势追踪
+POST  /admin/topic/match                             # 手动触发话题匹配（需 admin）
 ```
 
 ### 行动项 API（需启用 `feature.action_items`）
@@ -447,6 +450,7 @@ GET /health/ready    # Kubernetes 就绪探针
 | `feature.embedding` | 向量嵌入 | false | 每 2 小时 |
 | `feature.event_clustering` | 事件聚类 | false | 每天凌晨 2 点 |
 | `feature.topic_radar` | 话题雷达 | false | 每周一凌晨 1 点 |
+| `feature.topic_match` | 话题匹配 | false | 每 2 小时 |
 | `feature.action_items` | 行动项提取 | false | - |
 | `feature.report_generation` | 报告生成 | false | - |
 | `feature.email_notification` | 邮件推送 | false | 抓取完成后 |
@@ -471,8 +475,8 @@ curl -X PUT http://localhost:8000/api/v1/admin/features/feature.ai_processor \
 | ai_process_job | 每 1 小时 | `feature.ai_processor` | 200 篇（可配置） | AI 分析新文章 |
 | embedding_job | 每 2 小时 | `feature.embedding` | 500 篇（可配置） | 计算文章向量嵌入 |
 | event_cluster_job | 每天 02:00 | `feature.event_clustering` | 500 篇（可配置） | 聚类文章为事件 |
-| action_extract_job | 每 2 小时 | `feature.action_items` | 200 篇（可配置） | 提取行动项 |
 | topic_discovery_job | 每周一 01:00 | `feature.topic_radar` | - | 发现新兴话题 |
+| topic_match_job | 每 2 小时 | `feature.topic_match` | 500 篇（可配置） | 文章关联到话题 |
 | cleanup_job | 每天 03:00 | `feature.cleanup` | - | 清理过期数据 |
 | backup_job | 每天 04:00 | `feature.backup` | - | 备份文章数据 |
 | notification_job | 爬取完成后 | `feature.email_notification` | - | 推送用户订阅 |

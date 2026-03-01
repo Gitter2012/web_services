@@ -83,6 +83,8 @@
             totalTopics = data.total;
             renderTopics(data.topics);
             renderPaginationFn();
+            // 异步加载趋势数据
+            loadTrendsForTopics(data.topics);
         } catch(e) {
             document.getElementById('topic-grid').innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="icon">&#10060;</div><div class="text">网络错误</div></div>';
         }
@@ -100,14 +102,38 @@
             const statusBadge = t.is_active ? '<span class="badge-active">活跃</span>' : '<span class="badge-inactive">已停用</span>';
             const keywords = (t.keywords && Array.isArray(t.keywords)) ? t.keywords.slice(0, 8).map(kw => `<span class="keyword-tag">${escapeHtml(String(kw))}</span>`).join('') : '';
             return `
-                <div class="topic-card ${cls}" onclick="loadTopicDetail(${t.id})">
+                <div class="topic-card ${cls}" onclick="loadTopicDetail(${t.id})" data-topic-id="${t.id}">
                     <div class="topic-name">${escapeHtml(t.name)}</div>
                     ${t.description ? `<div class="topic-desc">${escapeHtml(t.description)}</div>` : ''}
                     <div class="topic-meta">${typeBadge} ${statusBadge}</div>
                     ${keywords ? `<div class="topic-keywords">${keywords}</div>` : ''}
+                    <div class="topic-trend" id="trend-${t.id}" style="margin-top:8px;font-size:12px;color:#888;">加载趋势...</div>
                 </div>
             `;
         }).join('');
+    }
+
+    async function loadTrendsForTopics(topics) {
+        // 并行加载所有话题的趋势数据
+        const trendPromises = topics.map(t =>
+            fetch(`${API_BASE}/topics/${t.id}/trend`, { headers: getAuthHeaders() })
+                .then(res => res.ok ? res.json() : null)
+                .catch(() => null)
+                .then(trend => ({ id: t.id, trend }))
+        );
+        const results = await Promise.all(trendPromises);
+        results.forEach(({ id, trend }) => {
+            const el = document.getElementById(`trend-${id}`);
+            if (el && trend) {
+                const dir = trend.direction || 'stable';
+                const dirClass = dir === 'up' ? 'trend-up' : dir === 'down' ? 'trend-down' : 'trend-stable';
+                const dirLabel = dir === 'up' ? '&#9650;' : dir === 'down' ? '&#9660;' : '&#9644;';
+                const change = trend.change_percent !== undefined ? `${trend.change_percent > 0 ? '+' : ''}${trend.change_percent.toFixed(1)}%` : '0%';
+                el.innerHTML = `<span class="${dirClass}">${dirLabel}</span> ${change} · ${trend.current_count || 0} 篇`;
+            } else if (el) {
+                el.innerHTML = '<span style="color:#aaa;">暂无趋势</span>';
+            }
+        });
     }
 
     async function loadTopicDetail(topicId) {

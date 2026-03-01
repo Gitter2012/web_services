@@ -2143,6 +2143,10 @@
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" id="pl-stat-topics">-</div>
+                        <div class="stat-label">话题发现</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="pl-stat-topic-match">-</div>
                         <div class="stat-label">话题匹配</div>
                     </div>
                 </div>
@@ -2177,6 +2181,12 @@
                                 <div style="font-size:13px;color:#d97706;font-weight:600;">4. 话题发现</div>
                                 <div style="font-size:11px;color:#888;margin-top:4px;" id="pl-schedule-topics">加载中...</div>
                                 <div style="font-size:18px;font-weight:600;margin-top:8px;" id="pl-detail-topics">-</div>
+                            </div>
+                            <div style="font-size:20px;color:#ddd;">→</div>
+                            <div style="text-align:center;padding:16px 20px;background:#fef3c7;border-radius:8px;min-width:120px;">
+                                <div style="font-size:13px;color:#b45309;font-weight:600;">5. 话题匹配</div>
+                                <div style="font-size:11px;color:#888;margin-top:4px;" id="pl-schedule-topic-match">加载中...</div>
+                                <div style="font-size:18px;font-weight:600;margin-top:8px;" id="pl-detail-topic-match">-</div>
                             </div>
                         </div>
                     </div>
@@ -4301,6 +4311,16 @@
                 statsQuery: 'topics'
             },
             {
+                key: 'feature.topic_match',
+                name: '话题匹配',
+                desc: '将文章自动关联到已有话题',
+                scheduleType: 'interval',
+                scheduleConfig: { intervalKey: 'scheduler.topic_match_interval_hours', baseKey: 'scheduler.topic_match_base_hour' },
+                batchKey: 'scheduler.topic_match_limit',
+                triggerEndpoint: '/topic/match',
+                statsQuery: 'topic_match'
+            },
+            {
                 key: 'feature.action_items',
                 name: '行动项提取',
                 desc: '从文章中提取可执行的行动建议',
@@ -4359,7 +4379,15 @@
 
             container.innerHTML = PIPELINE_MODULES.map(module => {
                 const enabled = pipelineFeaturesData[module.key] || false;
-                const batchValue = pipeline[module.batchKey] || 100;
+                // 批次配置可能在 pipeline 或 scheduler 前缀下，使用完整 key 查找
+                let batchValue = 100;
+                if (module.batchKey) {
+                    if (module.batchKey.startsWith('scheduler.')) {
+                        batchValue = scheduler[module.batchKey] || 100;
+                    } else if (module.batchKey.startsWith('pipeline.')) {
+                        batchValue = pipeline[module.batchKey] || 100;
+                    }
+                }
                 const moduleStyle = enabled ? '' : 'opacity:0.6;';
 
                 // 调度配置
@@ -4546,8 +4574,8 @@
             configs['pipeline.worker_interval_minutes'] = document.getElementById('config-pipeline-worker-interval').value;
 
             try {
-                const res = await fetch(`${ADMIN_BASE}/config/batch`, {
-                    method: 'POST',
+                const res = await fetch(`${ADMIN_BASE}/batch-config`, {
+                    method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'

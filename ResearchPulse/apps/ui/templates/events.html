@@ -136,7 +136,7 @@
             }
             el.innerHTML = detail.members.map(m => `
                 <div class="member-item">
-                    <a href="${APP_BASE}/" title="文章 #${m.article_id}">文章 #${m.article_id}</a>
+                    <a href="${escapeHtml(m.url || '#')}" target="_blank" title="${escapeHtml(m.title || '')}">${escapeHtml(m.title || '文章 #' + m.article_id)}</a>
                     <div>
                         <span class="member-method">${escapeHtml(m.detection_method || '')}</span>
                         <span class="member-score">相似度: ${(m.similarity_score || 0).toFixed(2)}</span>

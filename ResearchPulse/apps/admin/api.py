@@ -667,6 +667,7 @@ _FEATURE_KEYS = [
     "feature.embedding",           # 向量嵌入（用于语义搜索）
     "feature.event_clustering",    # 事件聚类
     "feature.topic_radar",         # 话题雷达/发现
+    "feature.topic_match",         # 话题匹配（文章关联到话题）
     "feature.action_items",        # 行动项提取
     "feature.report_generation",   # 报告自动生成
     "feature.crawler",             # 数据爬取
@@ -819,6 +820,7 @@ async def update_scheduler_job(
         "embedding_job": "scheduler.embedding_interval_hours",
         "event_cluster_job": "scheduler.event_cluster_hour",
         "topic_discovery_job": "scheduler.topic_discovery_hour",
+        "topic_match_job": "scheduler.topic_match_interval_hours",
     }
 
     # 处理间隔触发器的更新
@@ -890,6 +892,47 @@ async def trigger_job(
         raise HTTPException(status_code=500, detail=f"Job execution failed: {exc}")
 
     return {"status": "ok", "job_id": job_id, "result": result}
+
+
+# ============================================================================
+# Topic Match Management
+# ============================================================================
+# 话题匹配管理 —— 手动触发文章与话题的关联匹配
+
+
+@router.post("/topic/match")
+async def trigger_topic_match(
+    days: int = 7,        # 回溯天数
+    limit: int = 500,     # 处理上限
+    admin: Superuser = None,
+) -> Dict[str, Any]:
+    """Trigger topic matching manually.
+
+    手动触发话题匹配任务，将文章关联到已有话题。
+
+    Args:
+        days: Lookback days for articles to match (default: 7).
+        limit: Maximum number of articles to process (default: 500).
+        admin: Superuser dependency.
+
+    Returns:
+        Dict[str, Any]: Match result with counts.
+    """
+    from apps.scheduler.jobs.topic_match_job import run_topic_match_job
+
+    try:
+        result = await run_topic_match_job(days=days, limit=limit)
+        return {
+            "status": "ok",
+            "message": "Topic match completed",
+            "result": result,
+        }
+    except Exception as e:
+        logger.error(f"Topic match failed: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+        }
 
 
 @router.post("/pipeline/translate")
@@ -1030,6 +1073,8 @@ _SCHEDULER_CONFIG_MAP = {
     "scheduler.embedding_base_hour": ("embedding_job", "interval_base"),
     "scheduler.action_extract_interval_hours": ("action_extract_job", "interval"),
     "scheduler.action_extract_base_hour": ("action_extract_job", "interval_base"),
+    "scheduler.topic_match_interval_hours": ("topic_match_job", "interval"),
+    "scheduler.topic_match_base_hour": ("topic_match_job", "interval_base"),
     "scheduler.cleanup_hour": ("cleanup_job", "cron"),
     "scheduler.backup_hour": ("backup_job", "cron"),
     "scheduler.event_cluster_hour": ("event_cluster_job", "cron"),

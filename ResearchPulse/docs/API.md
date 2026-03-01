@@ -1139,6 +1139,57 @@ Authorization: Bearer <token>
 
 ---
 
+### 手动触发话题匹配
+
+```
+POST /admin/topic/match
+Authorization: Bearer <token>
+```
+
+> **权限要求:** admin 或 superuser
+> **功能开关:** `feature.topic_match`（需启用后方可使用）
+
+**Body:**
+
+```json
+{
+  "days": 7,
+  "limit": 100
+}
+```
+
+**字段说明:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| days | int | 否 | 回溯天数，默认 7 |
+| limit | int | 否 | 最大处理文章数，默认 500 |
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "total_articles": 150,
+  "matched_articles": 45,
+  "total_matches": 67,
+  "message": "成功匹配 45 篇文章到话题"
+}
+```
+
+**匹配算法:**
+
+```
+1. 获取文章完整文本（标题 + AI摘要/原始摘要 + 正文）
+2. 遍历所有活跃话题，检查关键词是否出现
+3. 每个命中关键词贡献权重分数（递减：1.0 → 0.3）
+4. 相关度 = 总分 / 关键词总数，上限 1.0
+5. 命中 3+ 关键词时，相关度额外提升 20%
+6. 相关度阈值 > 0.3 才算有效匹配
+```
+
+---
+
 ## 行动项 API
 
 > **功能开关:** `feature.action_items`（需启用后方可使用）

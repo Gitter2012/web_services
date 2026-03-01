@@ -201,12 +201,32 @@ class RssCrawler(BaseCrawler):
         # 尝试访问原文 URL 提取完整内容
         for article in articles:
             if article.get("url") and self._content_needs_fetch(article):
-                try:
-                    full_content = await self._fetch_full_content(article["url"])
-                    if full_content and len(full_content) > len(article.get("content", "")):
-                        article["content"] = full_content
-                except Exception as e:
+                # 跳过已知会导致正文提取错误的页面类型
+                url = article.get("url", "")
+                if self._should_skip_content_fetch(url):
                     self.logger.debug(
+                        f"Skipping content fetch for {url}: known problematic page type"
+                    )
+                    continue
+                try:
+                    full_content = await self._fetch_full_content(
+                        article["url"], article.get("title", "")
+                    )
+                    if full_content and len(full_content) > len(article.get("content", "")):
+                        # 检查内容是否包含标题关键词（一致性检查）
+                        if self._content_matches_title(full_content, article.get("title", "")):
+                            self.logger.info(
+                                f"Content extracted for {article.get('url')}: "
+                                f"{len(full_content)} chars"
+                            )
+                            article["content"] = full_content
+                        else:
+                            self.logger.warning(
+                                f"Content mismatch for {article.get('url')}: "
+                                f"extracted content does not match title '{article.get('title', '')[:30]}...'"
+                            )
+                except Exception as e:
+                    self.logger.warning(
                         f"Failed to fetch full content for {article.get('url')}: {e}"
                     )
 
@@ -351,7 +371,77 @@ class RssCrawler(BaseCrawler):
             return True
         return False
 
-    async def _fetch_full_content(self, url: str) -> str:
+    @staticmethod
+    def _should_skip_content_fetch(url: str) -> bool:
+        """Check whether content fetching should be skipped for a URL.
+
+        某些页面类型已知会导致正文提取错误，应跳过正文补全。
+
+        Args:
+            url: Article URL to check.
+
+        Returns:
+            bool: True if content fetching should be skipped.
+        """
+        # 已知问题页面模式
+        skip_patterns = [
+            "36kr.com/newsflashes/",  # 36氪快讯：页面无标准结构，正文极短
+        ]
+        url_lower = url.lower()
+        return any(pattern in url_lower for pattern in skip_patterns)
+
+    @staticmethod
+    def _content_matches_title(content: str, title: str, threshold: float = 0.3) -> bool:
+        """Check whether extracted content matches the article title.
+
+        验证提取的正文是否包含标题关键词，用于检测内容提取错误。
+
+        Args:
+            content: Extracted content text.
+            title: Article title.
+            threshold: Minimum ratio of title keywords that should appear in content.
+
+        Returns:
+            bool: True if content appears to match the title.
+        """
+        if not content or not title:
+            return True  # 无法检查时默认通过
+
+        # 提取标题中的关键词
+        # 中文：提取连续的 2-4 字字符组
+        # 英文：按空格分割，取长度>=3的单词
+        title_keywords = []
+
+        # 提取英文单词
+        import re
+        words = re.findall(r'[a-zA-Z]{3,}', title)
+        title_keywords.extend(words)
+
+        # 提取中文 2-4 字组
+        chinese_chars = re.findall(r'[\u4e00-\u9fff]+', title)
+        for phrase in chinese_chars:
+            if len(phrase) >= 2:
+                # 添加整个短语
+                title_keywords.append(phrase)
+                # 对于长短语，也添加 2 字组
+                if len(phrase) > 2:
+                    for i in range(len(phrase) - 1):
+                        title_keywords.append(phrase[i:i+2])
+
+        if not title_keywords:
+            return True
+
+        # 去重
+        title_keywords = list(set(title_keywords))
+
+        # 检查关键词在正文中的出现情况
+        content_lower = content.lower()
+        matches = sum(1 for kw in title_keywords if kw.lower() in content_lower)
+        match_ratio = matches / len(title_keywords)
+
+        return match_ratio >= threshold
+
+    async def _fetch_full_content(self, url: str, title: str = "") -> str:
         """Fetch and extract the main content from an article's original URL.
 
         访问原文网页，使用 BeautifulSoup 提取正文内容。
@@ -362,6 +452,7 @@ class RssCrawler(BaseCrawler):
 
         Args:
             url: Article URL to fetch.
+            title: Article title (used for content validation).
 
         Returns:
             str: Extracted article content (HTML), or empty string on failure.

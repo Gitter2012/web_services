@@ -120,7 +120,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # 流水线阶段定义（按依赖顺序）
 # ---------------------------------------------------------------------------
-STAGES = ("ai", "translate", "embedding", "event", "topic", "action", "report")
+STAGES = ("ai", "translate", "embedding", "event", "topic", "topic-match", "action", "report")
 
 STAGE_DESCRIPTIONS = {
     "ai": "AI 文章处理（摘要/分类/评分）",
@@ -128,6 +128,7 @@ STAGE_DESCRIPTIONS = {
     "embedding": "向量嵌入计算",
     "event": "事件聚类",
     "topic": "主题发现",
+    "topic-match": "话题匹配（文章关联到话题）",
     "action": "行动项提取",
     "report": "报告生成",
 }
@@ -138,6 +139,7 @@ STAGE_FEATURES = {
     "embedding": "feature.embedding",
     "event": "feature.event_clustering",
     "topic": "feature.topic_radar",
+    "topic-match": "feature.topic_radar",
     "action": "feature.action_items",
     "report": "feature.report_generation",
 }
@@ -481,6 +483,22 @@ async def _run_topic(limit: int, verbose: bool) -> dict:
             return {"error": str(e), "suggestions_count": 0}
 
 
+async def _run_topic_match(limit: int, verbose: bool) -> dict:
+    """Run topic match stage - match articles to existing topics.
+
+    将文章匹配到已有话题，建立文章-话题关联关系。
+    """
+    from apps.scheduler.jobs.topic_match_job import run_topic_match_job
+
+    try:
+        # 使用 limit 参数控制处理数量
+        result = await run_topic_match_job(days=7, limit=limit)
+        return result
+    except Exception as e:
+        logger.error(f"Topic match failed: {e}", exc_info=verbose)
+        return {"error": str(e), "matched_count": 0, "total_processed": 0, "associations_created": 0}
+
+
 async def _run_action(limit: int, verbose: bool) -> dict:
     """Run action item extraction stage."""
     from core.database import get_session_factory
@@ -620,6 +638,7 @@ STAGE_RUNNERS = {
     "embedding": _run_embedding,
     "event": _run_event,
     "topic": _run_topic,
+    "topic-match": _run_topic_match,
     "action": _run_action,
     "report": _run_report,
 }
@@ -694,6 +713,12 @@ def _format_result(stage: str, result: dict) -> str:
         )
     elif stage == "topic":
         return f"  发现主题: {result.get('suggestions_count', 0)}"
+    elif stage == "topic-match":
+        return (
+            f"  匹配: {result.get('matched_count', 0)} | "
+            f"处理: {result.get('total_processed', 0)} | "
+            f"关联: {result.get('associations_created', 0)}"
+        )
     elif stage == "action":
         return (
             f"  文章: {result.get('articles_processed', 0)} | "

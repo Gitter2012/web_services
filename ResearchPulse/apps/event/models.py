@@ -19,10 +19,14 @@
 """Event clustering models."""
 from __future__ import annotations
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.mysql import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from core.models.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from apps.crawler.models.article import Article
 
 # -----------------------------------------------------------------------------
 # 事件聚类模型
@@ -78,3 +82,5 @@ class EventMember(Base):
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     # 反向关联到事件聚类
     event: Mapped["EventCluster"] = relationship("EventCluster", back_populates="members")
+    # 关联的文章对象
+    article: Mapped["Article"] = relationship("Article", lazy="selectin")

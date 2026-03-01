@@ -10,6 +10,7 @@
 #   embedding 向量嵌入计算
 #   event     事件聚类
 #   topic     主题发现
+#   topic-match 话题匹配（文章关联到话题）
 #
 # 重处理（独立子命令）:
 #   reprocess 对已有文章重新运行 AI 分析流程
@@ -57,6 +58,7 @@ show_help() {
     echo -e "  ${CYAN}embedding${NC}   向量嵌入计算                     [feature.embedding]"
     echo -e "  ${CYAN}event${NC}       事件聚类                         [feature.event_clustering]"
     echo -e "  ${CYAN}topic${NC}       主题发现                         [feature.topic_radar]"
+    echo -e "  ${CYAN}topic-match${NC} 话题匹配（文章关联到话题）       [feature.topic_radar]"
     echo ""
     echo "子命令:"
     echo -e "  ${CYAN}reprocess${NC}   对已有文章重新运行 AI 分析流程"
@@ -225,7 +227,7 @@ while [[ $# -gt 0 ]]; do
             fi
             shift
             ;;
-        all|ai|translate|embedding|event|topic|action|report)
+        all|ai|translate|embedding|event|topic|topic-match|action|report)
             STAGES+=("$1")
             shift
             ;;

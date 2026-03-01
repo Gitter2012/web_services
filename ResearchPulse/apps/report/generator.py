@@ -20,7 +20,7 @@ import re
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.crawler.models.article import Article
@@ -51,6 +51,11 @@ logger = logging.getLogger(__name__)
 #   3. 查询该时间段内活跃的事件聚类, 按文章数排序
 #   4. 从文章标题和摘要中提取高频关键词 (过滤停用词)
 #   5. 查询该时间段内创建的行动项, 统计各状态的数量和完成率
+#
+# 时间字段说明:
+#   - 使用 publish_time (发布时间) 作为主要时间字段，更准确地反映内容的实际发布时间
+#   - 如果 publish_time 为空，则使用 crawl_time (爬取时间) 作为后备
+#   - 这样可以捕获在报告时间段内发布但稍后才被爬取的文章
 # --------------------------------------------------------------------------
 async def generate_report_data(
     db: AsyncSession, period_start: datetime, period_end: datetime
@@ -58,14 +63,26 @@ async def generate_report_data(
     """Generate report data for a period."""
     # ====== 第一步: 查询时间范围内已 AI 处理的文章 ======
     # 仅加载报告所需的字段，避免将完整 ORM 对象全部加载到内存
+    # 使用 publish_time 优先，如果为空则使用 crawl_time
+    # 这允许报告捕获在报告时间段内发布但稍后才被爬取的文章
     result = await db.execute(
         select(
             Article.id, Article.title, Article.ai_summary,
-            Article.ai_category, Article.importance_score
+            Article.ai_category, Article.ai_subcategory, Article.importance_score
         ).where(
             and_(
-                Article.crawl_time >= period_start,
-                Article.crawl_time <= period_end,
+                # 时间范围条件: publish_time (优先) 或 crawl_time 在范围内
+                or_(
+                    and_(
+                        Article.publish_time >= period_start,
+                        Article.publish_time <= period_end,
+                    ),
+                    and_(
+                        Article.publish_time.is_(None),
+                        Article.crawl_time >= period_start,
+                        Article.crawl_time <= period_end,
+                    ),
+                ),
                 Article.ai_processed_at.isnot(None),  # 仅统计已经过 AI 处理的文章
             )
         )
@@ -78,11 +95,19 @@ async def generate_report_data(
         [a for a in articles if (a.importance_score or 0) >= 7]
     )
 
-    # ====== 第二步: 按 AI 分类统计各类别的文章数量 ======
+    # ====== 第二步: 按 AI 分类统计各类别的文章数量（支持子分类）======
     categories = {}
     for a in articles:
         cat = a.ai_category or "未分类"  # 无分类的文章归入 "未分类"
-        categories[cat] = categories.get(cat, 0) + 1
+        subcat = a.ai_subcategory or ""  # 子分类
+
+        if cat not in categories:
+            categories[cat] = {"count": 0, "subcategories": {}}
+        categories[cat]["count"] += 1
+
+        if subcat:
+            categories[cat]["subcategories"][subcat] = \
+                categories[cat]["subcategories"].get(subcat, 0) + 1
 
     # ====== 第三步: 查询热门事件 ======
     # Top events
@@ -215,14 +240,25 @@ def format_report_markdown(
     lines.append(f"- 高重要性 (≥7分) {data['high_importance_items']} 条")
     lines.append("")
 
-    # ====== 分类分布部分: 按文章数量降序排列各分类 ======
+    # ====== 分类分布部分: 按文章数量降序排列各分类（支持子分类）======
     lines.append("## 分类分布")
-    for cat, count in sorted(
+    for cat, cat_data in sorted(
         data.get("items_by_category", {}).items(),
-        key=lambda x: x[1],
+        key=lambda x: x[1]["count"] if isinstance(x[1], dict) else x[1],
         reverse=True,
     ):
+        # 兼容旧数据格式
+        if isinstance(cat_data, dict):
+            count = cat_data["count"]
+            subcategories = cat_data.get("subcategories", {})
+        else:
+            count = cat_data
+            subcategories = {}
+
         lines.append(f"- {cat}: {count} 条")
+        # 显示子分类
+        for subcat, subcount in sorted(subcategories.items(), key=lambda x: x[1], reverse=True):
+            lines.append(f"  - {subcat}: {subcount} 条")
     lines.append("")
 
     # ====== 重要事件部分: 列出热门事件 (如果有) ======

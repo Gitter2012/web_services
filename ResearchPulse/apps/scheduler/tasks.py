@@ -268,7 +268,7 @@ async def start_scheduler() -> None:
     else:
         logger.info("Event clustering job skipped (feature.event_clustering disabled)")
 
-    # ---- 主题发现任务 ----
+    # ---- 话题发现任务 ----
     # 功能: 从近期文章中自动发现新兴研究主题和热点趋势
     # 前置条件: 需要启用 feature.topic_radar 功能开关
     # 触发方式: 每周定时执行（Cron 触发），默认每周一凌晨1点
@@ -292,6 +292,30 @@ async def start_scheduler() -> None:
         logger.info("Topic discovery job registered")
     else:
         logger.info("Topic discovery job skipped (feature.topic_radar disabled)")
+
+    # ---- 话题匹配任务 ----
+    # 功能: 将文章自动关联到已有话题
+    # 前置条件: 需要启用 feature.topic_match 功能开关
+    # 触发方式: 间隔触发，默认每 2 小时执行一次
+    # 设计原因: 新文章需要及时关联到话题，供用户在话题详情页查看
+    # Topic match job
+    if feature_config.get_bool("feature.topic_match", False):
+        from apps.scheduler.jobs.topic_match_job import run_topic_match_job
+        topic_match_interval = feature_config.get_int("scheduler.topic_match_interval_hours", 2)
+        topic_match_base_hour = feature_config.get_int("scheduler.topic_match_base_hour", 0)
+        scheduler.add_job(
+            run_topic_match_job,
+            IntervalTrigger(
+                hours=topic_match_interval,
+                start_date=_calculate_interval_start_date(topic_match_base_hour)
+            ),
+            id="topic_match_job",
+            name="Match articles to topics",
+            replace_existing=True,
+        )
+        logger.info("Topic match job registered")
+    else:
+        logger.info("Topic match job skipped (feature.topic_match disabled)")
 
     # ---- 行动项批量提取任务 ----
     # 功能: 从已 AI 处理的高重要性文章中自动提取行动项

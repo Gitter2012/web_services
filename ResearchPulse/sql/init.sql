@@ -133,7 +133,8 @@ CREATE TABLE `articles` (
   -- AI 处理结果字段
   `content_summary` TEXT DEFAULT NULL COMMENT 'AI摘要或翻译',
   `ai_summary` TEXT DEFAULT NULL COMMENT 'AI中文摘要',
-  `ai_category` VARCHAR(50) DEFAULT NULL COMMENT 'AI分类',
+  `ai_category` VARCHAR(50) DEFAULT NULL COMMENT 'AI主分类',
+  `ai_subcategory` VARCHAR(50) DEFAULT NULL COMMENT 'AI子分类',
   `importance_score` INT DEFAULT NULL COMMENT '重要性评分 (1-10)',
   `one_liner` VARCHAR(500) DEFAULT NULL COMMENT '一句话结论',
   `key_points` JSON DEFAULT NULL COMMENT '关键要点JSON',
@@ -1248,6 +1249,7 @@ INSERT INTO `system_config` (`config_key`, `config_value`, `description`, `is_se
 ('feature.embedding', 'false', 'Embedding / Milvus', 0),
 ('feature.event_clustering', 'false', 'Event clustering', 0),
 ('feature.topic_radar', 'false', 'Topic radar', 0),
+('feature.topic_match', 'false', 'Topic match (article-topic association)', 0),
 ('feature.action_items', 'false', 'Action items', 0),
 ('feature.report_generation', 'false', 'Report generation', 0),
 ('feature.email_notification', 'false', 'Email notifications', 0),
@@ -1258,6 +1260,10 @@ INSERT INTO `system_config` (`config_key`, `config_value`, `description`, `is_se
 ('scheduler.event_cluster_hour', '2', 'Hour of day to run event clustering (0-23)', 0),
 ('scheduler.topic_discovery_day', 'mon', 'Day of week for topic discovery', 0),
 ('scheduler.topic_discovery_hour', '1', 'Hour of day for topic discovery (0-23)', 0),
+('scheduler.topic_match_interval_hours', '2', 'Topic match interval in hours', 0),
+('scheduler.topic_match_base_hour', '0', 'Topic match job base hour (0-23) for interval calculation', 0),
+('scheduler.topic_match_days', '7', 'Topic match lookback days', 0),
+('scheduler.topic_match_limit', '500', 'Topic match batch limit per run', 0),
 ('scheduler.backup_hour', '4', 'Hour of day to run backup (0-23)', 0),
 ('scheduler.cleanup_hour', '3', 'Hour of day to run cleanup (0-23)', 0),
 ('scheduler.action_extract_interval_hours', '2', 'Action item extraction interval in hours', 0),
@@ -1298,6 +1304,32 @@ INSERT INTO `system_config` (`config_key`, `config_value`, `description`, `is_se
 ('daily_report.translate_batch_size', '10', '翻译分批大小（每批处理后更新进度）', 0),
 ('daily_report.report_offset_days', '1', '报告相对于今天的偏移天数（1=昨天）', 0),
 ('ai.translate_concurrency', '5', '批量翻译并发数', 0);
+
+-- =============================================================================
+-- 默认话题数据
+-- =============================================================================
+-- 初始化系统默认话题，覆盖 AI 领域的主要研究方向
+INSERT INTO topics (name, description, keywords, is_auto_discovered, is_active, created_at, updated_at) VALUES
+('GPT-4', 'OpenAI GPT-4 模型相关研究与应用', '["GPT-4", "GPT4", "GPT-4o", "GPT-4-turbo"]', 0, 1, NOW(), NOW()),
+('大模型', '大规模语言模型研究与发展', '["大模型", "LLM", "大语言模型", "语言模型"]', 0, 1, NOW(), NOW()),
+('Claude', 'Anthropic Claude 模型相关内容', '["Claude", "Claude-3", "Anthropic"]', 0, 1, NOW(), NOW()),
+('Gemini', 'Google Gemini 多模态模型', '["Gemini", "Google AI", "Bard"]', 0, 1, NOW(), NOW()),
+('计算机视觉', '计算机视觉与图像处理研究', '["计算机视觉", "CV", "图像识别", "目标检测"]', 0, 1, NOW(), NOW()),
+('AI Agent', 'AI 智能体与自动化应用', '["Agent", "智能体", "AI Agent", "Autonomous"]', 0, 1, NOW(), NOW()),
+('开源模型', '开源大模型与社区项目', '["开源", "Llama", "Mistral", "Qwen"]', 0, 1, NOW(), NOW()),
+('机器学习', '机器学习算法与理论研究', '["机器学习", "ML", "深度学习", "神经网络"]', 0, 1, NOW(), NOW()),
+('NLP', '自然语言处理技术', '["NLP", "自然语言处理", "文本分析", "语义理解"]', 0, 1, NOW(), NOW()),
+('强化学习', '强化学习算法与应用', '["强化学习", "RL", "DQN", "PPO"]', 0, 1, NOW(), NOW()),
+('多模态', '多模态学习与跨模态理解', '["多模态", "Multimodal", "视觉语言"]', 0, 1, NOW(), NOW()),
+('RAG', '检索增强生成技术', '["RAG", "检索增强", "知识库", "向量检索"]', 0, 1, NOW(), NOW()),
+('AI 芯片', 'AI 芯片与硬件加速', '["AI芯片", "GPU", "TPU", "NPU", "算力"]', 0, 1, NOW(), NOW()),
+('AI 安全', 'AI 安全与对齐研究', '["AI安全", "对齐", "Alignment", "安全"]', 0, 1, NOW(), NOW()),
+('自动驾驶', '自动驾驶技术与智能交通', '["自动驾驶", "无人驾驶", "智能驾驶"]', 0, 1, NOW(), NOW()),
+('机器人', '机器人技术与具身智能', '["机器人", "具身智能", "Embodied AI"]', 0, 1, NOW(), NOW()),
+('语音识别', '语音识别与语音合成技术', '["语音识别", "ASR", "TTS", "语音合成"]', 0, 1, NOW(), NOW()),
+('AI 绘画', 'AI 图像生成与艺术创作', '["AI绘画", "Stable Diffusion", "Midjourney"]', 0, 1, NOW(), NOW()),
+('代码生成', 'AI 代码生成与辅助编程', '["代码生成", "Copilot", "CodeLlama"]', 0, 1, NOW(), NOW()),
+('创业融资', 'AI 领域创业与投资动态', '["创业", "融资", "投资", "独角兽"]', 0, 1, NOW(), NOW());
 
 -- =============================================================================
 -- Superuser 配置说明

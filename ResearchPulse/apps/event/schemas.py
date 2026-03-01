@@ -28,6 +28,8 @@ class EventMemberSchema(BaseModel):
     similarity_score: float = 0.0              # 与事件聚类的相似度分数
     detection_method: str = ""                 # 匹配检测方法
     added_at: Optional[datetime] = None        # 加入事件的时间
+    title: str = ""                            # 文章标题
+    url: str = ""                              # 原文链接
     model_config = {"from_attributes": True}   # 允许从 ORM 属性构建
 
 # -----------------------------------------------------------------------------

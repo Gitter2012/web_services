@@ -221,7 +221,13 @@ class Article(Base, TimestampMixin):
     ai_category: Mapped[str] = mapped_column(
         String(50),
         nullable=True,
-        comment="AI classification: AI, 机器学习, 编程, 技术, 创业, 创新, 金融, 研究, 设计, 其他",
+        comment="AI 主分类: AI, 编程, 研究, 创业, 金融, 设计, 技术, 其他",
+    )
+    # AI 子分类
+    ai_subcategory: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="AI 子分类: 大模型/计算机视觉/NLP 等",
     )
     # AI 评估的重要性评分（1-10 分）
     importance_score: Mapped[int | None] = mapped_column(

@@ -36,17 +36,27 @@ class TopicService:
     # 参数:
     #   - db: 异步数据库会话
     #   - active_only: 是否仅返回活跃话题, 默认 True
+    #   - limit: 返回数量上限, 默认 50
+    #   - offset: 分页偏移量, 默认 0
     # 返回: (话题列表, 总数) 的元组
-    # 逻辑: 先通过子查询统计总数, 再按创建时间倒序获取列表
+    # 逻辑: 先通过子查询统计总数, 再按创建时间倒序获取分页列表
     # ----------------------------------------------------------------------
-    async def list_topics(self, db: AsyncSession, active_only: bool = True) -> tuple[list[Topic], int]:
-        """List topics with optional active filter.
+    async def list_topics(
+        self,
+        db: AsyncSession,
+        active_only: bool = True,
+        limit: int = 50,
+        offset: int = 0
+    ) -> tuple[list[Topic], int]:
+        """List topics with optional active filter and pagination.
 
-        查询话题列表，可按活跃状态过滤。
+        查询话题列表，可按活跃状态过滤并分页。
 
         Args:
             db: Async database session.
             active_only: Whether to return only active topics.
+            limit: Max number of topics to return.
+            offset: Pagination offset.
 
         Returns:
             tuple[list[Topic], int]: (topics, total_count).
@@ -58,8 +68,8 @@ class TopicService:
         # 使用子查询统计总数, 确保 count 和列表查询的过滤条件一致
         count_result = await db.execute(select(func.count()).select_from(query.subquery()))
         total = count_result.scalar() or 0
-        # 按创建时间倒序排列, 最新创建的话题排在前面
-        result = await db.execute(query.order_by(Topic.created_at.desc()))
+        # 按创建时间倒序排列, 最新创建的话题排在前面, 添加分页
+        result = await db.execute(query.order_by(Topic.created_at.desc()).limit(limit).offset(offset))
         return list(result.scalars().all()), total
 
     # ----------------------------------------------------------------------
@@ -209,7 +219,7 @@ class TopicService:
         )
         articles = []
         for assoc, art in result.all():
-            articles.append({"article_id": art.id, "title": art.title or "", "match_score": assoc.match_score, "matched_keywords": assoc.matched_keywords})
+            articles.append({"article_id": art.id, "title": art.title or "", "url": art.url or "", "match_score": assoc.match_score, "matched_keywords": assoc.matched_keywords})
         return articles
 
     # ----------------------------------------------------------------------

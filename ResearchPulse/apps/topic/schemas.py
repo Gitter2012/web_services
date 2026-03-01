@@ -75,6 +75,7 @@ class TopicListResponse(BaseModel):
 class TopicArticleSchema(BaseModel):
     article_id: int
     title: str = ""
+    url: str = ""  # 文章链接
     match_score: float = 0.0
     matched_keywords: Optional[list[str]] = None
 

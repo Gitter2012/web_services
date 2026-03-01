@@ -76,21 +76,56 @@ class EventService:
         events = list(result.scalars().all())
         return events, total
 
-    async def get_event(self, event_id: int, db: AsyncSession) -> EventCluster | None:
-        """Get an event cluster by ID.
+    async def get_event(self, event_id: int, db: AsyncSession) -> dict | None:
+        """Get an event cluster by ID with member article info.
 
-        根据事件聚类 ID 获取单个事件对象。
+        根据事件聚类 ID 获取单个事件对象，包含成员文章的标题和原文链接。
 
         Args:
             event_id: Event cluster ID.
             db: Async database session.
 
         Returns:
-            EventCluster | None: Event cluster or ``None`` if not found.
+            dict | None: Event data with members including title/url, or ``None`` if not found.
         """
-        # 根据 ID 获取单个事件聚类（包含其成员列表，由 selectin 自动加载）
-        result = await db.execute(select(EventCluster).where(EventCluster.id == event_id))
-        return result.scalar_one_or_none()
+        from sqlalchemy.orm import selectinload
+
+        # 查询事件聚类，同时加载成员和成员关联的文章
+        result = await db.execute(
+            select(EventCluster)
+            .where(EventCluster.id == event_id)
+            .options(
+                selectinload(EventCluster.members).selectinload(EventMember.article)
+            )
+        )
+        event = result.scalar_one_or_none()
+        if not event:
+            return None
+
+        # 手动填充 members 的 title 和 url
+        members_data = []
+        for m in event.members:
+            members_data.append({
+                'id': m.id,
+                'article_id': m.article_id,
+                'similarity_score': m.similarity_score,
+                'detection_method': m.detection_method,
+                'added_at': m.added_at,
+                'title': m.article.title if m.article else '',
+                'url': m.article.url if m.article else '',
+            })
+
+        return {
+            'id': event.id,
+            'title': event.title,
+            'description': event.description,
+            'category': event.category,
+            'first_seen_at': event.first_seen_at,
+            'last_updated_at': event.last_updated_at,
+            'is_active': event.is_active,
+            'article_count': event.article_count,
+            'members': members_data,
+        }
 
     async def get_event_timeline(self, event_id: int, db: AsyncSession) -> list[dict]:
         """Get timeline entries for an event.

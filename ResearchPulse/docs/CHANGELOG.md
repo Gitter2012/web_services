@@ -22,6 +22,14 @@
   - arxiv_categories 表新增 `name_zh` 中文名称字段
   - 权限控制：`daily_report:read`、`daily_report:generate`、`daily_report:export`
 
+- **话题匹配** (`apps/scheduler/jobs/topic_match_job.py`)
+  - 自动将文章关联到相关话题的定时任务
+  - 支持手动触发 API：`POST /admin/topic/match`
+  - CLI 入口：`./scripts/ai-pipeline.sh topic-match`
+  - 匹配算法基于关键词权重评分（相关度阈值 > 0.3）
+  - 功能开关：`feature.topic_match`（默认禁用）
+  - 权限控制：仅管理员可触发
+
 - **Pipeline 任务队列** (`apps/pipeline/`)
   - `pipeline_tasks` 数据库表：持久化流水线任务，进程重启不丢失
   - DAG 触发链：AI 完成 → 自动入队 Embedding + Action → Embedding 完成 → 入队 Event

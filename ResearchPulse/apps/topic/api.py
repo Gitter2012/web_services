@@ -25,16 +25,23 @@ router = APIRouter(tags=["Topics"], dependencies=[require_feature("feature.topic
 
 # --------------------------------------------------------------------------
 # GET /topics - 获取话题列表
-# 功能: 查询所有话题, 支持按活跃状态过滤
+# 功能: 查询所有话题, 支持按活跃状态过滤和分页
 # 参数:
 #   - active_only: 是否仅返回活跃话题, 默认 True
+#   - limit: 返回数量上限, 默认 50
+#   - offset: 分页偏移量, 默认 0
 #   - db: 异步数据库会话(通过依赖注入获取)
 # 返回: TopicListResponse, 包含话题总数和话题列表
 # --------------------------------------------------------------------------
 @router.get("", response_model=TopicListResponse)
-async def list_topics(active_only: bool = True, db: AsyncSession = Depends(get_session)):
+async def list_topics(
+    active_only: bool = True,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_session)
+):
     service = TopicService()
-    topics, total = await service.list_topics(db, active_only=active_only)
+    topics, total = await service.list_topics(db, active_only=active_only, limit=limit, offset=offset)
     return TopicListResponse(total=total, topics=[TopicSchema.model_validate(t) for t in topics])
 
 # --------------------------------------------------------------------------

@@ -22,6 +22,7 @@ _STAGE_JOB_MAP = {
     "embedding": "apps.scheduler.jobs.embedding_job:run_embedding_job",
     "event": "apps.scheduler.jobs.event_cluster_job:run_event_cluster_job",
     "action": "apps.scheduler.jobs.action_extract_job:run_action_extract_job",
+    "topic": "apps.scheduler.jobs.topic_match_job:run_topic_match_job",
 }
 
 
