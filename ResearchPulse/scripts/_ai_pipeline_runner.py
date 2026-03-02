@@ -1,21 +1,55 @@
 #!/usr/bin/env python3
-"""Manual AI pipeline runner for ResearchPulse v2.
+"""AI 处理流水线手动运行工具。
 
-手动触发 AI 处理流水线的 CLI 工具，支持按阶段运行或一键运行全部流程。
+本脚本提供命令行接口，用于手动触发 AI 处理流水线的各个阶段。
+支持按阶段运行或一键运行全部流程。
 
-流水线阶段（按依赖顺序）:
-  1. ai        AI 文章处理（摘要、分类、评分）
-  2. embedding 向量嵌入计算
-  3. event     事件聚类
-  4. topic     主题发现
+流水线阶段（按依赖顺序执行）：
+    1. ai          AI 文章处理（摘要、分类、评分）
+    2. translate   arXiv 文章标题翻译
+    3. embedding   向量嵌入计算
+    4. event       事件聚类
+    5. topic       主题发现
+    6. topic-match 话题匹配（文章关联到话题）
+    7. action      行动项提取
+    8. report      报告生成
 
-Usage:
+运行模式：
+    - 直接执行模式：在当前进程同步执行各阶段
+    - 队列触发模式（--trigger）：将任务入队到 pipeline_tasks 表，由 worker 异步执行
+
+用法示例：
+    # 运行所有阶段
     python scripts/_ai_pipeline_runner.py all
+
+    # 仅运行 AI 处理
     python scripts/_ai_pipeline_runner.py ai
-    python scripts/_ai_pipeline_runner.py ai embedding
+
+    # 运行 AI 处理 + 标题翻译
+    python scripts/_ai_pipeline_runner.py ai translate
+
+    # 仅翻译 arXiv 文章标题
+    python scripts/_ai_pipeline_runner.py translate
+
+    # 运行嵌入 → 事件 → 主题
     python scripts/_ai_pipeline_runner.py embedding event topic
+
+    # 限制每阶段处理数量
     python scripts/_ai_pipeline_runner.py all --limit 100 --verbose
+
+    # 并发处理
+    python scripts/_ai_pipeline_runner.py all --concurrency 4
+
+    # 强制运行（忽略功能开关）
+    python scripts/_ai_pipeline_runner.py all --force
+
+    # 队列模式（入队到 pipeline_tasks，由 worker 异步执行）
     python scripts/_ai_pipeline_runner.py all --trigger --force
+
+注意：
+    - 各阶段按依赖顺序执行，不可打乱顺序
+    - 功能开关控制各阶段是否启用，使用 --force 可强制运行
+    - 队列模式仅支持 ai、embedding、event、action 阶段
 """
 
 from __future__ import annotations
@@ -29,22 +63,25 @@ import time
 import warnings
 from pathlib import Path
 
-# Add project root to path
+# 将项目根目录添加到 Python 路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # ---------------------------------------------------------------------------
-# 抑制 aiomysql + SQLAlchemy 异步连接池的 GC 回收警告。
+# 抑制 aiomysql + SQLAlchemy 异步连接池的 GC 回收警告
+# ---------------------------------------------------------------------------
 # 当多阶段流水线依次运行时，前一阶段的连接池连接可能在后一阶段的
 # 模块导入（如 TensorFlow / sentence-transformers）触发 GC 时被发现。
 # 此时连接已不再使用，但 SQLAlchemy 会发出 SAWarning 和 logging.error。
 # 这是 aiomysql 与 SQLAlchemy 异步引擎的已知行为，不影响功能正确性。
-# ---------------------------------------------------------------------------
 warnings.filterwarnings(
     "ignore",
     message=".*garbage collector.*non-checked-in connection.*",
 )
 
-# 同时静默 SQLAlchemy pool 模块在 GC 回收时输出的 ERROR 级别日志。
+# ---------------------------------------------------------------------------
+# SQLAlchemy 连接池 GC 警告过滤器
+# ---------------------------------------------------------------------------
+# 静默 SQLAlchemy pool 模块在 GC 回收时输出的 ERROR 级别日志。
 # pool.logger 的名称是 "sqlalchemy.pool.impl.AsyncAdaptedQueuePool"，
 # 但 Python logging 的 Filter 不会被子 logger 继承，
 # 因此直接将 filter 安装在 root logger 的 handler 上。
@@ -52,6 +89,7 @@ _pool_gc_filter = type(
     "_PoolGCFilter",
     (logging.Filter,),
     {
+        # 需要抑制的消息关键字
         "_SUPPRESSED": ("non-checked-in connection", "Exception terminating connection"),
         "filter": lambda self, record: not any(
             s in record.getMessage() for s in self._SUPPRESSED
@@ -65,7 +103,7 @@ logging.getLogger("sqlalchemy.pool.impl.AsyncAdaptedQueuePool").addFilter(
 from settings import settings
 
 # ---------------------------------------------------------------------------
-# ANSI 颜色
+# ANSI 颜色常量
 # ---------------------------------------------------------------------------
 RED = "\033[0;31m"
 GREEN = "\033[0;32m"
@@ -75,7 +113,15 @@ NC = "\033[0m"
 
 
 class ColoredFormatter(logging.Formatter):
-    """Custom formatter that adds ANSI colors based on log level."""
+    """自定义日志格式化器，根据日志级别添加颜色。
+
+    为不同级别的日志消息添加 ANSI 颜色代码，提升终端输出可读性。
+
+    颜色映射：
+        DEBUG/INFO: 青色
+        WARNING: 黄色
+        ERROR/CRITICAL: 红色
+    """
 
     LEVEL_COLORS = {
         logging.DEBUG: CYAN,
@@ -86,6 +132,14 @@ class ColoredFormatter(logging.Formatter):
     }
 
     def format(self, record):
+        """格式化日志记录。
+
+        参数：
+            record: LogRecord 实例。
+
+        返回：
+            str: 格式化后的日志消息。
+        """
         # 保存原始 levelname
         orig_levelname = record.levelname
         # 添加颜色
@@ -118,10 +172,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# 流水线阶段定义（按依赖顺序）
+# 流水线阶段定义
 # ---------------------------------------------------------------------------
+# 流水线阶段按依赖顺序排列，各阶段说明：
+#   - ai: 调用 AI 模型处理文章，生成摘要、分类、评分等
+#   - translate: 翻译 arXiv 英文标题和摘要
+#   - embedding: 计算文章向量嵌入，用于相似度计算
+#   - event: 基于嵌入向量进行事件聚类
+#   - topic: 发现热门主题
+#   - topic-match: 将文章匹配到已有话题
+#   - action: 从高价值文章中提取行动项
+#   - report: 生成周报/月报
 STAGES = ("ai", "translate", "embedding", "event", "topic", "topic-match", "action", "report")
 
+# 阶段中文描述
 STAGE_DESCRIPTIONS = {
     "ai": "AI 文章处理（摘要/分类/评分）",
     "translate": "arXiv 文章标题翻译",
@@ -133,6 +197,7 @@ STAGE_DESCRIPTIONS = {
     "report": "报告生成",
 }
 
+# 阶段对应的功能开关配置键
 STAGE_FEATURES = {
     "ai": "feature.ai_processor",
     "translate": "feature.ai_processor",
@@ -146,11 +211,11 @@ STAGE_FEATURES = {
 
 
 def _log(msg: str, level: str = "info") -> None:
-    """Log colored message using logging module.
+    """打印带颜色的日志消息。
 
-    Args:
-        msg: Message to log.
-        level: Log level - 'info', 'success', 'warn', 'error', 'debug'.
+    参数：
+        msg: 日志消息内容。
+        level: 日志级别，可选值：'info', 'success', 'warn', 'error', 'debug'。
     """
     level_map = {
         "info": logging.INFO,
@@ -163,7 +228,7 @@ def _log(msg: str, level: str = "info") -> None:
     color = colors.get(level, NC)
     log_level = level_map.get(level, logging.INFO)
 
-    # 为 success 消息添加绿色前缀
+    # 为 success 消息添加绿色
     if level == "success":
         logger.log(log_level, f"{color}{msg}{NC}")
     else:
@@ -175,7 +240,17 @@ def _log(msg: str, level: str = "info") -> None:
 # ---------------------------------------------------------------------------
 
 async def _run_ai(limit: int, verbose: bool) -> dict:
-    """Run AI processing stage."""
+    """运行 AI 处理阶段。
+
+    调用 AIProcessorService 处理未处理的文章，生成摘要、分类、评分等。
+
+    参数：
+        limit: 最多处理的文章数量。
+        verbose: 是否显示详细输出。
+
+    返回：
+        dict: 处理结果统计，包含 processed, cached, failed, total 等字段。
+    """
     from core.database import get_session_factory
     from apps.ai_processor.service import AIProcessorService
 
@@ -183,7 +258,7 @@ async def _run_ai(limit: int, verbose: bool) -> dict:
     service = AIProcessorService()
 
     def progress_callback(current: int, total: int, message: str) -> None:
-        """Progress callback for AI processing."""
+        """进度回调函数。"""
         if total > 0:
             pct = (current / total) * 100
             logger.info(f"[ai] 进度: {current}/{total} ({pct:.0f}%) - {message}")
@@ -207,7 +282,7 @@ async def _run_ai(limit: int, verbose: bool) -> dict:
 
 
 async def _run_translate(limit: int, verbose: bool, concurrency: int = 1) -> dict:
-    """Run arXiv title and summary translation stage.
+    """运行翻译阶段。
 
     翻译 source_type='arxiv' 且标题/摘要为英文、且尚未翻译的文章。
     标题翻译存入 translated_title，摘要翻译存入 content_summary。
@@ -216,10 +291,13 @@ async def _run_translate(limit: int, verbose: bool, concurrency: int = 1) -> dic
     - 查询时记录 updated_at 作为版本号
     - 更新时检查版本号，如果已变化则跳过（已被其他进程处理）
 
-    Args:
-        limit: Maximum number of articles to process.
-        verbose: Enable verbose output.
-        concurrency: Number of concurrent translation tasks.
+    参数：
+        limit: 最多处理的文章数量。
+        verbose: 是否显示详细输出。
+        concurrency: 并发翻译任务数。
+
+    返回：
+        dict: 翻译结果统计，包含 translated_titles, translated_summaries, skipped, failed, total 等字段。
     """
     from core.database import get_session_factory
     from sqlalchemy import and_, or_, select, update
@@ -230,7 +308,7 @@ async def _run_translate(limit: int, verbose: bool, concurrency: int = 1) -> dic
     session_factory = get_session_factory()
     provider = get_ai_provider()
 
-    # 先查询待翻译的文章 ID 和版本号（updated_at 作为乐观锁版本）
+    # 查询待翻译的文章 ID 和版本号（updated_at 作为乐观锁版本）
     async with session_factory() as session:
         result = await session.execute(
             select(Article.id, Article.updated_at)
@@ -271,7 +349,11 @@ async def _run_translate(limit: int, verbose: bool, concurrency: int = 1) -> dic
     total_count = len(article_versions)
 
     async def translate_article(article_id: int, version_timestamp) -> tuple[int, int, int, int, int]:
-        """翻译单篇文章，使用乐观锁。返回 (titles, summaries, skipped, failed, conflict)"""
+        """翻译单篇文章，使用乐观锁。
+
+        返回：
+            tuple: (titles, summaries, skipped, failed, conflict) 计数。
+        """
         local_titles = 0
         local_summaries = 0
         local_skipped = 0
@@ -352,7 +434,7 @@ async def _run_translate(limit: int, verbose: bool, concurrency: int = 1) -> dic
             return (0, 0, 0, 1, 0)
 
     async def update_counter(result: tuple[int, int, int, int, int]):
-        """线程安全地更新计数器"""
+        """线程安全地更新计数器。"""
         nonlocal translated_titles, translated_summaries, skipped, failed, conflict
         async with counter_lock:
             translated_titles += result[0]
@@ -403,17 +485,16 @@ async def _run_translate(limit: int, verbose: bool, concurrency: int = 1) -> dic
 
 
 async def _run_translate_for_articles(article_ids: list[int], concurrency: int = 1) -> dict:
-    """Translate specific articles by ID.
+    """翻译指定 ID 的文章。
 
-    翻译指定 ID 的文章，仅处理 arXiv 英文标题和摘要。
-    标题翻译存入 translated_title，摘要翻译存入 content_summary。
+    仅处理 arXiv 英文标题和摘要。
 
-    Args:
-        article_ids: List of article IDs to translate.
-        concurrency: Number of concurrent translation tasks.
+    参数：
+        article_ids: 要翻译的文章 ID 列表。
+        concurrency: 并发翻译任务数。
 
-    Returns:
-        dict: Translation statistics.
+    返回：
+        dict: 翻译结果统计。
     """
     from core.database import get_session_factory
     from sqlalchemy import and_, or_, select, update
@@ -437,7 +518,6 @@ async def _run_translate_for_articles(article_ids: list[int], concurrency: int =
                     Article.source_type == "arxiv",
                     Article.title.isnot(None),
                     Article.title != "",
-                    # 标题或摘要至少有一个需要翻译
                     or_(
                         Article.translated_title.is_(None),
                         and_(
@@ -450,7 +530,6 @@ async def _run_translate_for_articles(article_ids: list[int], concurrency: int =
             )
             .order_by(Article.crawl_time.desc())
         )
-        # (article_id, version_timestamp) 列表
         article_versions = [(row[0], row[1]) for row in result.all()]
 
     if not article_versions:
@@ -468,7 +547,7 @@ async def _run_translate_for_articles(article_ids: list[int], concurrency: int =
     total_count = len(article_versions)
 
     async def translate_article(article_id: int, version_timestamp) -> tuple[int, int, int, int, int]:
-        """翻译单篇文章，使用乐观锁。返回 (titles, summaries, skipped, failed, conflict)"""
+        """翻译单篇文章，使用乐观锁。"""
         local_titles = 0
         local_summaries = 0
         local_skipped = 0
@@ -477,7 +556,6 @@ async def _run_translate_for_articles(article_ids: list[int], concurrency: int =
 
         try:
             async with session_factory() as session:
-                # 查询文章内容
                 result = await session.execute(
                     select(
                         Article.title,
@@ -497,13 +575,11 @@ async def _run_translate_for_articles(article_ids: list[int], concurrency: int =
                 if current_updated_at != version_timestamp:
                     return (0, 0, 0, 0, 1)
 
-                # 再次检查是否已有翻译
                 if existing_translated_title and existing_content_summary:
                     return (0, 0, 0, 0, 0)
 
                 update_values = {}
 
-                # 翻译标题
                 if not existing_translated_title and title and _is_english(title):
                     translated_title = await provider.translate(title)
                     if translated_title:
@@ -512,7 +588,6 @@ async def _run_translate_for_articles(article_ids: list[int], concurrency: int =
                     else:
                         local_skipped = 1
 
-                # 翻译摘要
                 if not existing_content_summary and summary and _is_english(summary):
                     translated_summary = await provider.translate(summary)
                     if translated_summary:
@@ -521,7 +596,6 @@ async def _run_translate_for_articles(article_ids: list[int], concurrency: int =
                     else:
                         local_skipped += 1
 
-                # 使用乐观锁更新
                 if update_values:
                     update_result = await session.execute(
                         update(Article)
@@ -546,7 +620,7 @@ async def _run_translate_for_articles(article_ids: list[int], concurrency: int =
             return (0, 0, 0, 1, 0)
 
     async def update_counter(result: tuple[int, int, int, int, int]):
-        """线程安全地更新计数器"""
+        """线程安全地更新计数器。"""
         nonlocal translated_titles, translated_summaries, skipped, failed, conflict
         async with counter_lock:
             translated_titles += result[0]
@@ -594,14 +668,24 @@ async def _run_translate_for_articles(article_ids: list[int], concurrency: int =
 
 
 async def _run_embedding(limit: int, verbose: bool) -> dict:
-    """Run embedding computation stage."""
+    """运行向量嵌入计算阶段。
+
+    使用 EmbeddingService 计算未计算嵌入向量的文章。
+
+    参数：
+        limit: 最多处理的文章数量。
+        verbose: 是否显示详细输出。
+
+    返回：
+        dict: 处理结果统计，包含 computed, skipped, failed, total 等字段。
+    """
     from core.database import get_session_factory
     from apps.embedding.service import EmbeddingService
 
     session_factory = get_session_factory()
 
     def progress_callback(current: int, total: int, message: str) -> None:
-        """Progress callback for embedding computation."""
+        """进度回调函数。"""
         if total > 0:
             pct = (current / total) * 100
             logger.info(f"[embedding] 进度: {current}/{total} ({pct:.0f}%) - {message}")
@@ -621,7 +705,17 @@ async def _run_embedding(limit: int, verbose: bool) -> dict:
 
 
 async def _run_event(limit: int, verbose: bool) -> dict:
-    """Run event clustering stage."""
+    """运行事件聚类阶段。
+
+    使用 EventService 对文章进行事件聚类，生成事件汇总。
+
+    参数：
+        limit: 最多处理的文章数量。
+        verbose: 是否显示详细输出。
+
+    返回：
+        dict: 处理结果统计，包含 clustered, new_clusters, total_processed 等字段。
+    """
     from core.database import get_session_factory
     from apps.event.service import EventService
 
@@ -646,7 +740,17 @@ async def _run_event(limit: int, verbose: bool) -> dict:
 
 
 async def _run_topic(limit: int, verbose: bool) -> dict:
-    """Run topic discovery stage."""
+    """运行主题发现阶段。
+
+    使用 TopicService 发现热门主题，生成主题建议。
+
+    参数：
+        limit: 未使用，保留以保持接口一致。
+        verbose: 是否显示详细输出。
+
+    返回：
+        dict: 处理结果统计，包含 suggestions_count 和 suggestions 列表。
+    """
     from core.database import get_session_factory
     from apps.topic.service import TopicService
 
@@ -675,14 +779,20 @@ async def _run_topic(limit: int, verbose: bool) -> dict:
 
 
 async def _run_topic_match(limit: int, verbose: bool) -> dict:
-    """Run topic match stage - match articles to existing topics.
+    """运行话题匹配阶段。
 
     将文章匹配到已有话题，建立文章-话题关联关系。
+
+    参数：
+        limit: 最多处理的文章数量。
+        verbose: 是否显示详细输出。
+
+    返回：
+        dict: 处理结果统计，包含 matched_count, total_processed, associations_created 等字段。
     """
     from apps.scheduler.jobs.topic_match_job import run_topic_match_job
 
     try:
-        # 使用 limit 参数控制处理数量
         result = await run_topic_match_job(days=7, limit=limit)
         return result
     except Exception as e:
@@ -691,16 +801,24 @@ async def _run_topic_match(limit: int, verbose: bool) -> dict:
 
 
 async def _run_action(limit: int, verbose: bool) -> dict:
-    """Run action item extraction stage."""
+    """运行行动项提取阶段。
+
+    从高价值文章中提取可执行的行动项。
+
+    参数：
+        limit: 最多处理的文章数量。
+        verbose: 是否显示详细输出。
+
+    返回：
+        dict: 处理结果统计，包含 articles_processed, extracted 等字段。
+    """
     from core.database import get_session_factory
     from apps.scheduler.jobs.action_extract_job import run_action_extract_job
 
-    # action extract job manages its own session; limit is unused here
     try:
         result = await run_action_extract_job()
-        # Strip the "skipped" results when running with --force
+        # 如果任务被跳过（功能未启用），强制模式下直接执行
         if result.get("skipped"):
-            # Force mode: run the extraction directly
             from sqlalchemy import and_, select
             from core.models.user import User
             import core.models.permission  # noqa: F401
@@ -712,6 +830,7 @@ async def _run_action(limit: int, verbose: bool) -> dict:
             extracted_total = 0
             articles_processed = 0
             async with session_factory() as session:
+                # 获取系统用户 ID
                 user_result = await session.execute(
                     select(User.id).where(User.is_superuser.is_(True)).limit(1)
                 )
@@ -719,6 +838,7 @@ async def _run_action(limit: int, verbose: bool) -> dict:
                 if not system_user_id:
                     return {"articles_processed": 0, "extracted": 0}
 
+                # 查询符合条件的文章
                 art_result = await session.execute(
                     select(Article.id)
                     .outerjoin(ActionItem, Article.id == ActionItem.article_id)
@@ -758,13 +878,23 @@ async def _run_action(limit: int, verbose: bool) -> dict:
 
 
 async def _run_report(limit: int, verbose: bool) -> dict:
-    """Run report generation stage (weekly)."""
+    """运行报告生成阶段。
+
+    为活跃用户生成周报。
+
+    参数：
+        limit: 未使用，保留以保持接口一致。
+        verbose: 是否显示详细输出。
+
+    返回：
+        dict: 处理结果统计，包含 generated, skipped 等字段。
+    """
     from apps.scheduler.jobs.report_generate_job import run_weekly_report_job
 
     try:
         result = await run_weekly_report_job()
         if result.get("skipped"):
-            # Force mode: run directly
+            # 强制模式：直接生成报告
             from core.database import get_session_factory
             from sqlalchemy import and_, select
             from core.models.user import User
@@ -791,6 +921,7 @@ async def _run_report(limit: int, verbose: bool) -> dict:
                 period_start_str = last_week_start.strftime("%Y-%m-%d")
 
                 for user_id in user_ids:
+                    # 检查是否已存在本周报告
                     existing = await session.execute(
                         select(Report.id).where(
                             and_(
@@ -823,6 +954,7 @@ async def _run_report(limit: int, verbose: bool) -> dict:
         return {"error": str(e), "generated": 0, "skipped": 0}
 
 
+# 阶段运行函数映射
 STAGE_RUNNERS = {
     "ai": _run_ai,
     "translate": _run_translate,
@@ -840,14 +972,21 @@ STAGE_RUNNERS = {
 # ---------------------------------------------------------------------------
 
 async def _trigger_stage(stage: str, limit: int) -> dict:
-    """Enqueue a pipeline task instead of executing directly.
+    """将阶段任务入队到 pipeline_tasks 表。
 
-    CLI trigger mode uses priority=5 (higher than auto-triggered 0-1).
+    CLI trigger mode 使用 priority=5（高于自动触发的 0-1）。
+
+    参数：
+        stage: 阶段名称。
+        limit: 处理数量限制。
+
+    返回：
+        dict: 入队结果，包含 enqueued, task_id, stage 等字段。
     """
     from core.database import get_session_factory
     from apps.pipeline.triggers import enqueue_task
 
-    # Only enqueue stages that the pipeline worker can handle
+    # 仅支持 pipeline worker 能处理的阶段
     supported = ("ai", "embedding", "event", "action")
     if stage not in supported:
         return {"skipped": True, "reason": f"stage '{stage}' not supported in trigger mode"}
@@ -865,13 +1004,22 @@ async def _trigger_stage(stage: str, limit: int) -> dict:
 # ---------------------------------------------------------------------------
 
 def _format_result(stage: str, result: dict) -> str:
-    """Format stage result as a human-readable line."""
+    """格式化阶段结果为可读字符串。
+
+    参数：
+        stage: 阶段名称。
+        result: 阶段执行结果字典。
+
+    返回：
+        str: 格式化后的结果字符串。
+    """
     if "error" in result:
         return f"  错误: {result['error']}"
 
     if result.get("enqueued"):
         return f"  已入队: task_id={result.get('task_id')}"
 
+    # 各阶段的特定格式化
     if stage == "ai":
         return (
             f"  处理: {result.get('processed', 0)} | "
@@ -936,18 +1084,20 @@ async def run_pipeline(
     trigger_mode: bool = False,
     concurrency: int = 0,
 ) -> dict[str, dict]:
-    """Run the specified pipeline stages sequentially.
+    """运行指定的流水线阶段。
 
-    Args:
-        stages: List of stage names to run.
-        limit: Per-stage batch size limit.
-        skip_disabled: Whether to skip feature-disabled stages.
-        verbose: Enable verbose output.
-        trigger_mode: If True, enqueue tasks instead of executing directly.
-        concurrency: Concurrency level for AI/translate stages. 0 means use config default.
+    按顺序执行各阶段，根据功能开关决定是否跳过未启用的阶段。
 
-    Returns:
-        dict mapping stage name to its result dict.
+    参数：
+        stages: 要运行的阶段名称列表。
+        limit: 每阶段最多处理的文章数。
+        skip_disabled: 是否跳过功能未启用的阶段。
+        verbose: 是否显示详细输出。
+        trigger_mode: 是否使用队列触发模式。
+        concurrency: 并发数，0 表示使用配置默认值。
+
+    返回：
+        dict[str, dict]: 各阶段的执行结果映射。
     """
     from core.database import close_db
 
@@ -969,6 +1119,7 @@ async def run_pipeline(
             feature_key = STAGE_FEATURES.get(stage, "")
             enabled = feature_config.get_bool(feature_key, False)
 
+            # 检查功能开关
             if not enabled and skip_disabled:
                 _log(f"[{stage}] 功能未启用 ({feature_key}=false)，跳过", "warn")
                 results[stage] = {"skipped": True, "reason": "feature disabled"}
@@ -981,12 +1132,14 @@ async def run_pipeline(
                     "warn",
                 )
 
+            # 打印阶段信息
             desc = STAGE_DESCRIPTIONS.get(stage, stage)
             if trigger_mode:
                 _log(f"[{stage}] 入队: {desc}")
             else:
                 _log(f"[{stage}] 开始: {desc} (limit={limit})")
 
+            # 执行阶段
             t0 = time.time()
             try:
                 if trigger_mode:
@@ -1010,8 +1163,8 @@ async def run_pipeline(
                 _log(f"[{stage}] 已入队 ({elapsed:.1f}s)", "success")
             else:
                 _log(f"[{stage}] 完成 ({elapsed:.1f}s)", "success")
-            print(_format_result(stage, result))
-            print()
+            logger.info(_format_result(stage, result))
+            logger.info("")
     finally:
         feature_config.unfreeze()
         await close_db()
@@ -1020,7 +1173,7 @@ async def run_pipeline(
 
 
 def main():
-    """CLI entry point."""
+    """CLI 入口函数。"""
     parser = argparse.ArgumentParser(
         description="ResearchPulse v2 AI 流水线手动运行工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1108,20 +1261,20 @@ def main():
         parser.error("未指定有效的流水线阶段")
 
     # 打印运行信息
-    print()
+    logger.info("")
     _log("=" * 50, "info")
     _log("ResearchPulse v2 AI 流水线", "info")
     _log("=" * 50, "info")
-    print(f"阶段: {' → '.join(stages)}")
-    print(f"Limit: {args.limit}")
+    logger.info(f"阶段: {' → '.join(stages)}")
+    logger.info(f"Limit: {args.limit}")
     if args.concurrency > 0:
-        print(f"并发数: {args.concurrency}")
+        logger.info(f"并发数: {args.concurrency}")
     if args.trigger:
-        print(f"{CYAN}模式: 队列触发 (入队到 pipeline_tasks){NC}")
+        logger.info("模式: 队列触发 (入队到 pipeline_tasks)")
     if args.force:
-        print(f"{YELLOW}模式: 强制运行 (忽略功能开关){NC}")
+        logger.warning("模式: 强制运行 (忽略功能开关)")
     _log("-" * 50, "info")
-    print()
+    logger.info("")
 
     t_start = time.time()
 
@@ -1150,7 +1303,7 @@ def main():
 
     # JSON 输出
     if args.json_output:
-        print(json.dumps(results, ensure_ascii=False, indent=2))
+        logger.info(json.dumps(results, ensure_ascii=False, indent=2))
         sys.exit(0)
 
     # 汇总
@@ -1171,9 +1324,9 @@ def main():
         else:
             status = f"{GREEN}成功{NC}"
         desc = STAGE_DESCRIPTIONS.get(stage, stage)
-        print(f"  {stage:12s} {desc:20s} [{status}]")
+        logger.info(f"  {stage:12s} {desc:20s} [{status}]")
 
-    print(f"\n总耗时: {t_total:.2f} 秒")
+    logger.info(f"\n总耗时: {t_total:.2f} 秒")
     sys.exit(1 if has_error else 0)
 
 

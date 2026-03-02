@@ -1,12 +1,26 @@
-"""ArXiv category scraper for ResearchPulse v2.
+#!/usr/bin/env python3
+"""arXiv 分类同步脚本。
 
-This script fetches the complete list of arXiv categories from the official
-arXiv website and inserts them into the database.
+本脚本从 arXiv 官方网站抓取完整的分类列表，并同步到数据库。
+用于初始化或更新系统中的 arXiv 分类数据。
 
-Usage:
+功能：
+    1. 从 arXiv 分类页面抓取分类代码、名称和父级领域
+    2. 如果网络抓取失败，使用内置的分类字典作为 fallback
+    3. 将分类数据写入数据库（存在则更新，不存在则插入）
+
+用法示例：
+    # 同步分类到数据库
     cd /path/to/ResearchPulse_v2
     source .env
     python3 scripts/sync_arxiv_categories.py
+
+依赖：
+    - httpx: 用于异步 HTTP 请求
+    - beautifulsoup4: 用于解析 HTML 页面（可选，抓取失败时使用内置数据）
+
+注意：
+    本脚本需要数据库连接配置（通过环境变量或 .env 文件）。
 """
 
 from __future__ import annotations
@@ -18,25 +32,39 @@ import sys
 from pathlib import Path
 from typing import List, Dict
 
-# Add project root to path
+# 将项目根目录添加到 Python 路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import httpx
 
+# BeautifulSoup 用于解析 HTML，可选依赖
 try:
     from bs4 import BeautifulSoup
 except ImportError:
     BeautifulSoup = None
 
-# ArXiv category page URL
+# ---------------------------------------------------------------------------
+# 常量定义
+# ---------------------------------------------------------------------------
+
+# arXiv 分类页面 URL
 ARXIV_CATEGORIES_URL = "https://arxiv.org/category_taxonomy"
 
-# Logger for this module
+# 模块日志器
 logger = logging.getLogger(__name__)
 
-# Known arXiv categories (fallback if scraping fails)
+# ---------------------------------------------------------------------------
+# 内置 arXiv 分类字典
+# ---------------------------------------------------------------------------
+# 当网络抓取失败时使用此字典作为 fallback。
+# 格式：{分类代码: (分类名称, 父级领域)}
+#
+# 数据来源：arXiv 官方分类 taxonomy
+# 最后更新：2024 年
 ARXIV_CATEGORIES = {
-    # Computer Science
+    # ========================
+    # Computer Science 计算机科学
+    # ========================
     "cs.AI": ("Artificial Intelligence", "Computer Science"),
     "cs.CL": ("Computation and Language", "Computer Science"),
     "cs.CV": ("Computer Vision and Pattern Recognition", "Computer Science"),
@@ -75,7 +103,9 @@ ARXIV_CATEGORIES = {
     "cs.SC": ("Symbolic Computation", "Computer Science"),
     "cs.SY": ("Systems and Control", "Computer Science"),
 
-    # Mathematics
+    # ========================
+    # Mathematics 数学
+    # ========================
     "math.AG": ("Algebraic Geometry", "Mathematics"),
     "math.AT": ("Algebraic Topology", "Mathematics"),
     "math.AP": ("Analysis of PDEs", "Mathematics"),
@@ -108,13 +138,17 @@ ARXIV_CATEGORIES = {
     "math.ST": ("Statistics Theory", "Mathematics"),
     "math.SG": ("Symplectic Geometry", "Mathematics"),
 
-    # Physics
+    # ========================
+    # Physics 物理学
+    # ========================
+    # Astrophysics 天体物理
     "astro-ph.CO": ("Cosmology and Nongalactic Astrophysics", "Physics"),
     "astro-ph.EP": ("Earth and Planetary Astrophysics", "Physics"),
     "astro-ph.GA": ("Astrophysics of Galaxies", "Physics"),
     "astro-ph.HE": ("High Energy Astrophysical Phenomena", "Physics"),
     "astro-ph.IM": ("Instrumentation and Methods for Astrophysics", "Physics"),
     "astro-ph.SR": ("Solar and Stellar Astrophysics", "Physics"),
+    # Condensed Matter 凝聚态物理
     "cond-mat.dis-nn": ("Disordered Systems and Neural Networks", "Physics"),
     "cond-mat.mes-hall": ("Mesoscale and Nanoscale Physics", "Physics"),
     "cond-mat.mtrl-sci": ("Materials Science", "Physics"),
@@ -124,19 +158,23 @@ ARXIV_CATEGORIES = {
     "cond-mat.stat-mech": ("Statistical Mechanics", "Physics"),
     "cond-mat.str-el": ("Strongly Correlated Electrons", "Physics"),
     "cond-mat.supr-con": ("Superconductivity", "Physics"),
+    # High Energy Physics 高能物理
     "gr-qc": ("General Relativity and Quantum Cosmology", "Physics"),
     "hep-ex": ("High Energy Physics - Experiment", "Physics"),
     "hep-lat": ("High Energy Physics - Lattice", "Physics"),
     "hep-ph": ("High Energy Physics - Phenomenology", "Physics"),
     "hep-th": ("High Energy Physics - Theory", "Physics"),
     "math-ph": ("Mathematical Physics", "Physics"),
+    # Nonlinear Sciences 非线性科学
     "nlin.AO": ("Adaptation and Self-Organizing Systems", "Physics"),
     "nlin.CD": ("Chaotic Dynamics", "Physics"),
     "nlin.CG": ("Cellular Automata and Lattice Gases", "Physics"),
     "nlin.PS": ("Pattern Formation and Solitons", "Physics"),
     "nlin.SI": ("Exactly Solvable and Integrable Systems", "Physics"),
+    # Nuclear Physics 核物理
     "nucl-ex": ("Nuclear Experiment", "Physics"),
     "nucl-th": ("Nuclear Theory", "Physics"),
+    # Physics (Other) 其他物理
     "physics.acc-ph": ("Accelerator Physics", "Physics"),
     "physics.ao-ph": ("Atmospheric and Oceanic Physics", "Physics"),
     "physics.app-ph": ("Applied Physics", "Physics"),
@@ -161,7 +199,9 @@ ARXIV_CATEGORIES = {
     "physics.space-ph": ("Space Physics", "Physics"),
     "quant-ph": ("Quantum Physics", "Physics"),
 
-    # Statistics
+    # ========================
+    # Statistics 统计学
+    # ========================
     "stat.AP": ("Applications", "Statistics"),
     "stat.CO": ("Computation", "Statistics"),
     "stat.ME": ("Methodology", "Statistics"),
@@ -169,18 +209,24 @@ ARXIV_CATEGORIES = {
     "stat.TH": ("Statistics Theory", "Statistics"),
     "stat.OT": ("Other Statistics", "Statistics"),
 
-    # Electrical Engineering and Systems Science
+    # ========================
+    # Electrical Engineering and Systems Science 电气工程与系统科学
+    # ========================
     "eess.AS": ("Audio and Speech Processing", "Electrical Engineering"),
     "eess.IV": ("Image and Video Processing", "Electrical Engineering"),
     "eess.SP": ("Signal Processing", "Electrical Engineering"),
     "eess.SY": ("Systems and Control", "Electrical Engineering"),
 
-    # Economics
+    # ========================
+    # Economics 经济学
+    # ========================
     "econ.EM": ("Econometrics", "Economics"),
     "econ.GN": ("General Economics", "Economics"),
     "econ.TH": ("Theoretical Economics", "Economics"),
 
-    # Quantitative Biology
+    # ========================
+    # Quantitative Biology 计量生物学
+    # ========================
     "q-bio.BM": ("Biomolecules", "Quantitative Biology"),
     "q-bio.CB": ("Cell Behavior", "Quantitative Biology"),
     "q-bio.GN": ("Genomics", "Quantitative Biology"),
@@ -192,7 +238,9 @@ ARXIV_CATEGORIES = {
     "q-bio.SC": ("Subcellular Processes", "Quantitative Biology"),
     "q-bio.TO": ("Tissues and Organs", "Quantitative Biology"),
 
-    # Quantitative Finance
+    # ========================
+    # Quantitative Finance 计量金融
+    # ========================
     "q-fin.CP": ("Computational Finance", "Quantitative Finance"),
     "q-fin.EC": ("Economics", "Quantitative Finance"),
     "q-fin.GN": ("General Finance", "Quantitative Finance"),
@@ -206,35 +254,44 @@ ARXIV_CATEGORIES = {
 
 
 async def fetch_categories_from_web() -> Dict[str, tuple]:
-    """Fetch category taxonomy from the arXiv website.
+    """从 arXiv 网站抓取分类列表。
 
-    从 arXiv 分类页面抓取分类代码、名称与父级领域。
+    访问 arXiv 分类页面，解析 HTML 获取完整的分类代码、名称和父级领域。
 
-    Returns:
-        Dict[str, tuple]: Mapping of category code to (name, parent).
+    返回：
+        Dict[str, tuple]: 分类字典，格式为 {分类代码: (分类名称, 父级领域)}。
+                         如果抓取失败，返回空字典。
+
+    异常：
+        所有异常都会被捕获并记录日志，函数返回空字典。
     """
     try:
+        # 使用 httpx 发送异步 HTTP 请求
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(ARXIV_CATEGORIES_URL)
             response.raise_for_status()
 
+        # 使用 BeautifulSoup 解析 HTML
         soup = BeautifulSoup(response.text, "html.parser")
         categories = {}
 
-        # Parse the category taxonomy page
+        # 解析分类页面结构
+        # 页面使用 accordion 结构组织分类
         for div in soup.find_all("div", class_="accordion"):
-            # Main category (e.g., "Computer Science")
+            # 获取主分类名称（如 "Computer Science"）
             main_header = div.find("h2")
             if not main_header:
                 continue
             main_category = main_header.get_text(strip=True)
 
-            # Subcategories
+            # 遍历子分类
             for item in div.find_all("div", class_="column"):
                 link = item.find("a")
                 if not link:
                     continue
+                # 分类代码（如 "cs.AI"）
                 code = link.get_text(strip=True)
+                # 分类名称
                 name = item.find("span", class_="name")
                 name_text = name.get_text(strip=True) if name else code
 
@@ -249,52 +306,63 @@ async def fetch_categories_from_web() -> Dict[str, tuple]:
 
 
 def get_all_categories() -> Dict[str, tuple]:
-    """Return all known arXiv categories.
+    """获取所有已知的 arXiv 分类。
 
-    返回内置的 arXiv 分类字典副本。
+    返回内置分类字典的副本，不包含从网络抓取的分类。
 
-    Returns:
-        Dict[str, tuple]: Mapping of category code to (name, parent).
+    返回：
+        Dict[str, tuple]: 分类字典的副本。
     """
     return ARXIV_CATEGORIES.copy()
 
 
 async def sync_categories_to_db():
-    """Sync all categories to the database.
+    """将分类数据同步到数据库。
 
-    将分类数据写入数据库，已存在则更新名称与父级。
+    执行流程：
+        1. 尝试从 arXiv 网站抓取最新分类
+        2. 合并网络抓取的分类和内置分类（内置优先）
+        3. 逐个插入或更新数据库中的分类记录
 
-    Returns:
-        None: This function does not return a value.
+    数据库操作：
+        - 如果分类代码已存在，更新名称和父级
+        - 如果分类代码不存在，插入新记录
+
+    返回：
+        None: 本函数无返回值。
+
+    注意：
+        需要配置数据库连接（通过环境变量或 .env 文件）。
     """
     from core.database import get_session_factory
     from apps.crawler.models import ArxivCategory
     from sqlalchemy import select
 
-    # Try to fetch from web first
+    # 尝试从网络抓取分类
     web_categories = await fetch_categories_from_web()
 
-    # Merge with known categories (known takes precedence)
+    # 合并分类：内置分类优先（覆盖网络抓取的同名分类）
     all_categories = {**web_categories, **ARXIV_CATEGORIES}
 
     logger.info(f"Total categories to sync: {len(all_categories)}")
 
+    # 获取数据库会话工厂
     factory = get_session_factory()
 
     async with factory() as session:
         for code, (name, parent) in all_categories.items():
-            # Check if exists
+            # 检查分类是否已存在
             result = await session.execute(
                 select(ArxivCategory).where(ArxivCategory.code == code)
             )
             existing = result.scalar_one_or_none()
 
             if existing:
-                # Update
+                # 更新现有记录
                 existing.name = name
                 existing.parent_code = parent
             else:
-                # Insert
+                # 插入新记录
                 category = ArxivCategory(
                     code=code,
                     name=name,
@@ -303,10 +371,18 @@ async def sync_categories_to_db():
                 )
                 session.add(category)
 
+        # 提交事务
         await session.commit()
 
     logger.info(f"Synced {len(all_categories)} categories to database")
 
 
 if __name__ == "__main__":
+    # 配置日志
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    # 执行同步
     asyncio.run(sync_categories_to_db())

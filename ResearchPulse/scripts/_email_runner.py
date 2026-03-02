@@ -1,15 +1,41 @@
 #!/usr/bin/env python3
-"""Manual email trigger runner for ResearchPulse v2.
+"""手动邮件发送工具。
 
-手动触发邮件发送的 CLI 工具，支持以下操作:
-  - test:      发送测试邮件，验证邮件配置是否正常
-  - notify:    触发用户订阅通知（等同于定时任务 run_notification_job）
-  - send:      向指定地址发送一封自定义邮件
+本脚本提供命令行接口，用于手动触发邮件发送操作。
+支持发送测试邮件、触发用户订阅通知、发送自定义邮件等功能。
 
-Usage:
+子命令：
+    test: 发送测试邮件，验证邮件配置是否正常
+    notify: 触发用户订阅通知（等同于定时任务 run_notification_job）
+    send: 向指定地址发送自定义邮件
+
+支持的邮件后端：
+    - smtp: 标准 SMTP 发送
+    - sendgrid: SendGrid API
+    - mailgun: Mailgun API
+    - brevo: Brevo (Sendinblue) API
+
+用法示例：
+    # 发送测试邮件
     python scripts/_email_runner.py test --to admin@example.com
-    python scripts/_email_runner.py notify [--since 2025-01-01] [--max-users 50]
-    python scripts/_email_runner.py send --to user@example.com --subject "Hi" --body "Hello"
+
+    # 指定邮件后端测试
+    python scripts/_email_runner.py test --to admin@example.com --backend smtp
+
+    # 触发用户通知（默认过去 24 小时）
+    python scripts/_email_runner.py notify
+
+    # 指定时间范围和用户数量
+    python scripts/_email_runner.py notify --since 2025-01-01 --max-users 10
+
+    # 发送自定义邮件
+    python scripts/_email_runner.py send --to user@example.com --subject "标题" --body "内容"
+
+    # 从文件读取邮件正文
+    python scripts/_email_runner.py send --to a@x.com,b@x.com --subject "标题" --body-file msg.txt
+
+    # 发送 HTML 格式邮件
+    python scripts/_email_runner.py send --to user@example.com --subject "标题" --body "<p>HTML内容</p>" --html
 """
 
 from __future__ import annotations
@@ -23,12 +49,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-# Add project root to path
+# 将项目根目录添加到 Python 路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from settings import settings
 
-# 配置日志
+# ---------------------------------------------------------------------------
+# 日志配置
+# ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -37,36 +65,66 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# ANSI colors
+# ANSI 颜色常量
 # ---------------------------------------------------------------------------
-RED = "\033[0;31m"
-GREEN = "\033[0;32m"
-YELLOW = "\033[1;33m"
-BLUE = "\033[0;34m"
-CYAN = "\033[0;36m"
-NC = "\033[0m"
+# 用于终端输出着色，提升可读性
+RED = "\033[0;31m"      # 错误/失败
+GREEN = "\033[0;32m"    # 成功
+YELLOW = "\033[1;33m"   # 警告
+BLUE = "\033[0;34m"     # 信息
+CYAN = "\033[0;36m"     # 强调
+NC = "\033[0m"          # 重置颜色
 
 
 def _print(msg: str, level: str = "info") -> None:
-    """Print a color-coded message."""
+    """打印带颜色的消息并记录日志。
+
+    根据日志级别使用不同的颜色输出消息，同时记录到日志。
+
+    参数：
+        msg: 要打印的消息内容。
+        level: 日志级别，可选值：'info', 'ok', 'warn', 'error'。
+    """
     colors = {"info": BLUE, "ok": GREEN, "warn": YELLOW, "error": RED}
     c = colors.get(level, NC)
+
+    # 日志记录（不带颜色代码）
+    level_map = {
+        "info": logging.INFO,
+        "ok": logging.INFO,
+        "warn": logging.WARNING,
+        "error": logging.ERROR,
+    }
+    logger.log(level_map.get(level, logging.INFO), msg)
+
+    # 终端输出（带颜色）
     print(f"{c}{msg}{NC}")
 
 
 # ---------------------------------------------------------------------------
-# Sub-commands
+# 子命令实现
 # ---------------------------------------------------------------------------
 
 async def cmd_test(args: argparse.Namespace) -> int:
-    """Send a test email to verify configuration.
+    """发送测试邮件。
 
-    发送测试邮件验证邮件配置。
+    发送一封测试邮件到指定地址，用于验证邮件配置是否正确。
+    邮件包含发送时间和使用的后端信息。
+
+    参数：
+        args: 命令行参数，包含：
+            - to: 收件人邮箱地址
+            - backend: 指定的邮件后端（可选）
+
+    返回：
+        int: 退出码，0 表示成功，1 表示失败。
     """
     from common.email import send_email, send_email_with_fallback
 
     to_addr = args.to
     backend = args.backend
+
+    # 构建邮件内容
     subject = "ResearchPulse 测试邮件"
     body = (
         "这是一封来自 ResearchPulse 的测试邮件。\n\n"
@@ -84,7 +142,9 @@ async def cmd_test(args: argparse.Namespace) -> int:
     _print(f"发送测试邮件到: {to_addr}")
     _print(f"后端: {backend or 'fallback (all)'}")
 
+    # 发送邮件
     if backend:
+        # 使用指定后端
         ok, err = send_email(
             subject=subject,
             body=body,
@@ -93,6 +153,7 @@ async def cmd_test(args: argparse.Namespace) -> int:
             backend=backend,
         )
     else:
+        # 使用 fallback 机制，按优先级尝试所有配置的后端
         ok, err = send_email_with_fallback(
             subject=subject,
             body=body,
@@ -109,9 +170,18 @@ async def cmd_test(args: argparse.Namespace) -> int:
 
 
 async def cmd_notify(args: argparse.Namespace) -> int:
-    """Trigger the user notification job.
+    """触发用户订阅通知。
 
     手动触发用户订阅通知任务，等同于定时任务 run_notification_job。
+    默认发送过去 24 小时内的新文章通知。
+
+    参数：
+        args: 命令行参数，包含：
+            - since: 文章时间下限（可选）
+            - max_users: 最大处理用户数
+
+    返回：
+        int: 退出码，0 表示成功，1 表示失败或有部分邮件发送失败。
     """
     from core.database import close_db
 
@@ -122,12 +192,15 @@ async def cmd_notify(args: argparse.Namespace) -> int:
     import core.models.permission  # noqa: F401
     import apps.crawler.models  # noqa: F401
 
+    # 解析 since 参数
     since: Optional[datetime] = None
     if args.since:
         try:
+            # 尝试解析 YYYY-MM-DD 格式
             since = datetime.strptime(args.since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         except ValueError:
             try:
+                # 尝试解析 YYYY-MM-DDTHH:MM:SS 格式
                 since = datetime.strptime(args.since, "%Y-%m-%dT%H:%M:%S").replace(
                     tzinfo=timezone.utc
                 )
@@ -138,7 +211,7 @@ async def cmd_notify(args: argparse.Namespace) -> int:
     max_users = args.max_users
 
     try:
-        # 预热 feature_config 缓存:
+        # 预热 feature_config 缓存
         # feature_config._maybe_refresh_cache() 的同步版本会在检测到
         # 运行中的事件循环时，通过 ThreadPoolExecutor 在新线程中调用
         # asyncio.run()，导致在不同事件循环中创建数据库连接，
@@ -154,11 +227,11 @@ async def cmd_notify(args: argparse.Namespace) -> int:
         )
 
         if since or max_users != 100:
-            # 自定义参数: 直接调用 send_all_user_notifications
+            # 自定义参数：直接调用 send_all_user_notifications
             _print(f"触发用户通知 (since={since}, max_users={max_users})")
             results = await send_all_user_notifications(since=since, max_users=max_users)
         else:
-            # 默认: 调用完整的 run_notification_job (过去 24 小时)
+            # 默认：调用完整的 run_notification_job（过去 24 小时）
             _print("触发通知任务 (过去 24 小时)")
             results = await run_notification_job()
     finally:
@@ -166,13 +239,13 @@ async def cmd_notify(args: argparse.Namespace) -> int:
         # 避免事件循环关闭后连接清理报错
         await close_db()
 
-    # 打印结果
-    print()
+    # 打印结果摘要
+    logger.info("")
     _print("=" * 50)
     _print("通知任务结果:")
     _print("-" * 50)
     for key, value in results.items():
-        print(f"  {key}: {value}")
+        logger.info(f"  {key}: {value}")
     _print("=" * 50)
 
     sent = results.get("sent", 0)
@@ -191,12 +264,25 @@ async def cmd_notify(args: argparse.Namespace) -> int:
 
 
 async def cmd_send(args: argparse.Namespace) -> int:
-    """Send a custom email to specified recipients.
+    """发送自定义邮件。
 
-    向指定地址发送自定义邮件。
+    向指定地址发送自定义内容的邮件。
+
+    参数：
+        args: 命令行参数，包含：
+            - to: 收件人邮箱地址（多个以逗号分隔）
+            - subject: 邮件主题
+            - body: 邮件正文（与 body_file 互斥）
+            - body_file: 从文件读取邮件正文
+            - html: 是否将正文视为 HTML 格式
+            - backend: 指定的邮件后端（可选）
+
+    返回：
+        int: 退出码，0 表示成功，1 表示失败。
     """
     from common.email import send_email, send_email_with_fallback
 
+    # 解析收件人列表（支持逗号分隔）
     to_addrs = [addr.strip() for addr in args.to.split(",")]
     subject = args.subject
     body = args.body
@@ -214,6 +300,7 @@ async def cmd_send(args: argparse.Namespace) -> int:
         _print("邮件正文不能为空 (使用 --body 或 --body-file)", "error")
         return 1
 
+    # HTML 格式处理
     html_body = None
     if args.html:
         html_body = body  # 如果 --html 标志，将 body 视为 HTML
@@ -224,6 +311,7 @@ async def cmd_send(args: argparse.Namespace) -> int:
     if args.html:
         _print("格式: HTML")
 
+    # 发送邮件
     if backend:
         ok, err = send_email(
             subject=subject,
@@ -249,11 +337,17 @@ async def cmd_send(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
-# CLI argument parsing
+# 命令行参数解析
 # ---------------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the argument parser."""
+    """构建命令行参数解析器。
+
+    创建主解析器和三个子命令解析器（test, notify, send）。
+
+    返回：
+        argparse.ArgumentParser: 配置好的参数解析器。
+    """
     parser = argparse.ArgumentParser(
         description="ResearchPulse v2 手动邮件发送工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -268,10 +362,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    # 创建子命令解析器
     subparsers = parser.add_subparsers(dest="command", help="操作类型")
     subparsers.required = True
 
-    # --- test ---
+    # --- test 子命令：发送测试邮件 ---
     p_test = subparsers.add_parser("test", help="发送测试邮件")
     p_test.add_argument(
         "--to",
@@ -285,7 +380,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="指定邮件后端 (默认: 按优先级 fallback)",
     )
 
-    # --- notify ---
+    # --- notify 子命令：触发用户通知 ---
     p_notify = subparsers.add_parser("notify", help="触发用户订阅通知")
     p_notify.add_argument(
         "--since",
@@ -299,7 +394,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="最大处理用户数 (默认: 100)",
     )
 
-    # --- send ---
+    # --- send 子命令：发送自定义邮件 ---
     p_send = subparsers.add_parser("send", help="发送自定义邮件")
     p_send.add_argument(
         "--to",
@@ -311,6 +406,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="邮件主题",
     )
+    # body 和 body_file 互斥
     body_group = p_send.add_mutually_exclusive_group(required=True)
     body_group.add_argument(
         "--body",
@@ -338,7 +434,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    """Main entry point."""
+    """命令行入口函数。
+
+    解析命令行参数并执行对应的子命令。
+    """
     parser = build_parser()
     args = parser.parse_args()
 
@@ -346,6 +445,7 @@ def main() -> None:
     _print("ResearchPulse v2 邮件工具")
     _print("=" * 50)
 
+    # 子命令分发字典
     dispatch = {
         "test": cmd_test,
         "notify": cmd_notify,
