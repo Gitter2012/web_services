@@ -4,8 +4,10 @@
 # 架构角色: AI 处理器子系统的公共翻译函数
 # 设计理念:
 #   1. 单一职责：仅负责文章批量翻译，不含其他 AI 处理逻辑
-#   2. 乐观锁：使用 updated_at 作为版本号，避免多进程并发冲突
-#   3. 可复用：供 apps/crawler/translate_hook.py 和 scripts/ 共同调用
+#   2. 批量并发：先收集所有待翻译文本，再通过 translate_batch 分批并发翻译
+#   3. 分批保护：batch_size 控制每批文本量，batch_delay 批间延迟，兼容限速 provider
+#   4. 乐观锁：使用 updated_at 作为版本号，避免多进程并发冲突
+#   5. 可复用：供 apps/crawler/translate_hook.py 和 scripts/ 共同调用
 # =============================================================================
 
 """Article translation utilities for ResearchPulse.
@@ -13,6 +15,12 @@
 Provides a single public function `translate_articles` that translates
 arXiv English titles and summaries to Chinese, using optimistic locking
 to handle concurrent access safely.
+
+四阶段流水线：
+  阶段1: 查询所有需要翻译的文章（含内容字段）
+  阶段2: 收集待翻译文本列表，记录每篇文章的文本索引
+  阶段3: 按 batch_size 分批调用 translate_batch 并发翻译，批间 batch_delay 延迟
+  阶段4: 并发乐观锁写回数据库
 """
 
 from __future__ import annotations
@@ -27,14 +35,18 @@ logger = logging.getLogger(__name__)
 async def translate_articles(
     article_ids: list[int] | None = None,
     limit: int | None = None,
-    concurrency: int = 1,
+    concurrency: int | None = None,
+    batch_size: int = 20,
+    batch_delay: float = 0.1,
 ) -> dict[str, Any]:
     """翻译 arXiv 文章的英文标题和摘要。
 
     参数：
         article_ids: 要翻译的文章 ID 列表。为 None 时翻译所有待翻译文章。
         limit: 最多处理的文章数量（仅在 article_ids 为 None 时生效）。
-        concurrency: 并发翻译任务数。
+        concurrency: 并发翻译任务数。为 None 时从 feature_config ai.translate_concurrency 读取（默认 5）。
+        batch_size: 每批提交给 translate_batch 的文本数量，用于控制单次 API 请求压力（默认 20）。
+        batch_delay: 批次之间的间隔时间（秒），兼容有速率限制的 provider（默认 0.1）。
 
     返回：
         dict: 翻译结果统计，包含以下字段：
@@ -45,6 +57,7 @@ async def translate_articles(
             - conflict: 乐观锁冲突数量
             - total: 实际处理的文章数
     """
+    from common.feature_config import feature_config
     from core.database import get_session_factory
     from sqlalchemy import and_, or_, select, update
     from apps.crawler.models.article import Article
@@ -52,7 +65,11 @@ async def translate_articles(
 
     # article_ids 为空列表时直接返回
     if article_ids is not None and not article_ids:
-        return {"translated_titles": 0, "translated_summaries": 0, "skipped": 0, "failed": 0, "total": 0}
+        return {"translated_titles": 0, "translated_summaries": 0, "skipped": 0, "failed": 0, "conflict": 0, "total": 0}
+
+    # 从配置读取并发度
+    if concurrency is None:
+        concurrency = feature_config.get_int("ai.translate_concurrency", 5)
 
     session_factory = get_session_factory()
     provider = get_ai_provider()
@@ -73,173 +90,199 @@ async def translate_articles(
         ),
     )
 
+    # -------------------------------------------------------------------------
+    # 阶段1：查询需翻译文章（含内容字段，避免后续额外查询）
+    # -------------------------------------------------------------------------
     async with session_factory() as session:
         query = (
-            select(Article.id, Article.updated_at)
+            select(
+                Article.id,
+                Article.title,
+                Article.summary,
+                Article.translated_title,
+                Article.content_summary,
+                Article.updated_at,
+            )
             .order_by(Article.crawl_time.desc())
         )
 
         if article_ids is not None:
-            # 指定 ID 模式：在给定 ID 中筛选需要翻译的
             query = query.where(and_(Article.id.in_(article_ids), base_where))
         else:
-            # 全量模式：翻译所有待翻译文章，可选数量限制
             query = query.where(base_where)
             if limit is not None:
                 query = query.limit(limit)
 
         result = await session.execute(query)
-        # (article_id, version_timestamp) 列表，version_timestamp 作乐观锁版本号
-        article_versions = [(row[0], row[1]) for row in result.all()]
+        rows = result.all()
 
-    if not article_versions:
+    if not rows:
         await provider.close()
-        return {"translated_titles": 0, "translated_summaries": 0, "skipped": 0, "failed": 0, "total": 0}
+        return {"translated_titles": 0, "translated_summaries": 0, "skipped": 0, "failed": 0, "conflict": 0, "total": 0}
 
-    # 统计计数器
+    total_count = len(rows)
+
+    # -------------------------------------------------------------------------
+    # 阶段2：收集待翻译文本列表
+    # texts: 所有需翻译的原文（标题和摘要混合）
+    # meta:  每篇文章对应的 {article_id, version_timestamp, title_idx, summary_idx}
+    #        title_idx / summary_idx 是该文本在 texts 中的下标，None 表示无需翻译
+    # -------------------------------------------------------------------------
+    texts: list[str] = []
+    meta: list[dict] = []
+
+    for row in rows:
+        article_id, title, summary, existing_translated_title, existing_content_summary, updated_at = row
+        title_idx = None
+        summary_idx = None
+
+        # 标题：未翻译且为英文
+        if not existing_translated_title and title and _is_english(title):
+            title_idx = len(texts)
+            texts.append(title)
+
+        # 摘要：未翻译、有内容且为英文
+        if not existing_content_summary and summary and _is_english(summary):
+            summary_idx = len(texts)
+            texts.append(summary)
+
+        meta.append({
+            "article_id": article_id,
+            "version_timestamp": updated_at,
+            "title_idx": title_idx,
+            "summary_idx": summary_idx,
+        })
+
+    if not texts:
+        # 所有文章均已翻译，无需处理
+        await provider.close()
+        return {"translated_titles": 0, "translated_summaries": 0, "skipped": 0, "failed": 0, "conflict": 0, "total": total_count}
+
+    total_batches = (len(texts) + batch_size - 1) // batch_size
+    logger.info(
+        f"[translate] 待翻译: {len(texts)} 个文本（{total_count} 篇文章），"
+        f"并发度: {concurrency}，分批大小: {batch_size}，共 {total_batches} 批"
+    )
+
+    # -------------------------------------------------------------------------
+    # 阶段3：分批并发翻译
+    # 每批调用 translate_batch（内部 Semaphore 控制并发），批间等待 batch_delay
+    # -------------------------------------------------------------------------
+    translated_texts: list[str | None] = []
+    try:
+        for batch_idx, i in enumerate(range(0, len(texts), batch_size), 1):
+            batch = texts[i:i + batch_size]
+            batch_results = await provider.translate_batch(batch, concurrency=concurrency)
+            translated_texts.extend(batch_results)
+            logger.info(f"[translate] 批次 {batch_idx}/{total_batches} 完成（{len(batch)} 个文本）")
+            # 最后一批不需要延迟
+            if i + batch_size < len(texts):
+                await asyncio.sleep(batch_delay)
+    except Exception as e:
+        logger.error(f"translate_batch failed: {e}", exc_info=True)
+        await provider.close()
+        return {
+            "error": str(e),
+            "translated_titles": 0,
+            "translated_summaries": 0,
+            "skipped": 0,
+            "failed": total_count,
+            "conflict": 0,
+            "total": total_count,
+        }
+    finally:
+        await provider.close()
+
+    # -------------------------------------------------------------------------
+    # 阶段4：并发乐观锁写回数据库
+    # 每篇文章使用独立 session，WHERE 条件包含 updated_at 版本号（乐观锁）
+    # -------------------------------------------------------------------------
     translated_titles = 0
     translated_summaries = 0
     skipped = 0
     failed = 0
     conflict = 0
-    counter_lock = asyncio.Lock()
-    progress_counter = [0]  # 使用列表以便在闭包中修改
-    total_count = len(article_versions)
+    write_semaphore = asyncio.Semaphore(concurrency)
 
-    async def translate_article(article_id: int, version_timestamp) -> tuple[int, int, int, int, int]:
-        """翻译单篇文章，使用乐观锁。
+    async def write_article(item: dict) -> None:
+        nonlocal translated_titles, translated_summaries, skipped, failed, conflict
 
-        返回：
-            tuple: (titles, summaries, skipped, failed, conflict) 计数。
-        """
-        local_titles = 0
-        local_summaries = 0
+        article_id = item["article_id"]
+        version_timestamp = item["version_timestamp"]
+        title_idx = item["title_idx"]
+        summary_idx = item["summary_idx"]
+
+        update_values: dict = {}
         local_skipped = 0
-        local_failed = 0
-        local_conflict = 0
+
+        # 回填标题翻译结果
+        if title_idx is not None:
+            result_title = translated_texts[title_idx]
+            if result_title:
+                update_values["translated_title"] = result_title
+            else:
+                local_skipped += 1
+
+        # 回填摘要翻译结果
+        if summary_idx is not None:
+            result_summary = translated_texts[summary_idx]
+            if result_summary:
+                update_values["content_summary"] = result_summary
+            else:
+                local_skipped += 1
+
+        if not update_values:
+            skipped += local_skipped
+            return
 
         try:
             async with session_factory() as session:
-                # 查询文章内容
-                result = await session.execute(
-                    select(
-                        Article.title,
-                        Article.summary,
-                        Article.translated_title,
-                        Article.content_summary,
-                        Article.updated_at,
-                    ).where(Article.id == article_id)
-                )
-                row = result.first()
-                if not row:
-                    return (0, 0, 0, 1, 0)
-
-                title, summary, existing_translated_title, existing_content_summary, current_updated_at = row
-
-                # 乐观锁检查：如果 updated_at 已变化，说明已被其他进程处理
-                if current_updated_at != version_timestamp:
-                    logger.debug(f"Article {article_id} already processed by another process (optimistic lock)")
-                    return (0, 0, 0, 0, 1)
-
-                # 再次检查是否已有翻译（其他进程可能已完成）
-                if existing_translated_title and existing_content_summary:
-                    return (0, 0, 0, 0, 0)  # 已完成，不算冲突
-
-                update_values = {}
-
-                # 翻译标题（如果未翻译且为英文）
-                if not existing_translated_title and title and _is_english(title):
-                    translated_title = await provider.translate(title)
-                    if translated_title:
-                        update_values["translated_title"] = translated_title
-                        local_titles = 1
-                    else:
-                        local_skipped = 1
-
-                # 翻译摘要（如果未翻译、有内容且为英文）
-                if not existing_content_summary and summary and _is_english(summary):
-                    translated_summary = await provider.translate(summary)
-                    if translated_summary:
-                        update_values["content_summary"] = translated_summary
-                        local_summaries = 1
-                    else:
-                        local_skipped += 1
-
-                # 使用乐观锁更新：WHERE 条件包含版本号检查
-                if update_values:
-                    update_result = await session.execute(
-                        update(Article)
-                        .where(
-                            and_(
-                                Article.id == article_id,
-                                Article.updated_at == version_timestamp,  # 乐观锁
-                            )
+                update_result = await session.execute(
+                    update(Article)
+                    .where(
+                        and_(
+                            Article.id == article_id,
+                            Article.updated_at == version_timestamp,  # 乐观锁
                         )
-                        .values(**update_values)
                     )
+                    .values(**update_values)
+                )
 
-                    # 检查更新是否成功（受影响行数为 0 表示版本冲突）
-                    if update_result.rowcount == 0:
-                        logger.debug(f"Article {article_id} optimistic lock conflict")
-                        await session.rollback()
-                        return (0, 0, 0, 0, 1)
+                if update_result.rowcount == 0:
+                    logger.debug(f"Article {article_id} optimistic lock conflict")
+                    await session.rollback()
+                    conflict += 1
+                    return
 
                 await session.commit()
-                return (local_titles, local_summaries, local_skipped, local_failed, local_conflict)
+
+                if "translated_title" in update_values:
+                    translated_titles += 1
+                if "content_summary" in update_values:
+                    translated_summaries += 1
+                skipped += local_skipped
 
         except Exception as e:
-            logger.warning(f"Failed to translate article {article_id}: {e}")
-            return (0, 0, 0, 1, 0)
+            logger.warning(f"Failed to write translation for article {article_id}: {e}")
+            failed += 1
 
-    async def update_counter(result: tuple[int, int, int, int, int]):
-        """线程安全地更新计数器。"""
-        nonlocal translated_titles, translated_summaries, skipped, failed, conflict
-        async with counter_lock:
-            translated_titles += result[0]
-            translated_summaries += result[1]
-            skipped += result[2]
-            failed += result[3]
-            conflict += result[4]
-            # 更新进度
-            progress_counter[0] += 1
-            current = progress_counter[0]
-            pct = (current / total_count) * 100
-            logger.info(
-                f"[translate] 进度: {current}/{total_count} ({pct:.1f}%) "
-                f"- 标题: {translated_titles}, 摘要: {translated_summaries}"
-            )
+    async def write_with_semaphore(item: dict) -> None:
+        async with write_semaphore:
+            await write_article(item)
 
-    # 使用信号量控制并发
-    semaphore = asyncio.Semaphore(concurrency)
+    write_tasks = [write_with_semaphore(item) for item in meta]
+    await asyncio.gather(*write_tasks)
 
-    async def translate_with_semaphore(article_id: int, version_timestamp):
-        async with semaphore:
-            result = await translate_article(article_id, version_timestamp)
-            await update_counter(result)
+    logger.info(
+        f"[translate] 完成: 标题 {translated_titles}, 摘要 {translated_summaries}, "
+        f"跳过 {skipped}, 冲突 {conflict}, 失败 {failed} / 共 {total_count} 篇"
+    )
 
-    try:
-        # 并发执行所有翻译任务
-        tasks = [translate_with_semaphore(aid, ver) for aid, ver in article_versions]
-        await asyncio.gather(*tasks)
-
-        return {
-            "translated_titles": translated_titles,
-            "translated_summaries": translated_summaries,
-            "skipped": skipped,
-            "failed": failed,
-            "conflict": conflict,
-            "total": len(article_versions),
-        }
-    except Exception as e:
-        logger.error(f"Translation failed: {e}", exc_info=True)
-        return {
-            "error": str(e),
-            "translated_titles": translated_titles,
-            "translated_summaries": translated_summaries,
-            "skipped": skipped,
-            "failed": failed,
-            "conflict": conflict,
-            "total": len(article_versions),
-        }
-    finally:
-        await provider.close()
+    return {
+        "translated_titles": translated_titles,
+        "translated_summaries": translated_summaries,
+        "skipped": skipped,
+        "failed": failed,
+        "conflict": conflict,
+        "total": total_count,
+    }

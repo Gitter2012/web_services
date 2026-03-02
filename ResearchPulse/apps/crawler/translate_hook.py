@@ -58,7 +58,11 @@ async def translate_after_crawl(article_ids: list[int]) -> dict[str, Any]:
         from apps.ai_processor.article_translate import translate_articles
 
         logger.info(f"Post-crawl translation starting for {len(article_ids)} articles")
-        result = await translate_articles(article_ids=article_ids)
+        result = await translate_articles(
+            article_ids=article_ids,
+            batch_size=20,
+            batch_delay=0.1,
+        )
 
         if not result.get("error"):
             logger.info(
