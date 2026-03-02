@@ -147,8 +147,28 @@ class BaseCrawler(ABC):
                 if existing:
                     # 文章已存在：更新已有记录，优先使用更完整的数据
                     # 仅在新值非空且比旧值更完整时才更新
+
+                    # 对于 arxiv 来源，判断新抓取的论文是否比已有记录更新
+                    # arxiv_id / url / cover_image_url 只在新数据更新时才覆盖
+                    new_updated_time = article_data.get("arxiv_updated_time")
+                    existing_updated_time = existing.arxiv_updated_time
+                    is_newer = (
+                        new_updated_time is not None
+                        and (
+                            existing_updated_time is None
+                            or new_updated_time > existing_updated_time
+                        )
+                    )
+                    # 这些字段仅在新数据更新时才覆盖，否则保留已有值
+                    version_sensitive_fields = {"arxiv_id", "url", "cover_image_url"}
+
                     for key, value in article_data.items():
                         if hasattr(existing, key) and value is not None:
+                            # 版本敏感字段：只有新数据更新时才更新
+                            if key in version_sensitive_fields:
+                                if is_newer:
+                                    setattr(existing, key, value)
+                                continue
                             existing_value = getattr(existing, key, None)
                             # 对于字符串类型，只有新值更长或旧值为空时才更新
                             if isinstance(value, str):
