@@ -19,8 +19,7 @@ to handle concurrent access safely.
 四阶段流水线：
   阶段1: 查询所有需要翻译的文章（含内容字段）
   阶段2: 收集待翻译文本列表，记录每篇文章的文本索引
-  阶段3: 按 batch_size 分批调用 translate_batch 并发翻译，批间 batch_delay 延迟
-  阶段4: 并发乐观锁写回数据库
+  阶段3+4: 按 batch_size 分批翻译，每批完成后立即并发写回该批涉及的文章
 """
 
 from __future__ import annotations
@@ -165,38 +164,14 @@ async def translate_articles(
     )
 
     # -------------------------------------------------------------------------
-    # 阶段3：分批并发翻译
-    # 每批调用 translate_batch（内部 Semaphore 控制并发），批间等待 batch_delay
+    # 阶段3+4：分批翻译 + 每批立即写回
+    # - translated_texts 预初始化为 None，按批次填充，write_article 只写非 None 的字段
+    # - 每批翻译完成后，筛选出该批涉及的文章（batch_meta）并发写回
+    # - 标题和摘要跨批次时，该文章会被写回两次（各写一个字段），乐观锁各自独立检查
     # -------------------------------------------------------------------------
-    translated_texts: list[str | None] = []
-    try:
-        for batch_idx, i in enumerate(range(0, len(texts), batch_size), 1):
-            batch = texts[i:i + batch_size]
-            batch_results = await provider.translate_batch(batch, concurrency=concurrency)
-            translated_texts.extend(batch_results)
-            logger.info(f"[translate] 批次 {batch_idx}/{total_batches} 完成（{len(batch)} 个文本）")
-            # 最后一批不需要延迟
-            if i + batch_size < len(texts):
-                await asyncio.sleep(batch_delay)
-    except Exception as e:
-        logger.error(f"translate_batch failed: {e}", exc_info=True)
-        await provider.close()
-        return {
-            "error": str(e),
-            "translated_titles": 0,
-            "translated_summaries": 0,
-            "skipped": 0,
-            "failed": total_count,
-            "conflict": 0,
-            "total": total_count,
-        }
-    finally:
-        await provider.close()
+    # 预初始化翻译结果列表，按批次填充（确保跨批次文章写回时未翻译字段为 None）
+    translated_texts: list[str | None] = [None] * len(texts)
 
-    # -------------------------------------------------------------------------
-    # 阶段4：并发乐观锁写回数据库
-    # 每篇文章使用独立 session，WHERE 条件包含 updated_at 版本号（乐观锁）
-    # -------------------------------------------------------------------------
     translated_titles = 0
     translated_summaries = 0
     skipped = 0
@@ -205,6 +180,7 @@ async def translate_articles(
     write_semaphore = asyncio.Semaphore(concurrency)
 
     async def write_article(item: dict) -> None:
+        """写回单篇文章，仅写入 translated_texts 中已填充（非 None）的字段。"""
         nonlocal translated_titles, translated_summaries, skipped, failed, conflict
 
         article_id = item["article_id"]
@@ -215,21 +191,23 @@ async def translate_articles(
         update_values: dict = {}
         local_skipped = 0
 
-        # 回填标题翻译结果
+        # 回填标题翻译结果（None 表示该批次尚未翻译，跳过）
         if title_idx is not None:
             result_title = translated_texts[title_idx]
-            if result_title:
-                update_values["translated_title"] = result_title
-            else:
-                local_skipped += 1
+            if result_title is not None:
+                if result_title:
+                    update_values["translated_title"] = result_title
+                else:
+                    local_skipped += 1
 
-        # 回填摘要翻译结果
+        # 回填摘要翻译结果（None 表示该批次尚未翻译，跳过）
         if summary_idx is not None:
             result_summary = translated_texts[summary_idx]
-            if result_summary:
-                update_values["content_summary"] = result_summary
-            else:
-                local_skipped += 1
+            if result_summary is not None:
+                if result_summary:
+                    update_values["content_summary"] = result_summary
+                else:
+                    local_skipped += 1
 
         if not update_values:
             skipped += local_skipped
@@ -270,8 +248,50 @@ async def translate_articles(
         async with write_semaphore:
             await write_article(item)
 
-    write_tasks = [write_with_semaphore(item) for item in meta]
-    await asyncio.gather(*write_tasks)
+    try:
+        for batch_idx, i in enumerate(range(0, len(texts), batch_size), 1):
+            batch = texts[i:i + batch_size]
+            batch_end = i + len(batch)
+
+            # 翻译当前批次
+            batch_results = await provider.translate_batch(batch, concurrency=concurrency)
+
+            # 填充本批次的翻译结果到全局列表
+            translated_texts[i:batch_end] = batch_results
+
+            # 筛选出 title_idx 或 summary_idx 落在本批次范围内的文章
+            batch_meta = [
+                item for item in meta
+                if (item["title_idx"] is not None and i <= item["title_idx"] < batch_end)
+                or (item["summary_idx"] is not None and i <= item["summary_idx"] < batch_end)
+            ]
+
+            # 立即并发写回本批次涉及的文章
+            write_tasks = [write_with_semaphore(item) for item in batch_meta]
+            await asyncio.gather(*write_tasks)
+
+            logger.info(
+                f"[translate] 批次 {batch_idx}/{total_batches} 完成并写回"
+                f"（{len(batch)} 个文本，{len(batch_meta)} 篇文章）"
+            )
+
+            # 最后一批不需要延迟
+            if batch_end < len(texts):
+                await asyncio.sleep(batch_delay)
+
+    except Exception as e:
+        logger.error(f"translate_batch failed: {e}", exc_info=True)
+        return {
+            "error": str(e),
+            "translated_titles": translated_titles,
+            "translated_summaries": translated_summaries,
+            "skipped": skipped,
+            "failed": failed + (total_count - translated_titles - translated_summaries - skipped - conflict - failed),
+            "conflict": conflict,
+            "total": total_count,
+        }
+    finally:
+        await provider.close()
 
     logger.info(
         f"[translate] 完成: 标题 {translated_titles}, 摘要 {translated_summaries}, "
