@@ -96,7 +96,7 @@ class BaseCrawler(ABC):
         """将文章列表保存到数据库，带有去重逻辑。
 
         去重策略:
-            - ArXiv: 通过 arxiv_id 全局去重（不使用 source_id）
+            - ArXiv: 通过规范化的 external_id 全局去重（不含版本号，不使用 source_id）
             - 其他源: 通过 (source_type, source_id, external_id) 三元组唯一标识
         如果文章已存在则更新非空字段，否则创建新记录。
 
@@ -118,8 +118,6 @@ class BaseCrawler(ABC):
                 # 提取文章的外部唯一标识，用于去重判断
                 # external_id 来自数据源本身的ID（如 arXiv ID、文章 GUID 等）
                 external_id = article_data.get("external_id", "")
-                url = article_data.get("url", "")
-                arxiv_id = article_data.get("arxiv_id", "")
 
                 # 根据数据源类型选择不同的去重策略
                 existing = None
