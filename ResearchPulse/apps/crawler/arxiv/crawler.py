@@ -126,7 +126,7 @@ class Paper:
                     author_str = truncated + " et al."
 
         return {
-            "external_id": self.arxiv_id,
+            "external_id": _normalize_arxiv_id(self.arxiv_id),  # 规范化值用于唯一索引去重
             "title": self.title,
             "url": abs_url,  # Main URL goes to abstract page
             "author": author_str,  # 使用已截断的作者字符串
@@ -681,8 +681,8 @@ class ArxivCrawler(BaseCrawler):
 
             existing = merged.get(key)
             if not existing:
-                # 首次遇到此论文，直接加入，并规范化 arxiv_id（去除版本号）
-                paper.arxiv_id = key
+                # 首次遇到此论文，直接加入
+                # arxiv_id 保留原始值（含版本号），external_id 在 to_article_dict() 中规范化用于去重
                 merged[key] = paper
                 continue
 

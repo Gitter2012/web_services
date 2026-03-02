@@ -124,12 +124,12 @@ class BaseCrawler(ABC):
                 # 根据数据源类型选择不同的去重策略
                 existing = None
 
-                if self.source_type == "arxiv" and arxiv_id:
-                    # ArXiv 论文使用 arxiv_id 全局去重
-                    # 这样同一篇论文不会因为属于多个分类而重复
+                if self.source_type == "arxiv" and external_id:
+                    # ArXiv 论文使用规范化的 external_id 全局去重（不含版本号后缀）
+                    # 这样同一篇论文不会因为属于多个分类或版本号不同而重复
                     stmt = select(Article).where(
                         Article.source_type == self.source_type,
-                        Article.arxiv_id == arxiv_id,
+                        Article.external_id == external_id,
                     )
                     result = await session.execute(stmt)
                     existing = result.scalar_one_or_none()
@@ -197,13 +197,12 @@ class BaseCrawler(ABC):
         # 收集新创建文章的 ID
         for article_data in articles:
             # 新创建的文章没有 ID，需要从 session 中获取
-            # 通过 arxiv_id 或 external_id 查询刚保存的文章 ID
-            arxiv_id = article_data.get("arxiv_id", "")
+            # 通过 external_id 查询刚保存的文章 ID
             external_id = article_data.get("external_id", "")
-            if arxiv_id and self.source_type == "arxiv":
+            if external_id and self.source_type == "arxiv":
                 stmt = select(Article.id).where(
                     Article.source_type == self.source_type,
-                    Article.arxiv_id == arxiv_id,
+                    Article.external_id == external_id,
                 )
                 result = await session.execute(stmt)
                 article_id = result.scalar_one_or_none()
