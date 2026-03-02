@@ -681,7 +681,8 @@ class ArxivCrawler(BaseCrawler):
 
             existing = merged.get(key)
             if not existing:
-                # 首次遇到此论文，直接加入
+                # 首次遇到此论文，直接加入，并规范化 arxiv_id（去除版本号）
+                paper.arxiv_id = key
                 merged[key] = paper
                 continue
 
