@@ -176,6 +176,7 @@ JWT_SECRET_KEY=your_secret
 | 阶段 | 说明 | 功能开关 |
 |------|------|----------|
 | `ai` | AI 文章处理（摘要/分类/评分） | `feature.ai_processor` |
+| `translate` | 标题/摘要翻译（arXiv 英文→中文） | `feature.ai_processor` |
 | `embedding` | 向量嵌入计算 | `feature.embedding` |
 | `event` | 事件聚类 | `feature.event_clustering` |
 | `topic` | 主题发现 | `feature.topic_radar` |

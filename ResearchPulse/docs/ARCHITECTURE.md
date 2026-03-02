@@ -115,6 +115,7 @@ ResearchPulse 采用分层架构设计，从上到下分为用户界面层、API
 | 阶段 | 定时任务 | 功能开关 | 单次处理量 | 说明 |
 |------|---------|---------|-----------|------|
 | Crawl | 每 6 小时 | `feature.crawler` | 全部活跃源 | 从 7 种数据源抓取文章 |
+| Translate | 抓取后触发 | `feature.ai_processor` | arXiv 文章 | 抓取后即时翻译 arXiv 英文标题/摘要为中文 |
 | AI Process | 每 1 小时 | `feature.ai_processor` | 200 篇（可配置） | AI 生成摘要、分类、评分 |
 | Embed | 每 2 小时 | `feature.embedding` | 500 篇（可配置） | 计算文章向量嵌入到 Milvus |
 | Cluster | 每天凌晨 2 点 | `feature.event_clustering` | 500 篇（可配置） | 基于相似度聚类文章为事件 |

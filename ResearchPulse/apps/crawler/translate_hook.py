@@ -5,7 +5,7 @@
 # 设计理念:
 #   1. 流程独立：抓取后立即翻译，不等待 AI 处理流程
 #   2. 配置依赖：需要 feature.ai_processor 开启才能使用 AI Provider
-#   3. 轻量级：复用现有翻译逻辑，不重复实现
+#   3. 轻量级：委托给 apps/ai_processor/article_translate.py，不重复实现
 # =============================================================================
 
 """Post-crawl translation hook for ResearchPulse.
@@ -53,12 +53,12 @@ async def translate_after_crawl(article_ids: list[int]) -> dict[str, Any]:
     if not article_ids:
         return {"skipped": True, "reason": "no articles to translate"}
 
-    # 复用 AI pipeline runner 的翻译逻辑
+    # 使用 ai_processor 层的翻译逻辑
     try:
-        from scripts._ai_pipeline_runner import _run_translate_for_articles
+        from apps.ai_processor.article_translate import translate_articles
 
         logger.info(f"Post-crawl translation starting for {len(article_ids)} articles")
-        result = await _run_translate_for_articles(article_ids)
+        result = await translate_articles(article_ids=article_ids)
 
         if not result.get("error"):
             logger.info(
