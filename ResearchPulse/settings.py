@@ -217,6 +217,11 @@ class Settings(BaseSettings):
         default=_cache_config.get("default_ttl", 300),
         validation_alias="CACHE_DEFAULT_TTL",
     )
+    # 内存缓存最大条目数（当 Redis 不可用时作为降级方案），超过此数量使用 LRU 淘汰
+    cache_memory_maxsize: int = Field(
+        default=_cache_config.get("memory_maxsize", 1024),
+        validation_alias="CACHE_MEMORY_MAXSIZE",
+    )
 
     # ======================== JWT 认证配置 ========================
     # JWT 密钥：为空时自动生成随机密钥（见下方 validator）

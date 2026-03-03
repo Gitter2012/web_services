@@ -31,6 +31,9 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import time
+from collections import OrderedDict
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -107,6 +110,93 @@ class CacheBackend:
         # 清空所有缓存数据
         # 注意：此操作会删除当前数据库中的所有键值对，使用需谨慎
         raise NotImplementedError
+
+
+class MemoryCache(CacheBackend):
+    """In-process LRU memory cache with per-key TTL support.
+
+    作为 Redis 不可用时的本地内存缓存降级方案。
+    使用 OrderedDict 实现 LRU 淘汰策略，支持精确的 per-key TTL 过期和最大缓存数量限制。
+    线程安全（使用 threading.Lock 保护所有操作）。
+    注意：进程重启后缓存数据丢失，多进程/实例间不共享数据。
+    """
+    # 内存缓存实现：基于 OrderedDict 的 LRU 缓存 + per-key TTL 过期
+    # 与 Redis 行为保持一致：每个 set 调用可指定独立的 TTL
+    # 超出 maxsize 时自动淘汰最久未使用的键（LRU 策略）
+
+    def __init__(self, default_ttl: int = 300, maxsize: int = 1024):
+        """Initialize an in-process LRU memory cache.
+
+        Args:
+            default_ttl: Default time-to-live in seconds.
+            maxsize: Maximum number of entries before LRU eviction.
+        """
+        # 初始化内存缓存
+        # 参数 default_ttl：默认缓存过期时间（秒），默认 300 秒
+        # 参数 maxsize：最大缓存条目数，超出时淘汰最久未使用的键，默认 1024
+        self._store: OrderedDict[str, Any] = OrderedDict()  # 键 -> 值（保持 LRU 顺序）
+        self._expiry: dict[str, float] = {}                  # 键 -> 过期时间戳
+        self._lock = threading.Lock()
+        self.default_ttl = default_ttl
+        self.maxsize = maxsize
+        logger.info(f"MemoryCache initialized (maxsize={maxsize}, default_ttl={default_ttl}s)")
+
+    def _is_expired(self, key: str) -> bool:
+        """Check if a key has passed its TTL (caller must hold lock)."""
+        # 检查键是否已过期（调用前需持锁）
+        exp = self._expiry.get(key)
+        return exp is not None and time.monotonic() > exp
+
+    def _evict(self, key: str) -> None:
+        """Remove a single key from store and expiry (caller must hold lock)."""
+        # 删除单个键的存储数据和过期记录（调用前需持锁）
+        self._store.pop(key, None)
+        self._expiry.pop(key, None)
+
+    def _evict_lru(self) -> None:
+        """Evict least-recently-used entries until size is within maxsize (caller must hold lock)."""
+        # 当缓存条目数达到 maxsize 时，淘汰最久未使用的键（调用前需持锁）
+        while len(self._store) >= self.maxsize:
+            oldest_key, _ = self._store.popitem(last=False)  # FIFO 弹出最旧的键
+            self._expiry.pop(oldest_key, None)
+
+    def get(self, key: str) -> Optional[Any]:
+        # 获取缓存值：过期键视为未命中，命中时将键移到末尾（LRU 标记）
+        with self._lock:
+            if key not in self._store or self._is_expired(key):
+                self._evict(key)
+                return None
+            self._store.move_to_end(key)  # 标记为最近使用
+            return self._store[key]
+
+    def set(self, key: str, value: Any, ttl: int = 300) -> None:
+        # 存入缓存值：若键已存在则更新并移到末尾，否则先检查容量再插入
+        with self._lock:
+            if key in self._store:
+                self._store.move_to_end(key)
+            else:
+                self._evict_lru()
+            self._store[key] = value
+            self._expiry[key] = time.monotonic() + ttl
+
+    def delete(self, key: str) -> None:
+        # 删除指定键的缓存
+        with self._lock:
+            self._evict(key)
+
+    def exists(self, key: str) -> bool:
+        # 检查键是否存在且未过期
+        with self._lock:
+            if key not in self._store or self._is_expired(key):
+                self._evict(key)
+                return False
+            return True
+
+    def clear(self) -> None:
+        # 清空所有缓存数据
+        with self._lock:
+            self._store.clear()
+            self._expiry.clear()
 
 
 class NoCache(CacheBackend):
@@ -236,12 +326,18 @@ def get_cache() -> CacheBackend:
     """Select the cache backend based on configuration.
 
     Returns:
-        CacheBackend: Redis cache when available, otherwise a NoCache instance.
+        CacheBackend: Redis cache when available, MemoryCache as fallback,
+        or NoCache when caching is disabled.
     """
     # 根据系统配置选择合适的缓存后端（策略模式）
-    # 如果 Redis 可用且配置正确，返回 RedisCache 实例
-    # 否则返回 NoCache 实例（优雅降级）
+    # 降级链路：RedisCache → MemoryCache → NoCache（仅 cache_enabled=False 时）
     from settings import settings
+
+    # 缓存完全禁用时返回无操作实现
+    if not settings.cache_enabled:
+        return NoCache()
+
+    memory_maxsize = settings.cache_memory_maxsize
 
     if settings.redis_available:
         try:
@@ -253,11 +349,18 @@ def get_cache() -> CacheBackend:
                 default_ttl=settings.cache_default_ttl,
             )
         except Exception as e:
-            # Redis 初始化失败时降级为无缓存模式，不影响系统启动
-            logger.warning(f"Failed to initialize Redis cache: {e}")
-            return NoCache()
-    # Redis 未配置时直接使用无缓存模式
-    return NoCache()
+            # Redis 初始化失败时降级为内存缓存，不影响系统启动
+            logger.warning(f"Failed to initialize Redis cache: {e}, falling back to MemoryCache")
+            return MemoryCache(
+                default_ttl=settings.cache_default_ttl,
+                maxsize=memory_maxsize,
+            )
+    # Redis 未配置但缓存已启用时，使用内存缓存
+    logger.info("Redis not configured, using MemoryCache as fallback")
+    return MemoryCache(
+        default_ttl=settings.cache_default_ttl,
+        maxsize=memory_maxsize,
+    )
 
 
 # 全局缓存实例（惰性初始化）
