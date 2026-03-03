@@ -1,30 +1,37 @@
 # =============================================================================
 # 缓存模块
 # =============================================================================
-# 本模块提供 ResearchPulse 项目的缓存功能，支持 Redis 缓存和无缓存两种模式。
+# 本模块提供 ResearchPulse 项目的缓存功能，支持 Redis、内存缓存和无缓存三种模式。
 # 主要职责：
 #   1. 定义缓存后端的抽象接口（CacheBackend），统一缓存操作的 API
 #   2. 提供 Redis 缓存实现（RedisCache），支持 TTL 过期机制
-#   3. 提供无操作缓存实现（NoCache），作为 Redis 不可用时的降级方案
-#   4. 提供全局缓存实例的惰性初始化和代理访问机制
+#   3. 提供进程内内存缓存实现（MemoryCache），作为 Redis 不可用时的降级方案
+#   4. 提供无操作缓存实现（NoCache），作为缓存完全禁用时的占位实现
+#   5. 提供全局缓存实例的惰性初始化和代理访问机制
 #
 # 架构角色：
 #   - 作为可选的性能优化层，可被任何需要缓存的模块调用
 #   - 通过 CacheProxy 代理对象提供全局统一的缓存访问入口
-#   - 支持优雅降级：当 Redis 不可用时自动退化为 NoCache，不影响系统正常运行
+#   - 支持三级优雅降级：RedisCache → MemoryCache → NoCache
+#
+# 降级链路：
+#   cache_enabled=False                          → NoCache（禁用缓存）
+#   cache_enabled=True, redis_available=True     → RedisCache（优先）
+#   cache_enabled=True, Redis 连接失败/未配置    → MemoryCache（自动降级）
 #
 # 设计决策：
 #   - 使用策略模式（Strategy Pattern）：CacheBackend 为抽象策略，
-#     RedisCache 和 NoCache 为具体策略，运行时根据配置动态选择
+#     RedisCache / MemoryCache / NoCache 为具体策略，运行时根据配置动态选择
 #   - 使用代理模式（Proxy Pattern）：CacheProxy 延迟初始化真实的缓存实例，
 #     避免模块加载时就连接 Redis
 #   - 所有 Redis 操作都包裹在 try-except 中，确保缓存故障不会导致系统崩溃
 #   - 缓存值使用 JSON 序列化存储，支持 Python 基本数据类型
+#   - MemoryCache 使用 OrderedDict 实现 LRU 淘汰 + per-key TTL，线程安全
 # =============================================================================
 
 """Cache module for ResearchPulse v2.
 
-Provides optional Redis caching with fallback to no-cache.
+Provides optional Redis caching with in-process memory cache fallback.
 """
 
 from __future__ import annotations
