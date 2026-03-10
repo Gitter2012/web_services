@@ -17,6 +17,7 @@ import logging
 import os
 import signal
 import socket
+import sys
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -440,9 +441,9 @@ class ModelManager:
                     f"usable={usable_mb}MB, config_utilization={config_utilization}, "
                     f"actual_utilization={actual_utilization:.3f}")
 
-        # 构建 vLLM 启动命令
+        # 构建 vLLM 启动命令 - 使用当前 Python 解释器
         cmd = [
-            "python", "-m", "vllm.entrypoints.openai.api_server",
+            sys.executable, "-m", "vllm.entrypoints.openai.api_server",
             "--host", "0.0.0.0",
             "--model", cfg.model_path,
             "--port", str(model.port),
@@ -471,12 +472,36 @@ class ModelManager:
             cmd.extend(cfg.extra_args)
 
         # 模型下载目录
-        cmd.extend(["--download-dir", "/tmp/vllm_models"])
+        # 使用 HF_HOME 环境变量指定的缓存路径，若未设置则回退到默认路径
+        hf_home = os.environ.get("HF_HOME", "")
+        download_dir = os.path.join(hf_home, "hub") if hf_home else "/tmp/vllm_models"
+        cmd.extend(["--download-dir", download_dir])
 
         logger.info(f"Starting vLLM: {' '.join(cmd)}")
 
         # 准备环境变量
         env = os.environ.copy()
+
+        # 修正 LD_LIBRARY_PATH：确保 conda 环境的 libstdc++ 优先于系统旧版本
+        # 避免 CXXABI 版本不兼容导致 vLLM 启动失败
+        import sys as _sys
+        conda_lib = str(_sys.exec_prefix) + "/lib"
+        current_ldpath = env.get("LD_LIBRARY_PATH", "")
+        if conda_lib not in current_ldpath.split(":"):
+            env["LD_LIBRARY_PATH"] = conda_lib + (":" + current_ldpath if current_ldpath else "")
+
+        # 检查模型是否已在本地缓存，若已缓存则启用离线模式
+        # 防止 transformers 的 is_base_mistral() 等函数触发 HF API 请求导致 429 限速
+        # 若本地无缓存则保持联网，允许 vLLM 自动下载模型
+        model_cache_dir = os.path.join(
+            download_dir,
+            "models--" + cfg.model_path.replace("/", "--")
+        )
+        if os.path.isdir(model_cache_dir):
+            env.setdefault("HF_HUB_OFFLINE", "1")
+            env.setdefault("TRANSFORMERS_OFFLINE", "1")
+            logger.info(f"Model cache found at {model_cache_dir}, enabling offline mode")
+
         if cfg.api_key:
             # HuggingFace Token（用于访问受保护的模型）
             env['HF_TOKEN'] = cfg.api_key
@@ -513,7 +538,7 @@ class ModelManager:
                         break
                     decoded = line.decode('utf-8', errors='replace').rstrip()
                     if decoded:
-                        logger.debug(f"[{model.model_id}] {prefix}: {decoded}")
+                        logger.info(f"[{model.model_id}] {prefix}: {decoded}")
                 except Exception:
                     break
 

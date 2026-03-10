@@ -11,6 +11,13 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 RUN_DIR="${SCRIPT_DIR}/run"
 PID_FILE="${RUN_DIR}/vllm_proxy.pid"
 
+# 检测 Python 解释器
+if [ -x "/root/myenv/bin/python" ]; then
+    PYTHON_BIN="/root/myenv/bin/python"
+else
+    PYTHON_BIN="python3"
+fi
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -84,7 +91,7 @@ stop_service() {
         log_warn "PID 文件不存在，服务可能未运行"
 
         # 尝试查找进程
-        local pids=$(pgrep -f "python3 proxy/main.py" || true)
+        local pids=$(pgrep -f "$PYTHON_BIN.*main.py" || true)
         if [[ -n "$pids" ]]; then
             log_info "发现相关进程:"
             ps -fp $pids

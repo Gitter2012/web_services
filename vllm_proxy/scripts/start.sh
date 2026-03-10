@@ -16,6 +16,13 @@ RUN_DIR="${SCRIPT_DIR}/run"
 PID_FILE="${RUN_DIR}/vllm_proxy.pid"
 DAEMON_MODE=false
 
+# 检测 Python 解释器
+if [ -x "/root/myenv/bin/python" ] && /root/myenv/bin/python -c "import vllm" 2>/dev/null; then
+    PYTHON_BIN="/root/myenv/bin/python"
+else
+    PYTHON_BIN="python3"
+fi
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -92,10 +99,11 @@ check_environment() {
     log_info "检查运行环境..."
 
     # 检查 Python
-    if ! command -v python3 &> /dev/null; then
-        log_error "Python3 未安装"
+    if ! command -v "$PYTHON_BIN" &> /dev/null; then
+        log_error "Python 未安装或不可用: $PYTHON_BIN"
         exit 1
     fi
+    log_info "Python: $PYTHON_BIN"
 
     # 检查 CUDA
     if ! command -v nvidia-smi &> /dev/null; then
@@ -119,7 +127,7 @@ check_environment() {
     local port=8080
     if [[ -f "$CONFIG_FILE" ]]; then
         # 使用 Python 解析 YAML 获取端口
-        port=$(python3 -c "
+        port=$($PYTHON_BIN -c "
 import yaml
 with open('$CONFIG_FILE', 'r') as f:
     data = yaml.safe_load(f)
@@ -153,13 +161,11 @@ start_service() {
     log_info "配置文件: $CONFIG_FILE"
     log_info "日志目录: $LOG_DIR"
 
-    cd "$PROJECT_DIR"
-
     # 设置 Python 路径
-    export PYTHONPATH="${PROJECT_DIR}:${PYTHONPATH}"
+    export PYTHONPATH="${PROJECT_DIR}/proxy:${PYTHONPATH}"
 
-    # 构建启动命令
-    local cmd="python3 proxy/main.py"
+    # 构建启动命令 - 从 proxy 目录启动以确保模块路径正确
+    local cmd="$PYTHON_BIN main.py"
     if [[ -f "$CONFIG_FILE" ]]; then
         cmd="$cmd $CONFIG_FILE"
     fi
@@ -167,6 +173,7 @@ start_service() {
     if [[ "$DAEMON_MODE" == true ]]; then
         # 后台模式
         log_info "以后台模式启动..."
+        cd "${PROJECT_DIR}/proxy"
         nohup $cmd > "${LOG_DIR}/vllm_proxy.out" 2>&1 &
         local pid=$!
         echo $pid > "$PID_FILE"
@@ -186,6 +193,7 @@ start_service() {
         # 前台模式
         log_info "以前台模式启动，按 Ctrl+C 停止..."
         echo "----------------------------------------"
+        cd "${PROJECT_DIR}/proxy"
         $cmd
     fi
 }

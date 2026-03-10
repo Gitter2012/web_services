@@ -288,6 +288,16 @@ class Config:
             self.proxy.base_port = other.proxy.base_port
         if other.proxy.idle_timeout_seconds != 300:
             self.proxy.idle_timeout_seconds = other.proxy.idle_timeout_seconds
+        if other.proxy.start_timeout_seconds != 120:
+            self.proxy.start_timeout_seconds = other.proxy.start_timeout_seconds
+        if other.proxy.stop_timeout_seconds != 30:
+            self.proxy.stop_timeout_seconds = other.proxy.stop_timeout_seconds
+        if other.proxy.max_start_retries != 3:
+            self.proxy.max_start_retries = other.proxy.max_start_retries
+        if other.proxy.health_check_interval != 10:
+            self.proxy.health_check_interval = other.proxy.health_check_interval
+        if other.proxy.api_key is not None:
+            self.proxy.api_key = other.proxy.api_key
 
         # 日志配置合并
         if other.logging.level != "INFO":

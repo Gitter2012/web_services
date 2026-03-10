@@ -12,6 +12,13 @@ RUN_DIR="${SCRIPT_DIR}/run"
 PID_FILE="${RUN_DIR}/vllm_proxy.pid"
 CONFIG_FILE="${PROJECT_DIR}/configs/config.yaml"
 
+# 检测 Python 解释器
+if [ -x "/root/myenv/bin/python" ]; then
+    PYTHON_BIN="/root/myenv/bin/python"
+else
+    PYTHON_BIN="python3"
+fi
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -188,10 +195,10 @@ show_basic_status() {
         echo -e "${BLUE}已加载模型:${NC}"
 
         local health_json=$(check_health)
-        local loaded_models=$(echo "$health_json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('model_status',{})))" 2>/dev/null || echo "0")
+        local loaded_models=$(echo "$health_json" | $PYTHON_BIN -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('model_status',{})))" 2>/dev/null || echo "0")
 
         if [[ "$loaded_models" -gt 0 ]]; then
-            echo "$health_json" | python3 -c "
+            echo "$health_json" | $PYTHON_BIN -c "
 import sys, json
 data = json.load(sys.stdin)
 for mid, status in data.get('model_status', {}).items():
@@ -220,7 +227,7 @@ show_verbose_status() {
     local health_json=$(check_health)
 
     # GPU 详细指标
-    echo "$health_json" | python3 -c "
+    echo "$health_json" | $PYTHON_BIN -c "
 import sys, json
 data = json.load(sys.stdin)
 gpu = data.get('gpu', {})
@@ -270,7 +277,7 @@ show_json_status() {
     local gpu_info=$(get_gpu_info)
     local health_json=$(check_health)
 
-    python3 -c "
+    $PYTHON_BIN -c "
 import json
 
 result = {

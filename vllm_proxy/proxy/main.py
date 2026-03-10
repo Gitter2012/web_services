@@ -12,9 +12,17 @@
 import os
 import sys
 
+# 获取 proxy 目录的绝对路径
+PROXY_DIR = os.path.dirname(os.path.abspath(__file__))
+# 获取项目根目录
+PROJECT_DIR = os.path.dirname(PROXY_DIR)
+
 # 添加 proxy 目录到 Python 路径
 # 确保可以正确导入同目录下的模块
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PROXY_DIR)
+
+# 切换工作目录到 proxy 目录，确保 uvicorn 能正确找到模块
+os.chdir(PROXY_DIR)
 
 import uvicorn
 

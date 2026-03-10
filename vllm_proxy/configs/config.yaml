@@ -25,10 +25,10 @@ gpu:
 #==============================================================================
 proxy:
   # 监听地址
-  host: "0.0.0.0"
+  host: "127.0.0.1"
 
   # 代理服务端口
-  port: 8081
+  port: 11436
 
   # vLLM 进程起始端口
   # 每个模型会占用一个端口，从 base_port 开始递增
@@ -45,7 +45,7 @@ proxy:
   max_start_retries: 3
 
   # 模型启动超时时间 (秒)
-  start_timeout_seconds: 120
+  start_timeout_seconds: 600
 
   # 模型停止超时时间 (秒)
   stop_timeout_seconds: 30
@@ -100,6 +100,42 @@ models:
     explicit_memory_mb: 4000
     extra_args:
       - "--trust-remote-code"
+
+  #--------------------------------------------------------------------------
+  # Qwen3.5-9B-AWQ（社区 AWQ 量化版本，官方尚未发布，使用下载量最多的第三方）
+  #--------------------------------------------------------------------------
+  qwen3.5-9b-awq:
+    model_path: "CYANKIWI/QWEN3.5-9B-AWQ-4BIT"
+    param_count: 9
+    precision: "fp16"
+    quantization: "compressed-tensors"
+    tensor_parallel: 1
+    max_model_len: 8192
+    max_num_seqs: 16
+    enforce_eager: true
+    num_layers: 32
+    hidden_size: 4096
+    num_attention_heads: 16
+    num_kv_heads: 4
+    explicit_memory_mb: 7000
+    extra_args:
+      - "--trust-remote-code"
+      # 限制图像最大像素数为 ~0.2MP（448×448），缩短 encoder cache profiling 时间
+      # 原始配置 longest_edge=16777216（约 4096×4096px），会导致 profiling 极慢
+      # 如需更高分辨率可调大：401408≈560×716, 1003520≈896×1120, 2007040≈1.4K
+      - "--mm-processor-kwargs"
+      - '{"max_pixels": 200704}'
+      # 降低 encoder cache budget：budget = max_num_batched_tokens
+      # max_pixels=200704 时每图约 196 tokens，budget=256 => 仅 profiling 1 张图
+      # 注意：此值不能低于单图 token 数（196），256 是安全最小值
+      # 副作用：长文本会被拆分更多 chunk，对短对话无影响
+      - "--max-num-batched-tokens"
+      - "256"
+      # 关闭 thinking 模式（默认不输出思维链），减少等待时间
+      # vLLM 0.17.0 支持此参数，专为 Qwen3/DeepSeek 推理模型设计
+      # request 级别的 chat_template_kwargs 优先级更高，可单次覆盖: {"enable_thinking": true}
+      - "--default-chat-template-kwargs"
+      - '{"enable_thinking": false}'
 
   #--------------------------------------------------------------------------
   # Qwen3-14B-AWQ
