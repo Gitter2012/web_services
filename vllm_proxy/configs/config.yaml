@@ -90,7 +90,7 @@ models:
     precision: "fp16"
     quantization: "awq"
     tensor_parallel: 1
-    max_model_len: 16384 
+    max_model_len: 16384
     max_num_seqs: 16
     enforce_eager: true
     num_layers: 36
@@ -100,6 +100,7 @@ models:
     explicit_memory_mb: 4000
     extra_args:
       - "--trust-remote-code"
+      - "--enable-prefix-caching"
 
   #--------------------------------------------------------------------------
   # Qwen3.5-9B-AWQ（社区 AWQ 量化版本，官方尚未发布，使用下载量最多的第三方）
@@ -144,8 +145,8 @@ models:
     quantization: "awq"
     tensor_parallel: 1
     max_model_len: 8192
-    max_num_seqs: 8
-    enforce_eager: true
+    max_num_seqs: 12
+    enforce_eager: true  # T4 GPU SM 不足，torch.compile 效果不佳
     num_layers: 40
     hidden_size: 5120
     num_attention_heads: 40
@@ -153,6 +154,7 @@ models:
     explicit_memory_mb: 10000
     extra_args:
       - "--trust-remote-code"
+      - "--enable-prefix-caching"
 
   #--------------------------------------------------------------------------
   # Qwen2.5-7B-AWQ
