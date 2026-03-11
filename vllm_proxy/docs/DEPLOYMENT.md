@@ -1,12 +1,12 @@
 # vLLM Proxy 部署指南
 
-## 系统要求
+<system_requirements>
 
 ### 硬件要求
 
 | 组件 | 最低配置 | 推荐配置 |
 |------|---------|---------|
-| GPU | NVIDIA GPU with 16GB+ VRAM | A100 40GB / A10 24GB |
+| GPU | NVIDIA GPU with 16GB+ VRAM | A100 40GB / A10 24GB / T4 16GB |
 | CPU | 8 cores | 16+ cores |
 | 内存 | 32GB | 64GB+ |
 | 磁盘 | 100GB SSD | 500GB+ NVMe SSD |
@@ -14,9 +14,10 @@
 ### 软件要求
 
 - Ubuntu 20.04+ / CentOS 7+ / Debian 10+
-- Python 3.8+
-- CUDA 11.8+ / 12.1+
+- Python 3.10+
+- CUDA 13.0+
 - NVIDIA Driver 520+
+- vLLM 0.17.0+
 
 ## 部署方式
 
@@ -113,7 +114,7 @@ spec:
       - name: vllm-proxy
         image: vllm-proxy:latest
         ports:
-        - containerPort: 8080
+        - containerPort: 11436
         resources:
           limits:
             nvidia.com/gpu: 1
@@ -127,7 +128,7 @@ spec:
         - name: IDLE_TIMEOUT
           value: "300"
         - name: RESERVED_MEMORY_MB
-          value: "2048"
+          value: "1024"
         volumeMounts:
         - name: model-cache
           mountPath: /app/models
@@ -137,13 +138,13 @@ spec:
         livenessProbe:
           httpGet:
             path: /health/live
-            port: 8080
+            port: 11436
           initialDelaySeconds: 60
           periodSeconds: 30
         readinessProbe:
           httpGet:
             path: /health/ready
-            port: 8080
+            port: 11436
           initialDelaySeconds: 10
           periodSeconds: 5
       volumes:
@@ -162,9 +163,9 @@ spec:
   selector:
     app: vllm-proxy
   ports:
-  - port: 8080
-    targetPort: 8080
-  type: ClusterIP
+  - port: 11436
+    targetPort: 11436
+    type: ClusterIP
 ```
 
 ## 生产环境配置
@@ -173,7 +174,7 @@ spec:
 
 ```nginx
 upstream vllm_proxy {
-    server 127.0.0.1:8080;
+    server 127.0.0.1:11436;
     keepalive 32;
 }
 
@@ -212,11 +213,11 @@ Type=simple
 User=vllm
 Group=vllm
 WorkingDirectory=/opt/vllm_proxy
-Environment=PYTHONPATH=/opt/vllm_proxy/src
-Environment=PROXY_PORT=8080
+Environment=PYTHONPATH=/opt/vllm_proxy
+Environment=PROXY_PORT=11436
 Environment=IDLE_TIMEOUT=300
 Environment=LOG_LEVEL=INFO
-ExecStart=/opt/vllm_proxy/venv/bin/python -m src
+ExecStart=/opt/vllm_proxy/venv/bin/python -m proxy.main.py
 ExecStop=/opt/vllm_proxy/scripts/stop.sh
 Restart=always
 RestartSec=10
@@ -242,7 +243,7 @@ sudo systemctl status vllm-proxy
 scrape_configs:
   - job_name: 'vllm-proxy'
     static_configs:
-      - targets: ['localhost:8080']
+      - targets: ['localhost:11436']
     metrics_path: /metrics
     scrape_interval: 15s
 ```
@@ -293,7 +294,7 @@ groups:
 
 ```bash
 # 启动时预加载常用模型
-curl -X POST http://localhost:8080/admin/models/llama2-7b-chat/load
+curl -X POST http://localhost:11436/admin/models/qwen3.5-9b-awq/load
 ```
 
 ### 2. 调整空闲超时
@@ -317,17 +318,46 @@ gpu:
 
 # 使用量化模型
 models:
-  llama2-7b-awq:
-    quantization: "awq"
-    precision: "int4"
+  qwen3.5-9b-awq:
+    quantization: "compressed-tensors"
+    precision: "fp16"
 ```
 
-### 4. 批处理优化
+### 4. 推理速度优化 (vLLM 0.17.0+)
+
+```yaml
+# 启用 torch.compile 但禁用 CUDA Graph（避免 OOM）
+models:
+  your-model:
+    enforce_eager: false
+    extra_args:
+      - "--compilation-config"
+      - '{"cudagraph_mode": 0}'  # 禁用 CUDA Graph
+```
+
+**效果**:
+- 推理速度提升 70-80x（在 T4 GPU 上测试）
+- GPU 利用率从 0-52% 提升到 76-83%
+
+### 5. Encoder Cache 优化（多模态模型）
+
+```yaml
+# 限制图像最大像素数，减少 encoder cache profiling 时间
+models:
+  qwen3.5-9b-awq:
+    extra_args:
+      - "--mm-processor-kwargs"
+      - '{"max_pixels": 1003520}'  # 约 1MP
+      - "--max-num-batched-tokens"
+      - "1024"
+```
+
+### 6. 批处理优化
 
 ```yaml
 models:
-  llama2-7b-chat:
-    max_num_seqs: 32  # 增加并发批处理大小
+  your-model:
+    max_num_seqs: 16  # 增加并发批处理大小
 ```
 
 ## 故障排查
@@ -338,15 +368,15 @@ models:
 
 ```bash
 # 检查日志
-tail -f logs/vllm_proxy.log
+tail -f logs/vllm_proxy.out
 
 # 检查显存
 nvidia-smi
 
 # 手动测试 vLLM 启动
 python -m vllm.entrypoints.openai.api_server \
-    --model meta-llama/Llama-2-7b-chat-hf \
-    --port 8001
+    --model your-model-path \
+    --port 8000
 ```
 
 #### 2. 显存不足
@@ -356,18 +386,47 @@ python -m vllm.entrypoints.openai.api_server \
 ./scripts/status.sh -v
 
 # 手动卸载模型
-curl -X POST http://localhost:8080/admin/models/{model_id}/unload
+curl -X POST http://localhost:11436/admin/models/{model_id}/unload
 
 # 调整预留显存
 export RESERVED_MEMORY_MB=1024
 ```
 
-#### 3. 端口冲突
+#### 3. Triton OOM 错误
+
+```yaml
+# 方案 1: 启用 enforce_eager
+models:
+  your-model:
+    enforce_eager: true
+
+# 方案 2: 禁用 CUDA Graph
+models:
+  your-model:
+    enforce_eager: false
+    extra_args:
+      - "--compilation-config"
+      - '{"cudagraph_mode": 0}'
+```
+
+#### 4. HuggingFace 429 限速
+
+系统会自动检测本地缓存并启用离线模式。如果模型未完整下载：
+
+```bash
+# 删除损坏的缓存
+rm -rf /path/to/huggingface_cache/models--org--model-name
+
+# 重新下载
+huggingface-cli download org/model-name
+```
+
+#### 5. 端口冲突
 
 ```bash
 # 检查端口占用
-lsof -i :8080
-lsof -i :8001-8010
+lsof -i :11436
+lsof -i :8000-8010
 
 # 修改基础端口
 export BASE_PORT=9000
@@ -377,13 +436,13 @@ export BASE_PORT=9000
 
 ```bash
 # 实时日志
-tail -f logs/vllm_proxy.log
+tail -f logs/vllm_proxy.out
 
 # 查找错误
-grep ERROR logs/vllm_proxy.log
+grep ERROR logs/vllm_proxy.out
 
 # 统计模型加载次数
-grep "Model.*loaded" logs/vllm_proxy.log | wc -l
+grep "Model.*is ready" logs/vllm_proxy.out | wc -l
 ```
 
 ## 安全建议

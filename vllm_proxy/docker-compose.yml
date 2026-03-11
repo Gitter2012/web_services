@@ -23,20 +23,20 @@ services:
 
     # 端口映射
     ports:
-      - "8080:8080"
+      - "11436:11436"
 
     # 环境变量
     environment:
       # 代理服务配置
       - PROXY_HOST=0.0.0.0
-      - PROXY_PORT=8080
+      - PROXY_PORT=11436
       - IDLE_TIMEOUT=300
       - BASE_PORT=8000
 
       # GPU 配置
       - GPU_ID=0
-      - RESERVED_MEMORY_MB=2048
-      - GPU_MEMORY_UTILIZATION=0.9
+      - RESERVED_MEMORY_MB=1024
+      - GPU_MEMORY_UTILIZATION=0.95
 
       # 日志配置
       - LOG_LEVEL=INFO
@@ -44,6 +44,9 @@ services:
       # HuggingFace 配置
       - HF_HOME=/app/models
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+
+      # 内存优化
+      - PYTORCH_ALLOC_CONF=expandable_segments:True
 
     # 数据卷
     volumes:
@@ -62,7 +65,7 @@ services:
 
     # 健康检查
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health/live"]
+      test: ["CMD", "curl", "-f", "http://localhost:11436/health/live"]
       interval: 30s
       timeout: 10s
       retries: 3

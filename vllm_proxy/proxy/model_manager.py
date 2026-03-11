@@ -507,12 +507,26 @@ class ModelManager:
             env['HF_TOKEN'] = cfg.api_key
             env['HUGGING_FACE_HUB_TOKEN'] = cfg.api_key
 
-        # 启动子进程
+        # 内存优化配置
+        # 1. expandable_segments=True：避免显存碎片，提高显存利用效率
+        #    推荐用于复杂 forward pass 场景（如多头注意力、特殊 kernel）
+        # 2. TRITON_CACHE_DIR：持久化 Triton kernel 自动调优结果
+        #    首次启动时 Triton 会遍历多个 kernel 配置（会占用额外显存），
+        #    之后重启会读取缓存，无需重新调优
+        env.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")
+        triton_cache_dir = os.path.join(download_dir, "..", ".triton_cache")
+        os.makedirs(triton_cache_dir, exist_ok=True)
+        env.setdefault("TRITON_CACHE_DIR", triton_cache_dir)
+
+        # 启动子进程，创建独立进程组
+        # start_new_session=True 使 vLLM 进程（含 EngineCore 子进程）独立为一个进程组，
+        # 便于 _stop_vllm_process 通过 os.killpg 一次性清理所有子进程，防止孤儿进程占用显存
         model.process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=env
+            env=env,
+            start_new_session=True,
         )
 
         # 启动日志收集任务
@@ -651,7 +665,8 @@ class ModelManager:
     async def _stop_vllm_process(self, model: ModelInstance):
         """优雅停止 vLLM 进程
 
-        先发送 SIGTERM，如果超时则发送 SIGKILL。
+        先对整个进程组发送 SIGTERM（覆盖 APIServer + EngineCore 子进程），
+        若超时则对进程组发送 SIGKILL，确保显存完全释放，避免孤儿进程累积导致 OOM。
 
         Args:
             model: 模型实例
@@ -663,10 +678,21 @@ class ModelManager:
         logger.info(f"Stopping vLLM process {pid} for model {model.model_id}")
 
         try:
-            # 发送 SIGTERM（优雅终止）
-            model.process.send_signal(signal.SIGTERM)
+            # 对整个进程组发送 SIGTERM，同时终止 EngineCore 等子进程
+            # vLLM V1 架构下 APIServer 会 fork 出独立的 EngineCore 进程，
+            # 仅终止主进程会导致 EngineCore 成为孤儿进程并持续占用 GPU 显存
+            try:
+                pgid = os.getpgid(pid)
+                os.killpg(pgid, signal.SIGTERM)
+                logger.info(f"Sent SIGTERM to process group {pgid}")
+            except ProcessLookupError:
+                logger.info(f"Process {pid} already exited")
+                return
+            except OSError:
+                # 无法获取进程组时退化为只终止主进程
+                model.process.send_signal(signal.SIGTERM)
 
-            # 等待进程结束
+            # 等待主进程结束
             try:
                 await asyncio.wait_for(
                     model.process.wait(),
@@ -674,9 +700,13 @@ class ModelManager:
                 )
                 logger.info(f"Process {pid} terminated gracefully")
             except asyncio.TimeoutError:
-                # 超时后强制终止
-                logger.warning(f"Process {pid} did not terminate, killing...")
-                model.process.kill()
+                # 超时后对整个进程组强制终止
+                logger.warning(f"Process {pid} did not terminate, killing process group...")
+                try:
+                    pgid = os.getpgid(pid)
+                    os.killpg(pgid, signal.SIGKILL)
+                except (ProcessLookupError, OSError):
+                    model.process.kill()
                 await model.process.wait()
                 logger.info(f"Process {pid} killed")
 

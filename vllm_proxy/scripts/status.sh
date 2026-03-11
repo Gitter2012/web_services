@@ -141,7 +141,7 @@ get_gpu_info() {
 }
 
 check_health() {
-    local port=${PROXY_PORT:-8080}
+    local port=${PROXY_PORT:-11436}
     local health_url="http://localhost:${port}/health"
 
     if command -v curl &> /dev/null; then
@@ -250,7 +250,7 @@ print(f'  显存可用: {mem.get(\"available_mb\", \"N/A\")} MB')
     # 端口监听
     echo ""
     echo -e "${BLUE}端口监听:${NC}"
-    local port=${PROXY_PORT:-8080}
+    local port=${PROXY_PORT:-11436}
     ss -tlnp 2>/dev/null | grep -E ":$port" | awk '{print "  " $0}' || \
     netstat -tlnp 2>/dev/null | grep -E ":$port" | awk '{print "  " $0}' || \
     echo "  (无法获取端口信息)"

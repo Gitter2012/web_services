@@ -2,7 +2,7 @@
 # vLLM Proxy Docker 镜像
 #==============================================================================
 
-FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+FROM nvidia/cuda:13.0.0-runtime-ubuntu22.04
 
 # 设置工作目录
 WORKDIR /app
@@ -55,13 +55,13 @@ RUN chmod +x scripts/*.sh
 
 # 代理服务配置
 ENV PROXY_HOST=0.0.0.0
-ENV PROXY_PORT=8080
+ENV PROXY_PORT=11436
 ENV IDLE_TIMEOUT=300
 
 # GPU 配置
 ENV GPU_ID=0
-ENV RESERVED_MEMORY_MB=2048
-ENV GPU_MEMORY_UTILIZATION=0.9
+ENV RESERVED_MEMORY_MB=1024
+ENV GPU_MEMORY_UTILIZATION=0.95
 
 # 日志配置
 ENV LOG_LEVEL=INFO
@@ -74,16 +74,19 @@ ENV PYTHONPATH=/app:$PYTHONPATH
 ENV HF_HOME=/app/models
 ENV TRANSFORMERS_CACHE=/app/models
 
+# 内存优化
+ENV PYTORCH_ALLOC_CONF=expandable_segments:True
+
 #==============================================================================
 # 健康检查
 #==============================================================================
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8080/health/live || exit 1
+    CMD curl -f http://localhost:11436/health/live || exit 1
 
 #==============================================================================
 # 暴露端口
 #==============================================================================
-EXPOSE 8080
+EXPOSE 11436
 
 #==============================================================================
 # 启动命令

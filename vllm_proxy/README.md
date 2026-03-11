@@ -10,6 +10,14 @@
 - **OpenAI 兼容**: 提供与 OpenAI API 兼容的接口
 - **多模型支持**: 同时管理多个模型，动态切换
 - **API Key 认证**: 支持全局和模型级别的 API Key 配置
+- **性能优化**: 支持 torch.compile、CUDA Graph、Encoder Cache 优化
+
+## 系统要求
+
+- Python 3.10+
+- CUDA 13.0+
+- NVIDIA Driver 520+
+- vLLM 0.17.0+
 
 ## 快速开始
 
@@ -30,13 +38,23 @@ cd vllm_proxy
 
 ```yaml
 models:
-  llama2-7b-chat:
-    model_path: "meta-llama/Llama-2-7b-chat-hf"
-    param_count: 7
+  qwen3.5-9b-awq:
+    model_path: "CYANKIWI/QWEN3.5-9B-AWQ-4BIT"
+    param_count: 9
     precision: "fp16"
-    max_model_len: 4096
-    # 如果需要 HuggingFace Token
-    # api_key: "hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    quantization: "compressed-tensors"
+    max_model_len: 8192
+    enforce_eager: false
+    extra_args:
+      - "--trust-remote-code"
+      - "--mm-processor-kwargs"
+      - '{"max_pixels": 1003520}'
+      - "--max-num-batched-tokens"
+      - "1024"
+      - "--default-chat-template-kwargs"
+      - '{"enable_thinking": false}'
+      - "--compilation-config"
+      - '{"cudagraph_mode": 0}'
 ```
 
 ### 3. 启动服务
@@ -56,14 +74,15 @@ models:
 
 ```bash
 # 查看模型列表
-curl http://localhost:8080/v1/models
+curl http://localhost:11436/v1/models
 
 # 聊天补全
-curl http://localhost:8080/v1/chat/completions \
+curl http://localhost:11436/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "llama2-7b-chat",
-    "messages": [{"role": "user", "content": "Hello!"}]
+    "model": "qwen3.5-9b-awq",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "max_tokens": 100
   }'
 ```
 
@@ -72,19 +91,21 @@ curl http://localhost:8080/v1/chat/completions \
 ```python
 from client import VLLMProxyClient
 
-client = VLLMProxyClient(base_url="http://localhost:8080")
+client = VLLMProxyClient(base_url="http://localhost:11436")
 
 # 聊天补全
 response = client.chat_completion(
-    model="llama2-7b-chat",
-    messages=[{"role": "user", "content": "Hello!"}]
+    model="qwen3.5-9b-awq",
+    messages=[{"role": "user", "content": "Hello!"}],
+    max_tokens=100
 )
 print(response['choices'][0]['message']['content'])
 
 # 流式输出
 for text in client.chat_completion_stream(
-    model="llama2-7b-chat",
-    messages=[{"role": "user", "content": "讲个笑话"}]
+    model="qwen3.5-9b-awq",
+    messages=[{"role": "user", "content": "讲个笑话"}],
+    max_tokens=100
 ):
     print(text, end="")
 ```
@@ -139,10 +160,7 @@ vllm_proxy/
 ├── client/                 # Client SDK
 │   ├── __init__.py
 │   ├── client.py          # 同步/异步客户端
-│   ├── demo_sync.py       # 同步示例
-│   ├── demo_async.py      # 异步示例
-│   ├── demo_openai_sdk.py # OpenAI SDK 示例
-│   └── requirements.txt
+│   └── README.md
 │
 ├── scripts/                # 管理脚本
 │   ├── install.sh
@@ -158,7 +176,6 @@ vllm_proxy/
 │   ├── API.md
 │   └── DEPLOYMENT.md
 ├── logs/                   # 日志目录
-├── models/                 # 模型缓存
 ├── requirements.txt        # Python 依赖
 ├── Dockerfile             # Docker 构建
 └── docker-compose.yml     # Docker Compose 配置
@@ -171,19 +188,23 @@ vllm_proxy/
 ```yaml
 gpu:
   gpu_id: 0                    # GPU 设备 ID
-  reserved_memory_mb: 2048     # 预留显存缓冲
-  memory_utilization: 0.9      # vLLM 显存利用率
+  reserved_memory_mb: 1024     # 预留显存缓冲 (MB)
+  memory_utilization: 0.95     # vLLM 显存利用率
 ```
 
 ### 代理配置
 
 ```yaml
 proxy:
-  host: "0.0.0.0"             # 监听地址
-  port: 8080                   # 服务端口
+  host: "127.0.0.1"           # 监听地址
+  port: 11436                  # 服务端口
+  base_port: 8000              # vLLM 进程起始端口
   idle_timeout_seconds: 300    # 空闲超时（秒）
-  # API Key 认证（可选，与 vLLM/OpenAI 兼容）
-  # 请求时需在 Header 中提供: Authorization: Bearer <api_key>
+  health_check_interval: 10    # 健康检查间隔（秒）
+  max_start_retries: 3         # 启动失败最大重试次数
+  start_timeout_seconds: 600   # 模型启动超时（秒）
+  stop_timeout_seconds: 30     # 模型停止超时（秒）
+  # API Key 认证（可选）
   # api_key: "your-secret-key"
 ```
 
@@ -195,9 +216,61 @@ models:
     model_path: "..."          # HF 模型 ID 或本地路径
     param_count: 7             # 参数量（B）
     precision: "fp16"          # 精度
+    quantization: "awq"        # 量化方式
     max_model_len: 4096        # 最大序列长度
+    max_num_seqs: 16           # 最大并发序列数
+    enforce_eager: false       # 是否禁用 CUDA Graph
+    extra_args: []             # 额外的 vLLM 参数
     api_key: "..."             # 模型级 API Key（HF Token）
 ```
+
+## 性能优化
+
+### torch.compile + CUDA Graph
+
+对于支持 CUDA Graph 的模型，可以启用 torch.compile 来提升推理速度：
+
+```yaml
+models:
+  qwen3.5-9b-awq:
+    enforce_eager: false
+    extra_args:
+      # 启用 torch.compile 但禁用 CUDA Graph（避免 Triton OOM）
+      - "--compilation-config"
+      - '{"cudagraph_mode": 0}'
+```
+
+**性能对比**:
+| 配置 | 推理速度 |
+|-----|---------|
+| `enforce_eager: true` | ~0.4 tok/s |
+| `enforce_eager: false` + `cudagraph_mode: 0` | ~30 tok/s |
+
+### Encoder Cache 优化
+
+对于多模态模型，可以优化 Encoder Cache Profiling 时间：
+
+```yaml
+extra_args:
+  # 限制图像最大像素数
+  - "--mm-processor-kwargs"
+  - '{"max_pixels": 1003520}'
+  # 控制 encoder cache budget
+  - "--max-num-batched-tokens"
+  - "1024"
+```
+
+### Thinking 模式控制
+
+对于 Qwen3/DeepSeek 推理模型，可以默认关闭 thinking 模式：
+
+```yaml
+extra_args:
+  - "--default-chat-template-kwargs"
+  - '{"enable_thinking": false}'
+```
+
+请求时可以临时启用：`{"enable_thinking": true}`
 
 ## API 文档
 
@@ -221,11 +294,43 @@ models:
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `PROXY_PORT` | 代理端口 | 8080 |
+| `PROXY_PORT` | 代理端口 | 11436 |
 | `IDLE_TIMEOUT` | 空闲超时（秒） | 300 |
 | `GPU_ID` | GPU 设备 ID | 0 |
-| `RESERVED_MEMORY_MB` | 预留显存（MB） | 2048 |
+| `RESERVED_MEMORY_MB` | 预留显存（MB） | 1024 |
 | `LOG_LEVEL` | 日志级别 | INFO |
+
+## 故障排查
+
+### 常见问题
+
+**1. 模型启动超时**
+```bash
+# 检查日志
+tail -f logs/vllm_proxy.log
+
+# 调整启动超时配置
+proxy:
+  start_timeout_seconds: 600  # 增加超时时间
+```
+
+**2. Triton OOM 错误**
+```yaml
+# 启用 enforce_eager 或禁用 CUDA Graph
+models:
+  your-model:
+    enforce_eager: true
+    # 或者
+    extra_args:
+      - "--compilation-config"
+      - '{"cudagraph_mode": 0}'
+```
+
+**3. HuggingFace 429 限速**
+- 系统会自动检测本地缓存并启用离线模式
+- 确保模型已完整下载到本地
+
+详细故障排查请参考 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ## 许可证
 

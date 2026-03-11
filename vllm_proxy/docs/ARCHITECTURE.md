@@ -228,7 +228,111 @@ except TimeoutError:
     process.kill()
 ```
 
-## 扩展性设计
+## vLLM V1 性能优化
+
+### torch.compile 优化
+
+vLLM 0.17.0+ 支持 `torch.compile` (inductor 后端) 进行模型编译优化，可在不使用 CUDA Graph 的情况下获得显著的性能提升。
+
+**配置示例**:
+```yaml
+models:
+  your-model:
+    enforce_eager: false
+    extra_args:
+      - "--compilation-config"
+      - '{"cudagraph_mode": 0}'  # 禁用 CUDA Graph
+```
+
+**效果**:
+- 推理速度提升 70-80x（在 T4 GPU 上测试）
+- GPU 利用率从 0-52% 提升到 76-83%
+
+### Encoder Cache 优化（多模态模型）
+
+对于多模态模型（如 Qwen3.5），可以通过以下参数优化 encoder cache profiling 时间：
+
+```yaml
+models:
+  qwen3.5-9b-awq:
+    extra_args:
+      - "--mm-processor-kwargs"
+      - '{"max_pixels": 1003520}'  # 限制图像最大像素
+      - "--max-num-batched-tokens"
+      - "1024"  # 控制 encoder budget
+```
+
+**参数说明**:
+- `max_pixels`: 限制图像处理器最大像素数，默认值可能导致 profiling 枯慢
+- `max_num_batched_tokens`: 控制 encoder cache budget，影响 profiling 图像数
+
+**优化公式**:
+```
+profiling_images = encoder_budget // tokens_per_image
+tokens_per_image = max_pixels // 1024
+encoder_budget = max_num_batched_tokens
+```
+
+### Thinking 模式控制
+对于推理模型（Qwen3/DeepSeek），可以控制是否输出思维链：
+
+```yaml
+models:
+  your-reasoning-model:
+    extra_args:
+      - "--default-chat-template-kwargs"
+      - '{"enable_thinking": false}'  # 默认关闭
+```
+
+请求时可以临时启用: `{"chat_template_kwargs": {"enable_thinking": true}}`
+
+### 环境变量优化
+
+系统会自动设置以下环境变量：
+- `PYTORCH_ALLOC_CONF=expandable_segments:True`: 减少显存碎片
+- `TRITON_CACHE_DIR`: 持久化 Triton kernel 自动调优结果
+
+### 故障处理
+
+#### 场景 1: vLLM 进程崩溃
+```
+1. Health Check 检测到进程退出
+2. 标记模型状态为 ERROR
+3. 发送告警（可选）
+4. 下次请求时重新启动
+```
+
+#### 场景 2: 显存 OOM
+```
+1. vLLM 报告 OOM
+2. 代理返回 503
+3. 尝试淘汰其他模型
+4. 客户端重试
+```
+
+#### 场景 3: 模型加载超时
+```
+1. 启动计时器（默认 600s）
+2. 超时后终止进程组
+3. 标记 ERROR 状态
+4. 返回 500 错误
+```
+
+#### 场景 4: Triton 自动调优 OOM
+```
+1. 首次推理时 Triton kernel 自动调优占用额外显存
+2. 解决方案:
+   - 设置 enforce_eager: true
+   - 或设置 cudagraph_mode: 0 禁用 CUDA Graph
+```
+
+#### 场景 5: HuggingFace 限速 (429)
+```
+1. 系统检测本地模型缓存
+2. 自动设置 HF_HUB_OFFLINE=1
+3. 在离线模式下启动
+4. 如果模型不完整，启动失败并返回错误
+```
 
 ### 多 GPU 支持
 

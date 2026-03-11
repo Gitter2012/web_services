@@ -11,7 +11,7 @@ POST /v1/chat/completions
 **请求体**:
 ```json
 {
-  "model": "llama2-7b-chat",
+  "model": "qwen3.5-9b-awq",
   "messages": [
     {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "Hello!"}
@@ -28,7 +28,7 @@ POST /v1/chat/completions
   "id": "chatcmpl-xxx",
   "object": "chat.completion",
   "created": 1234567890,
-  "model": "llama2-7b-chat",
+  "model": "qwen3.5-9b-awq",
   "choices": [{
     "index": 0,
     "message": {
@@ -65,7 +65,7 @@ POST /v1/completions
 **请求体**:
 ```json
 {
-  "model": "llama2-7b-chat",
+  "model": "qwen3.5-9b-awq",
   "prompt": "Once upon a time",
   "max_tokens": 100,
   "temperature": 0.7
@@ -98,13 +98,13 @@ GET /v1/models
   "object": "list",
   "data": [
     {
-      "id": "llama2-7b-chat",
+      "id": "qwen3.5-9b-awq",
       "object": "model",
       "created": 1234567890,
       "owned_by": "vllm-proxy",
       "status": "running",
-      "port": 8001,
-      "gpu_memory_mb": 16000,
+      "port": 8000,
+      "gpu_memory_mb": 7000,
       "request_count": 2
     }
   ]
@@ -120,14 +120,14 @@ GET /v1/models/{model_id}
 **响应**:
 ```json
 {
-  "id": "llama2-7b-chat",
+  "id": "qwen3.5-9b-awq",
   "object": "model",
   "status": "running",
   "detail": {
-    "model_id": "llama2-7b-chat",
+    "model_id": "qwen3.5-9b-awq",
     "status": "running",
-    "port": 8001,
-    "gpu_memory_mb": 16000,
+    "port": 8000,
+    "gpu_memory_mb": 7000,
     "request_count": 0,
     "total_requests": 100,
     "created_at": "2024-01-01T00:00:00",
@@ -151,13 +151,13 @@ GET /health
   "status": "healthy",
   "gpu": {
     "id": 0,
-    "name": "NVIDIA A100",
+    "name": "Tesla T4",
     "temperature": 45.0,
     "utilization_percent": 30.0,
     "memory": {
-      "total_mb": 24576,
-      "used_mb": 16384,
-      "free_mb": 8192,
+      "total_mb": 15360,
+      "used_mb": 7000,
+      "free_mb": 8360,
       "available_mb": 6144
     },
     "power_draw_w": 150.0,
@@ -165,11 +165,11 @@ GET /health
   },
   "loaded_models": 1,
   "model_status": {
-    "llama2-7b-chat": {
-      "model_id": "llama2-7b-chat",
+    "qwen3.5-9b-awq": {
+      "model_id": "qwen3.5-9b-awq",
       "status": "running",
-      "port": 8001,
-      "gpu_memory_mb": 16000,
+      "port": 8000,
+      "gpu_memory_mb": 7000,
       "request_count": 0
     }
   }
@@ -212,15 +212,15 @@ GET /metrics
 ```
 # HELP vllm_gpu_memory_total_mb Total GPU memory in MB
 # TYPE vllm_gpu_memory_total_mb gauge
-vllm_gpu_memory_total_mb{gpu_id="0"} 24576
+vllm_gpu_memory_total_mb{gpu_id="0"} 15360
 
 # HELP vllm_gpu_memory_used_mb Used GPU memory in MB
 # TYPE vllm_gpu_memory_used_mb gauge
-vllm_gpu_memory_used_mb{gpu_id="0"} 16384
+vllm_gpu_memory_used_mb{gpu_id="0"} 7000
 
 # HELP vllm_model_loaded Whether model is loaded
 # TYPE vllm_model_loaded gauge
-vllm_model_loaded{model_id="llama2-7b-chat"} 1
+vllm_model_loaded{model_id="qwen3.5-9b-awq"} 1
 ```
 
 ### 预加载模型
@@ -233,8 +233,8 @@ POST /admin/models/{model_id}/load
 ```json
 {
   "success": true,
-  "model_id": "llama2-7b-chat",
-  "port": 8001,
+  "model_id": "qwen3.5-9b-awq",
+  "port": 8000,
   "status": "running"
 }
 ```
@@ -249,7 +249,7 @@ POST /admin/models/{model_id}/unload
 ```json
 {
   "success": true,
-  "model_id": "llama2-7b-chat"
+  "model_id": "qwen3.5-9b-awq"
 }
 ```
 
@@ -258,7 +258,7 @@ POST /admin/models/{model_id}/unload
 | HTTP 状态码 | 说明 | 场景 |
 |------------|------|------|
 | 200 | 成功 | 请求正常处理 |
-| 400 | 请求错误 | 缺少必要参数或格式错误 |
+| 400 | 请求错误 | 缺少必要参数、输入过长超出上下文限制 |
 | 404 | 未找到 | 模型不存在 |
 | 500 | 服务器错误 | 内部处理错误 |
 | 502 | 网关错误 | 模型推理失败 |
@@ -271,6 +271,15 @@ POST /admin/models/{model_id}/unload
 }
 ```
 
+**常见错误示例**:
+
+```json
+// 输入过长错误
+{
+  "detail": "You passed 1500 input characters and requested 4096 output tokens. However, the model's context length is only 4096 tokens, resulting in a maximum input length of 0 tokens. Please reduce the length of the input prompt."
+}
+```
+
 ## 使用示例
 
 ### Python
@@ -280,24 +289,26 @@ import openai
 
 # 配置客户端
 client = openai.OpenAI(
-    base_url="http://localhost:8080/v1",
+    base_url="http://localhost:11436/v1",
     api_key="dummy"  # vLLM 不需要真实 API key
 )
 
 # 聊天补全
 response = client.chat.completions.create(
-    model="llama2-7b-chat",
+    model="qwen3.5-9b-awq",
     messages=[
         {"role": "user", "content": "Hello!"}
     ],
+    max_tokens=100,
     stream=False
 )
 print(response.choices[0].message.content)
 
 # 流式响应
 for chunk in client.chat.completions.create(
-    model="llama2-7b-chat",
+    model="qwen3.5-9b-awq",
     messages=[{"role": "user", "content": "Hello!"}],
+    max_tokens=100,
     stream=True
 ):
     print(chunk.choices[0].delta.content or "", end="")
@@ -307,42 +318,64 @@ for chunk in client.chat.completions.create(
 
 ```bash
 # 聊天补全
-curl http://localhost:8080/v1/chat/completions \
+curl http://localhost:11436/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "llama2-7b-chat",
-    "messages": [{"role": "user", "content": "Hello!"}]
+    "model": "qwen3.5-9b-awq",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "max_tokens": 100
   }'
 
 # 流式响应
-curl http://localhost:8080/v1/chat/completions \
+curl http://localhost:11436/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "llama2-7b-chat",
+    "model": "qwen3.5-9b-awq",
     "messages": [{"role": "user", "content": "Hello!"}],
+    "max_tokens": 100,
     "stream": true
   }'
 
 # 预加载模型
-curl -X POST http://localhost:8080/admin/models/llama2-7b-chat/load
+curl -X POST http://localhost:11436/admin/models/qwen3.5-9b-awq/load
 
 # 卸载模型
-curl -X POST http://localhost:8080/admin/models/llama2-7b-chat/unload
+curl -X POST http://localhost:11436/admin/models/qwen3.5-9b-awq/unload
 ```
 
 ### JavaScript
 
 ```javascript
 // 使用 fetch
-const response = await fetch('http://localhost:8080/v1/chat/completions', {
+const response = await fetch('http://localhost:11436/v1/chat/completions', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    model: 'llama2-7b-chat',
-    messages: [{ role: 'user', content: 'Hello!' }]
+    model: 'qwen3.5-9b-awq',
+    messages: [{ role: 'user', content: 'Hello!' }],
+    max_tokens: 100
   })
 });
 
 const data = await response.json();
 console.log(data.choices[0].message.content);
+```
+
+## 特殊参数
+
+### Thinking 模式控制 (Qwen3/DeepSeek)
+
+```json
+// 默认关闭 thinking 模式
+{
+  "model": "qwen3.5-9b-awq",
+  "messages": [{"role": "user", "content": "1+1=?"}]
+}
+
+// 临时启用 thinking 模式
+{
+  "model": "qwen3.5-9b-awq",
+  "messages": [{"role": "user", "content": "1+1=?"}],
+  "chat_template_kwargs": {"enable_thinking": true}
+}
 ```
