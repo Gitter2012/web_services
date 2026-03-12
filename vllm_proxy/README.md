@@ -38,23 +38,19 @@ cd vllm_proxy
 
 ```yaml
 models:
-  qwen3.5-9b-awq:
-    model_path: "CYANKIWI/QWEN3.5-9B-AWQ-4BIT"
-    param_count: 9
+  qwen3.5-4b-awq:
+    model_path: "QuantTrio/Qwen3.5-4B-AWQ"
+    param_count: 4
     precision: "fp16"
-    quantization: "compressed-tensors"
-    max_model_len: 8192
-    enforce_eager: false
+    quantization: "awq_marlin"
+    max_model_len: 262144  # 256k 上下文
+    enforce_eager: true
+    fla_use_default_norm: true  # Qwen3.5 FLA 混合架构
+    fla_fix_block_size: true
     extra_args:
       - "--trust-remote-code"
-      - "--mm-processor-kwargs"
-      - '{"max_pixels": 1003520}'
       - "--max-num-batched-tokens"
-      - "1024"
-      - "--default-chat-template-kwargs"
-      - '{"enable_thinking": false}'
-      - "--compilation-config"
-      - '{"cudagraph_mode": 0}'
+      - "4096"
 ```
 
 ### 3. 启动服务
@@ -219,32 +215,55 @@ models:
     quantization: "awq"        # 量化方式
     max_model_len: 4096        # 最大序列长度
     max_num_seqs: 16           # 最大并发序列数
-    enforce_eager: false       # 是否禁用 CUDA Graph
+    enforce_eager: false       # 是否禁用 torch.compile
     extra_args: []             # 额外的 vLLM 参数
     api_key: "..."             # 模型级 API Key（HF Token）
+    # FLA 优化（仅对含线性注意力层的混合架构模型有效，如 Qwen3.5）
+    fla_use_default_norm: true # 设置 USE_DEFAULT_FLA_NORM=1，跳过 Triton l2norm 自动调优
+    fla_fix_block_size: true   # 设置 FLA_GDN_FIX_BT=1，固定 GatedDeltaNet block_T=64
 ```
+
+**FLA 配置说明**：
+- `fla_use_default_norm`：默认 `true`，对标准 Transformer 模型设为 `false`
+- `fla_fix_block_size`：默认 `true`，对标准 Transformer 模型设为 `false`
+- 这两个选项仅对 Qwen3.5 等含 FLA (Fast Linear Attention) 混合架构的模型有意义
 
 ## 性能优化
 
 ### torch.compile + CUDA Graph
 
-对于支持 CUDA Graph 的模型，可以启用 torch.compile 来提升推理速度：
+vLLM 支持 `torch.compile` 进行模型编译优化，但性能提升效果**取决于 GPU 型号、量化格式和模型架构**：
+
+**T4 GPU 实测结论**：
+
+| 模型类型 | enforce_eager=true | enforce_eager=false + cudagraph=0 |
+|---------|-------------------|-----------------------------------|
+| 标准 AWQ (qwen3, qwen2.5, llama) | **推荐** | 负优化 |
+| FLA 混合 AWQ (qwen3.5-4b/9b-awq) | **推荐** | 负优化 |
+| compressed-tensors 格式 | 一般 | **推荐** |
+
+**配置建议**：
 
 ```yaml
+# 标准 AWQ 模型：使用 enforce_eager=true（推荐）
 models:
-  qwen3.5-9b-awq:
+  qwen3-4b-awq:
+    enforce_eager: true
+    extra_args:
+      - "--trust-remote-code"
+      - "--enable-prefix-caching"
+
+# compressed-tensors 格式：使用 torch.compile（有正收益）
+models:
+  qwen3.5-9b-awq-4bit:
     enforce_eager: false
     extra_args:
-      # 启用 torch.compile 但禁用 CUDA Graph（避免 Triton OOM）
+      - "--trust-remote-code"
       - "--compilation-config"
       - '{"cudagraph_mode": 0}'
 ```
 
-**性能对比**:
-| 配置 | 推理速度 |
-|-----|---------|
-| `enforce_eager: true` | ~0.4 tok/s |
-| `enforce_eager: false` + `cudagraph_mode: 0` | ~30 tok/s |
+**原因**：T4 GPU 只有 40 个 SMs，不足以充分利用 torch.compile 的 autotuning 优化。compressed-tensors 格式有专门的 CUDA Graph 优化路径，是唯一例外。
 
 ### Encoder Cache 优化
 
@@ -255,9 +274,25 @@ extra_args:
   # 限制图像最大像素数
   - "--mm-processor-kwargs"
   - '{"max_pixels": 1003520}'
-  # 控制 encoder cache budget
+  # 跳过 encoder profiling，缩短启动时间
+  - "--skip-mm-profiling"
+  # 限制每 prompt 多媒体数量
+  - "--limit-mm-per-prompt"
+  - '{"image": 1}'
+```
+
+### max_num_batched_tokens 选择
+
+```yaml
+# 显存紧张场景（如 9b 模型）：使用较小值最大化 KV cache
+extra_args:
   - "--max-num-batched-tokens"
   - "1024"
+
+# 显存充裕场景（如 4b 模型）：使用较大值优化 prefill 性能
+extra_args:
+  - "--max-num-batched-tokens"
+  - "4096"
 ```
 
 ### Thinking 模式控制

@@ -325,19 +325,36 @@ models:
 
 ### 4. 推理速度优化 (vLLM 0.17.0+)
 
+**重要**：`enforce_eager` 配置对性能的影响取决于 GPU 型号、量化格式和模型架构。
+
+**T4 GPU 配置建议**：
+
+| 模型类型 | 推荐配置 |
+|---------|---------|
+| 标准 AWQ (qwen3, qwen2.5, llama) | `enforce_eager: true` |
+| FLA 混合 AWQ (qwen3.5) | `enforce_eager: true` |
+| compressed-tensors 格式 | `enforce_eager: false` + `cudagraph_mode: 0` |
+
+**配置示例**：
+
 ```yaml
-# 启用 torch.compile 但禁用 CUDA Graph（避免 OOM）
+# 标准 AWQ 模型：使用 enforce_eager=true（推荐）
 models:
-  your-model:
+  qwen3-4b-awq:
+    enforce_eager: true
+    extra_args:
+      - "--trust-remote-code"
+      - "--enable-prefix-caching"
+
+# compressed-tensors 格式：使用 torch.compile（有正收益）
+models:
+  qwen3.5-9b-awq-4bit:
     enforce_eager: false
     extra_args:
+      - "--trust-remote-code"
       - "--compilation-config"
-      - '{"cudagraph_mode": 0}'  # 禁用 CUDA Graph
+      - '{"cudagraph_mode": 0}'
 ```
-
-**效果**:
-- 推理速度提升 70-80x（在 T4 GPU 上测试）
-- GPU 利用率从 0-52% 提升到 76-83%
 
 ### 5. Encoder Cache 优化（多模态模型）
 

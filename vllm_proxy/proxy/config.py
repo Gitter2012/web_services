@@ -66,6 +66,8 @@ class ModelConfig:
         num_kv_heads: KV 头数（GQA）
         explicit_memory_mb: 显式指定显存需求（MB），覆盖自动计算
         api_key: 访问受保护模型所需的 API Key（如 HuggingFace Token）
+        fla_use_default_norm: 是否设置 USE_DEFAULT_FLA_NORM=1，跳过 FLA Triton l2norm 自动调优
+        fla_fix_block_size: 是否设置 FLA_GDN_FIX_BT=1，固定 GatedDeltaNet chunk block_T=64
     """
 
     model_id: str = ""
@@ -77,6 +79,10 @@ class ModelConfig:
     max_num_seqs: int = 16
     quantization: Optional[str] = None  # awq, gptq, squeezellm
     enforce_eager: bool = False  # 禁用 CUDA graph，某些模型需要
+    # FLA (Fast Linear Attention) 优化开关
+    # 仅对含线性注意力层的混合架构模型（如 Qwen3.5）有效，对其他模型设置无害
+    fla_use_default_norm: bool = True  # USE_DEFAULT_FLA_NORM=1：跳过 Triton l2norm 自动调优
+    fla_fix_block_size: bool = True    # FLA_GDN_FIX_BT=1：固定 GatedDeltaNet block_T=64
     num_layers: int = 32
     hidden_size: int = 4096
     num_attention_heads: int = 32

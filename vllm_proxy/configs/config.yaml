@@ -81,39 +81,19 @@ logging:
 #   3. precision: "fp16" 或 "bf16"
 #==============================================================================
 models:
-  #--------------------------------------------------------------------------
-  # Qwen3-3B-AWQ（轻量级模型）
-  #--------------------------------------------------------------------------
-  qwen3-4b-awq:
-    model_path: "Qwen/Qwen3-4B-AWQ"
-    param_count: 3
-    precision: "fp16"
-    quantization: "awq"
-    tensor_parallel: 1
-    max_model_len: 16384
-    max_num_seqs: 16
-    enforce_eager: true
-    num_layers: 36
-    hidden_size: 2048
-    num_attention_heads: 16
-    num_kv_heads: 8
-    explicit_memory_mb: 4000
-    extra_args:
-      - "--trust-remote-code"
-      - "--enable-prefix-caching"
 
   #--------------------------------------------------------------------------
-  # Qwen3.5-9B-AWQ（社区 AWQ 量化版本，官方尚未发布，使用下载量最多的第三方）
+  # Qwen3.5-9B-AWQ（QuantTrio 量化版本，标准 AWQ 格式）
   #--------------------------------------------------------------------------
   qwen3.5-9b-awq:
-    model_path: "CYANKIWI/QWEN3.5-9B-AWQ-4BIT"
+    model_path: "QuantTrio/Qwen3.5-9B-AWQ"
     param_count: 9
     precision: "fp16"
-    quantization: "compressed-tensors"
+    quantization: "awq_marlin"  # 使用 Marlin kernel，比 awq 更快
     tensor_parallel: 1
-    max_model_len: 8192
-    max_num_seqs: 16
-    enforce_eager: false  # 启用 torch.compile 和 CUDAGraphs 进行优化
+    max_model_len: 131072  # 128k 上下文，实际受 KV cache 显存限制
+    max_num_seqs: 12
+    enforce_eager: true  # T4 GPU SM 不足，torch.compile 负优化，使用 eager 模式
     num_layers: 32
     hidden_size: 4096
     num_attention_heads: 16
@@ -125,28 +105,124 @@ models:
       - "--mm-processor-kwargs"
       - '{"max_pixels": 1003520}'
       # encoder cache budget = max_num_batched_tokens
+      # 1024: KV cache 更充裕，适合显存紧张场景
+      # 4096: prefill 批次更大，长 prompt 首 token 延迟更低
+      # 当前选择 1024：最大化 KV cache 空间
       - "--max-num-batched-tokens"
       - "1024"
       # 关闭 thinking 模式
       - "--default-chat-template-kwargs"
       - '{"enable_thinking": false}'
-      # 启用 torch.compile 但禁用 CUDA Graph（避免 Triton autotuning OOM）
-      # cudagraph_mode=0 表示 NONE，不捕获 CUDA Graph
+      # 启用前缀缓存，对有相同前缀的请求（如 system prompt）可复用 KV cache
+      - "--enable-prefix-caching"
+      # 跳过 encoder cache profiling，缩短启动时间
+      # 风险：encoder 显存不经 profiling 预分配，首次图像推理若超出预留可能 OOM
+      - "--skip-mm-profiling"
+      # 限制每个 prompt 最多 1 张图（与 max_pixels 限制匹配）
+      - "--limit-mm-per-prompt"
+      - '{"image": 1}'
+
+  #--------------------------------------------------------------------------
+  # Qwen3.5-9B-AWQ-4BIT（CYANKIWI 量化版本，compressed-tensors 格式）
+  #--------------------------------------------------------------------------
+  qwen3.5-9b-awq-4bit:
+    model_path: "CYANKIWI/QWEN3.5-9B-AWQ-4BIT"
+    param_count: 9
+    precision: "fp16"
+    quantization: "compressed-tensors"
+    tensor_parallel: 1
+    max_model_len: 8192
+    max_num_seqs: 16
+    enforce_eager: false  # compressed-tensors 格式，torch.compile + cudagraph 有正收益
+    num_layers: 32
+    hidden_size: 4096
+    num_attention_heads: 16
+    num_kv_heads: 4
+    explicit_memory_mb: 7000
+    extra_args:
+      - "--trust-remote-code"
+      - "--mm-processor-kwargs"
+      - '{"max_pixels": 1003520}'
+      - "--max-num-batched-tokens"
+      - "1024"
+      - "--default-chat-template-kwargs"
+      - '{"enable_thinking": false}'
+      # 启用前缀缓存，对有相同前缀的请求（如 system prompt）可复用 KV cache
+      - "--enable-prefix-caching"
+      # cudagraph_mode=0：禁用 CUDA Graph（避免显存 OOM），保留 torch.compile 优化
       - "--compilation-config"
       - '{"cudagraph_mode": 0}'
+
+  #--------------------------------------------------------------------------
+  # Qwen3.5-4B-AWQ（QuantTrio 量化版本，轻量级模型）
+  #--------------------------------------------------------------------------
+  qwen3.5-4b-awq:
+    model_path: "QuantTrio/Qwen3.5-4B-AWQ"
+    fla_use_default_norm: true  # Qwen3.5 混合 FLA 架构
+    fla_fix_block_size: true
+    param_count: 4
+    precision: "fp16"
+    quantization: "awq_marlin"  # 使用 Marlin kernel，比 awq 更快
+    tensor_parallel: 1
+    max_model_len: 262144  # 256k 上下文，KV cache 充裕
+    max_num_seqs: 16
+    enforce_eager: true  # T4 GPU SM 不足，torch.compile 负优化
+    explicit_memory_mb: 10000  # max_model_len 增大后需提高预估显存
+    extra_args:
+      - "--trust-remote-code"
+      # encoder cache budget = max_num_batched_tokens
+      # 4096: prefill 批次更大，长 prompt 首 token 延迟更低
+      # 4b 显存充裕，KV cache 不受 encoder budget 限制
+      - "--max-num-batched-tokens"
+      - "4096"
+      # 限制图像最大像素数为 ~1MP（896×1120），平衡图像质量与启动速度
+      - "--mm-processor-kwargs"
+      - '{"max_pixels": 1003520}'
+      # 关闭 thinking 模式
+      - "--default-chat-template-kwargs"
+      - '{"enable_thinking": false}'
+      - "--enable-prefix-caching"
+      # 限制每个 prompt 最多 1 张图（明确上限，与 max_pixels 匹配）
+      - "--limit-mm-per-prompt"
+      - '{"image": 4}'
+
+  #--------------------------------------------------------------------------
+  # Qwen3-4B-AWQ（轻量级模型）
+  #--------------------------------------------------------------------------
+  qwen3-4b-awq:
+    model_path: "Qwen/Qwen3-4B-AWQ"
+    fla_use_default_norm: false  # 标准 Transformer，无 FLA 线性注意力层
+    fla_fix_block_size: false
+    param_count: 3
+    precision: "fp16"
+    quantization: "awq"
+    tensor_parallel: 1
+    max_model_len: 16384
+    max_num_seqs: 16
+    enforce_eager: true  # T4: enforce_eager=false 会触发 torch.compile 负优化（7.4 t/s vs 45 t/s）
+    num_layers: 36
+    hidden_size: 2048
+    num_attention_heads: 16
+    num_kv_heads: 8
+    explicit_memory_mb: 4000
+    extra_args:
+      - "--trust-remote-code"
+      - "--enable-prefix-caching"
 
   #--------------------------------------------------------------------------
   # Qwen3-14B-AWQ
   #--------------------------------------------------------------------------
   qwen3-14b-awq:
     model_path: "Qwen/Qwen3-14B-AWQ"
+    fla_use_default_norm: false  # 标准 Transformer，无 FLA 线性注意力层
+    fla_fix_block_size: false
     param_count: 14
     precision: "fp16"
     quantization: "awq"
     tensor_parallel: 1
     max_model_len: 8192
     max_num_seqs: 12
-    enforce_eager: true  # T4 GPU SM 不足，torch.compile 效果不佳
+    enforce_eager: true  # T4: enforce_eager=false 导致严重退化（2 t/s vs 16.5 t/s）
     num_layers: 40
     hidden_size: 5120
     num_attention_heads: 40
@@ -161,6 +237,8 @@ models:
   #--------------------------------------------------------------------------
   qwen2.5-7b-awq:
     model_path: "Qwen/Qwen2.5-7B-AWQ"
+    fla_use_default_norm: false  # 标准 Transformer，无 FLA 线性注意力层
+    fla_fix_block_size: false
     param_count: 7
     precision: "fp16"
     quantization: "awq"
@@ -181,6 +259,8 @@ models:
   #--------------------------------------------------------------------------
   qwen2.5-14b-awq:
     model_path: "Qwen/Qwen2.5-14B-AWQ"
+    fla_use_default_norm: false  # 标准 Transformer，无 FLA 线性注意力层
+    fla_fix_block_size: false
     param_count: 14
     precision: "fp16"
     quantization: "awq"
@@ -201,6 +281,8 @@ models:
   #--------------------------------------------------------------------------
   qwen2.5-32b-awq:
     model_path: "Qwen/Qwen2.5-32B-AWQ"
+    fla_use_default_norm: false  # 标准 Transformer，无 FLA 线性注意力层
+    fla_fix_block_size: false
     param_count: 32
     precision: "fp16"
     quantization: "awq"
@@ -221,6 +303,8 @@ models:
   #--------------------------------------------------------------------------
   llama3.1-8b-awq:
     model_path: "hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4"
+    fla_use_default_norm: false  # 标准 Transformer，无 FLA 线性注意力层
+    fla_fix_block_size: false
     param_count: 8
     precision: "fp16"
     quantization: "awq"
@@ -239,6 +323,8 @@ models:
   #--------------------------------------------------------------------------
   mistral-7b-awq:
     model_path: "TheBloke/Mistral-7B-Instruct-v0.2-AWQ"
+    fla_use_default_norm: false  # 标准 Transformer，无 FLA 线性注意力层
+    fla_fix_block_size: false
     param_count: 7
     precision: "fp16"
     quantization: "awq"
@@ -257,6 +343,8 @@ models:
   #--------------------------------------------------------------------------
   yi-1.5-9b-awq:
     model_path: "TheBloke/Yi-1.5-9B-Chat-AWQ"
+    fla_use_default_norm: false  # 标准 Transformer，无 FLA 线性注意力层
+    fla_fix_block_size: false
     param_count: 9
     precision: "fp16"
     quantization: "awq"

@@ -230,23 +230,42 @@ except TimeoutError:
 
 ## vLLM V1 性能优化
 
-### torch.compile 优化
+### enforce_eager 配置策略
 
-vLLM 0.17.0+ 支持 `torch.compile` (inductor 后端) 进行模型编译优化，可在不使用 CUDA Graph 的情况下获得显著的性能提升。
+vLLM 0.17.0+ 支持 `torch.compile` (inductor 后端) 进行模型编译优化，但性能提升效果**取决于 GPU 型号、量化格式和模型架构**：
+
+**T4 GPU 实测结果**：
+
+| 模型类型 | enforce_eager=true | enforce_eager=false + cudagraph=0 | 结论 |
+|---------|-------------------|-----------------------------------|------|
+| 标准 AWQ (qwen3, qwen2.5, llama) | **16-45 t/s** | 2-7 t/s | 负优化，使用 eager |
+| FLA 混合 AWQ (qwen3.5-9b-awq) | **20 t/s** | 5 t/s | 负优化，使用 eager |
+| compressed-tensors (qwen3.5-9b-awq-4bit) | 20 t/s | **30 t/s** | 正优化，使用 compile |
+
+**原因分析**：
+- T4 GPU 只有 40 个 SMs（A100 有 108 个），不足以充分利用 torch.compile 的 GEMM autotuning
+- 标准 AWQ 格式在 torch.compile 下性能退化严重
+- compressed-tensors 格式有专门的 CUDA Graph 优化路径，是唯一例外
 
 **配置示例**:
 ```yaml
+# 标准 AWQ 模型：使用 enforce_eager=true（推荐）
 models:
-  your-model:
+  qwen3-4b-awq:
+    enforce_eager: true
+    extra_args:
+      - "--trust-remote-code"
+      - "--enable-prefix-caching"
+
+# compressed-tensors 格式：使用 torch.compile
+models:
+  qwen3.5-9b-awq-4bit:
     enforce_eager: false
     extra_args:
+      - "--trust-remote-code"
       - "--compilation-config"
-      - '{"cudagraph_mode": 0}'  # 禁用 CUDA Graph
+      - '{"cudagraph_mode": 0}'
 ```
-
-**效果**:
-- 推理速度提升 70-80x（在 T4 GPU 上测试）
-- GPU 利用率从 0-52% 提升到 76-83%
 
 ### Encoder Cache 优化（多模态模型）
 
@@ -289,8 +308,27 @@ models:
 ### 环境变量优化
 
 系统会自动设置以下环境变量：
-- `PYTORCH_ALLOC_CONF=expandable_segments:True`: 减少显存碎片
-- `TRITON_CACHE_DIR`: 持久化 Triton kernel 自动调优结果
+
+| 变量 | 说明 | 适用模型 |
+|------|------|---------|
+| `PYTORCH_ALLOC_CONF=expandable_segments:True` | 减少显存碎片 | 所有模型 |
+| `TRITON_CACHE_DIR` | 持久化 Triton kernel 自动调优结果 | 所有模型 |
+| `USE_DEFAULT_FLA_NORM=1` | 跳过 FLA Triton l2norm 自动调优，避免 OOM | FLA 混合架构 |
+| `FLA_GDN_FIX_BT=1` | 固定 GatedDeltaNet chunk block_T=64，防止 kernel 重编译 | FLA 混合架构 |
+
+**FLA 环境变量控制**：
+
+在 `config.yaml` 中可通过以下字段控制：
+```yaml
+models:
+  qwen3.5-9b-awq:  # FLA 混合架构
+    fla_use_default_norm: true   # 启用 USE_DEFAULT_FLA_NORM
+    fla_fix_block_size: true     # 启用 FLA_GDN_FIX_BT
+
+  qwen3-4b-awq:  # 标准 Transformer
+    fla_use_default_norm: false  # 无需设置
+    fla_fix_block_size: false
+```
 
 ### 故障处理
 

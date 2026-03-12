@@ -518,6 +518,17 @@ class ModelManager:
         os.makedirs(triton_cache_dir, exist_ok=True)
         env.setdefault("TRITON_CACHE_DIR", triton_cache_dir)
 
+        # FLA (Fast Linear Attention) 优化，针对 GatedDeltaNet 等线性注意力 kernel
+        # 可通过 config.yaml 中的 fla_use_default_norm / fla_fix_block_size 控制
+        if cfg.fla_use_default_norm:
+            # USE_DEFAULT_FLA_NORM=1：跳过 Triton l2norm 自动调优，使用默认实现，
+            #   避免在 T4 等小显存 GPU 上调优 OOM 或性能下降
+            env.setdefault("USE_DEFAULT_FLA_NORM", "1")
+        if cfg.fla_fix_block_size:
+            # FLA_GDN_FIX_BT=1：固定 GatedDeltaNet chunk block_T=64，
+            #   防止每次 shape 变化时触发 Triton kernel 重新编译
+            env.setdefault("FLA_GDN_FIX_BT", "1")
+
         # 启动子进程，创建独立进程组
         # start_new_session=True 使 vLLM 进程（含 EngineCore 子进程）独立为一个进程组，
         # 便于 _stop_vllm_process 通过 os.killpg 一次性清理所有子进程，防止孤儿进程占用显存
