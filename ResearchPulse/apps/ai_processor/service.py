@@ -194,10 +194,11 @@ class AIProcessorService:
         # 这一优化可显著减少 AI API 调用量
         domain_result = classify_by_domain(url, domain=domain)
         if domain_result and len(content) < 1000 and task_type == "content_low":
-            category, importance = domain_result
+            category, subcategory, importance = domain_result
             processing_result = {
                 "summary": title[:100],
                 "category": category,
+                "subcategory": subcategory,
                 "importance_score": min(6, importance),  # 规则分类的分数上限设为 6，避免过高评分
                 "one_liner": f"{category}动态：{title[:50]}",
                 "key_points": [],

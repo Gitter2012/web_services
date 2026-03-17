@@ -259,15 +259,16 @@ async def debug_process_article(
     # 对短内容使用域名规则快速分类，跳过 AI 处理
     domain_result = classify_by_domain(url, domain=domain)
     if domain_result and len(content) < 1000 and task_type == "content_low":
-        category, importance = domain_result
+        category, subcategory, importance = domain_result
         if debug:
-            logger.debug(f"Domain rule: category={category} importance={importance}")
+            logger.debug(f"Domain rule: category={category} subcategory={subcategory} importance={importance}")
         return {
             "success": True,
             "article_id": article_id,
             "processing_method": "rule",
             "summary": title[:100],
             "category": category,
+            "subcategory": subcategory,
             "importance_score": min(6, importance),
         }
 

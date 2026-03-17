@@ -37,21 +37,37 @@ PAPER_DOMAINS = {
 # -----------------------------------------------------------------------------
 # 高置信度域名分类映射
 # 对于这些已知域名，可以直接确定文章的类别和基准重要性分数
-# 格式: 域名 -> (分类, 重要性基准分)
+# 格式: 域名 -> (主分类, 子分类, 重要性基准分)
 # 设计决策：只对高置信度的域名进行直接分类，避免误判
 # -----------------------------------------------------------------------------
 HIGH_CONFIDENCE_DOMAINS = {
-    "openai.com": ("AI", 8), "anthropic.com": ("AI", 8),
-    "deepmind.com": ("AI", 8), "mistral.ai": ("AI", 8),
-    "huggingface.co": ("AI", 7), "stability.ai": ("AI", 7),
-    "nature.com": ("研究", 8), "science.org": ("研究", 8),
-    "arxiv.org": ("研究", 7), "biorxiv.org": ("研究", 7),
-    "blog.google": ("技术", 7), "github.blog": ("编程", 7),
-    "pytorch.org": ("编程", 7), "tensorflow.org": ("编程", 7),
-    "techcrunch.com": ("创业", 6), "venturebeat.com": ("AI", 6),
-    "jiqizhixin.com": ("AI", 7), "36kr.com": ("创业", 6),
-    "bloomberg.com": ("金融", 7), "reuters.com": ("金融", 7),
-    "producthunt.com": ("创新", 6),
+    # AI 公司
+    "openai.com": ("AI", "大模型", 8),
+    "anthropic.com": ("AI", "大模型", 8),
+    "deepmind.com": ("AI", "大模型", 8),
+    "mistral.ai": ("AI", "大模型", 8),
+    "huggingface.co": ("AI", "机器学习", 7),
+    "stability.ai": ("AI", "多模态", 7),
+    # 学术
+    "nature.com": ("研究", "论文", 8),
+    "science.org": ("研究", "论文", 8),
+    "arxiv.org": ("研究", "论文", 7),
+    "biorxiv.org": ("研究", "论文", 7),
+    # 技术/编程
+    "blog.google": ("技术", "云计算", 7),
+    "github.blog": ("编程", "后端", 7),
+    "pytorch.org": ("编程", "后端", 7),
+    "tensorflow.org": ("编程", "后端", 7),
+    # 创业/商业
+    "techcrunch.com": ("创业", "产品", 6),
+    "venturebeat.com": ("AI", "大模型", 6),
+    "jiqizhixin.com": ("AI", "大模型", 7),
+    "36kr.com": ("创业", "融资", 6),
+    # 金融
+    "bloomberg.com": ("金融", "投资", 7),
+    "reuters.com": ("金融", "分析", 7),
+    # 其他
+    "producthunt.com": ("其他", "", 6),
 }
 
 # -----------------------------------------------------------------------------
@@ -137,8 +153,8 @@ def is_paper_content(url: str, title: str) -> bool:
     return False
 
 
-def classify_by_domain(url: str, domain: str | None = None) -> tuple[str, int] | None:
-    """Classify content by URL domain. Returns (category, importance) or None.
+def classify_by_domain(url: str, domain: str | None = None) -> tuple[str, str, int] | None:
+    """Classify content by URL domain. Returns (category, subcategory, importance) or None.
 
     Args:
         url: Article URL.
@@ -146,7 +162,7 @@ def classify_by_domain(url: str, domain: str | None = None) -> tuple[str, int] |
     """
     # 根据 URL 域名进行快速分类
     # 参数：url - 文章的 URL
-    # 返回值：(分类, 重要性分数) 或 None（无法根据域名分类时）
+    # 返回值：(主分类, 子分类, 重要性分数) 或 None（无法根据域名分类时）
     if not url and not domain:
         return None
     try:
