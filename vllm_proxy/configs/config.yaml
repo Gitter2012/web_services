@@ -101,6 +101,10 @@ models:
     explicit_memory_mb: 7000
     extra_args:
       - "--trust-remote-code"
+      # 启用工具调用支持
+      - "--enable-auto-tool-choice"
+      - "--tool-call-parser"
+      - "qwen3_coder"
       # 限制图像最大像素数为 ~1MP（896×1120），平衡图像质量与启动速度
       - "--mm-processor-kwargs"
       - '{"max_pixels": 1003520}'
@@ -141,6 +145,10 @@ models:
     explicit_memory_mb: 7000
     extra_args:
       - "--trust-remote-code"
+      # 启用工具调用支持
+      - "--enable-auto-tool-choice"
+      - "--tool-call-parser"
+      - "qwen3_coder"
       - "--mm-processor-kwargs"
       - '{"max_pixels": 1003520}'
       - "--max-num-batched-tokens"
@@ -170,6 +178,10 @@ models:
     explicit_memory_mb: 10000  # max_model_len 增大后需提高预估显存
     extra_args:
       - "--trust-remote-code"
+      # 启用工具调用支持
+      - "--enable-auto-tool-choice"
+      - "--tool-call-parser"
+      - "qwen3_coder"
       # encoder cache budget = max_num_batched_tokens
       # 4096: prefill 批次更大，长 prompt 首 token 延迟更低
       # 4b 显存充裕，KV cache 不受 encoder budget 限制
