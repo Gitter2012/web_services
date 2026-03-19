@@ -16,9 +16,11 @@ Provides:
 """
 
 from common.wechat_mp.client import WeChatMPClient
+from common.wechat_mp.draft_service import WeChatDraftService
 from common.wechat_mp.token_manager import TokenManager
 
 __all__ = [
     "WeChatMPClient",
+    "WeChatDraftService",
     "TokenManager",
 ]
