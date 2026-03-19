@@ -81,7 +81,6 @@ class WeChatMPClient:
         self.secret = secret
         self._http_client = httpx.AsyncClient(
             timeout=timeout,
-            headers={"Content-Type": "application/json"},
         )
         self.token_manager = TokenManager(self)
 

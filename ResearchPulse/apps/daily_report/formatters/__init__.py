@@ -7,8 +7,10 @@
 
 from apps.daily_report.formatters.base import BaseFormatter
 from apps.daily_report.formatters.wechat import WeChatFormatter
+from apps.daily_report.formatters.wechat_html import WeChatHTMLFormatter
 
 __all__ = [
     "BaseFormatter",
     "WeChatFormatter",
+    "WeChatHTMLFormatter",
 ]

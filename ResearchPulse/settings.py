@@ -75,6 +75,7 @@ _topic_config = _yaml_config.get("topic", {})             # 话题发现配置
 _action_config = _yaml_config.get("action", {})           # 行动项配置
 _report_config = _yaml_config.get("report", {})           # 报告生成配置
 _weibo_config = _crawler_config.get("weibo", {})         # 微博热搜爬虫配置
+_wechat_mp_config = _yaml_config.get("wechat_mp", {})    # 微信公众号配置
 
 
 def _get_default_data_dir() -> Path:
@@ -734,37 +735,37 @@ class Settings(BaseSettings):
     # ======================== 微信公众号配置 ========================
     # 微信公众号功能总开关
     wechat_mp_enabled: bool = Field(
-        default=False,
+        default=_wechat_mp_config.get("enabled", False),
         validation_alias="WECHAT_MP_ENABLED",
     )
     # 微信公众号 AppID
     wechat_mp_appid: str = Field(
-        default="",
+        default=_wechat_mp_config.get("appid", ""),
         validation_alias="WECHAT_MP_APPID",
     )
     # 微信公众号 AppSecret
     wechat_mp_secret: str = Field(
-        default="",
+        default=_wechat_mp_config.get("secret", ""),
         validation_alias="WECHAT_MP_SECRET",
     )
     # 默认封面图 MediaID（降级使用）
     wechat_mp_default_thumb: str = Field(
-        default="",
+        default=_wechat_mp_config.get("default_thumb_media_id", ""),
         validation_alias="WECHAT_MP_DEFAULT_THUMB",
     )
     # 分类封面图映射（JSON 格式字符串）
     wechat_mp_category_thumbs: str = Field(
-        default="",
+        default=_wechat_mp_config.get("category_thumbs", ""),
         validation_alias="WECHAT_MP_CATEGORY_THUMBS",
     )
     # 失败重试次数
     wechat_mp_retry_times: int = Field(
-        default=3,
+        default=_wechat_mp_config.get("retry_times", 3),
         validation_alias="WECHAT_MP_RETRY_TIMES",
     )
     # 重试间隔（秒）
     wechat_mp_retry_delay: int = Field(
-        default=5,
+        default=_wechat_mp_config.get("retry_delay", 5),
         validation_alias="WECHAT_MP_RETRY_DELAY",
     )
     # 失败时邮件通知（邮件地址复用 superuser_email）

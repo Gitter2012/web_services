@@ -218,6 +218,7 @@ class WeChatDraftService:
                 )
 
         if not articles:
+            await db.commit()
             return {
                 "success": False,
                 "error": "所有报告构建失败",
