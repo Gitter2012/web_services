@@ -139,6 +139,8 @@ class DailyReport(Base, TimestampMixin):
         Index("ix_daily_reports_date_category", "report_date", "category", unique=True),
         # 状态索引：支持按状态筛选
         Index("ix_daily_reports_status", "status"),
+        # 微信推送状态索引：支持按推送状态查询
+        Index("ix_daily_reports_wechat_push_status", "wechat_push_status"),
     )
 
     def __repr__(self) -> str:
