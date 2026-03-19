@@ -38,6 +38,10 @@ class DailyReport(Base, TimestampMixin):
         article_ids: 收录的文章 ID 列表（JSON 格式）
         status: 报告状态（draft/published/archived）
         published_at: 发布时间
+        wechat_draft_media_id: 微信草稿 media_id
+        wechat_push_status: 微信推送状态（pending/success/failed/skipped）
+        wechat_push_error: 微信推送错误信息
+        wechat_pushed_at: 微信推送时间
     """
 
     __tablename__ = "daily_reports"
@@ -104,6 +108,29 @@ class DailyReport(Base, TimestampMixin):
         DateTime(timezone=True),
         nullable=True,
         comment="发布时间",
+    )
+
+    # ---- 微信公众号推送状态 ----
+    wechat_draft_media_id: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
+        comment="微信草稿 media_id",
+    )
+    wechat_push_status: Mapped[str] = mapped_column(
+        String(20),
+        default="pending",
+        nullable=False,
+        comment="微信推送状态: pending/success/failed/skipped",
+    )
+    wechat_push_error: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="微信推送错误信息",
+    )
+    wechat_pushed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="微信推送时间",
     )
 
     # ---- 数据库索引定义 ----

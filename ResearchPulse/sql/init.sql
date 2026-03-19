@@ -425,11 +425,16 @@ CREATE TABLE `daily_reports` (
   `article_ids` JSON DEFAULT NULL COMMENT '收录的文章 ID 列表',
   `status` VARCHAR(20) NOT NULL DEFAULT 'draft' COMMENT '状态: draft/published/archived',
   `published_at` DATETIME DEFAULT NULL COMMENT '发布时间',
+  `wechat_draft_media_id` VARCHAR(128) DEFAULT NULL COMMENT '微信草稿 media_id',
+  `wechat_push_status` VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '微信推送状态: pending/success/failed/skipped',
+  `wechat_push_error` TEXT DEFAULT NULL COMMENT '微信推送错误信息',
+  `wechat_pushed_at` DATETIME DEFAULT NULL COMMENT '微信推送时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `ix_daily_reports_date_category` (`report_date`, `category`),
-  KEY `ix_daily_reports_status` (`status`)
+  KEY `ix_daily_reports_status` (`status`),
+  KEY `ix_daily_reports_wechat_push_status` (`wechat_push_status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='每日 arXiv 报告表';
 
 -- -----------------------------------------------------------------------------

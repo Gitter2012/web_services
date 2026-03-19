@@ -2,15 +2,19 @@
 # 模块: apps/daily_report/service.py
 # 功能: 每日报告生成核心服务
 # 架构角色: 业务逻辑层，负责协调爬虫、翻译、生成器等组件
+# 设计决策:
+#   - 报告生成后自动推送到微信公众号草稿箱（如已启用）
+#   - 推送失败时通过邮件通知管理员（复用 SUPERUSER_EMAIL）
 # =============================================================================
 
 """Daily report generation service."""
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date, datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import and_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,6 +50,8 @@ class DailyReportService:
     3. 生成 Markdown 报告
     4. 生成微信公众号格式
     5. 保存到数据库
+    6. 推送到微信公众号草稿箱（如已启用）
+    7. 推送失败时发送邮件通知
     """
 
     def __init__(self):
@@ -466,7 +472,198 @@ class DailyReportService:
             if progress_callback:
                 await progress_callback(100, f"完成，共生成 {len(reports)}/{total_categories} 份报告")
 
+            # ---- 报告生成后推送到微信公众号草稿箱 ----
+            if reports and settings.wechat_mp_enabled:
+                if progress_callback:
+                    await progress_callback(100, "正在推送到微信公众号草稿箱...")
+
+                push_results = await self._push_to_wechat_draft(
+                    reports, db, progress_callback
+                )
+
+                # 检查是否有推送失败，发送邮件通知
+                failed_results = [
+                    r for r in push_results if not r.get("success")
+                ]
+                if failed_results:
+                    await self._notify_push_failure(
+                        report_date, failed_results
+                    )
+
         return reports
+
+    # ========================================================================
+    # 微信公众号草稿推送
+    # ========================================================================
+
+    async def _push_to_wechat_draft(
+        self,
+        reports: list[DailyReport],
+        db: AsyncSession,
+        progress_callback: Optional[callable] = None,
+    ) -> list[dict[str, Any]]:
+        """Push generated reports to WeChat MP draft box.
+
+        将已生成的报告推送到微信公众号草稿箱。
+
+        使用 common/wechat_mp 模块，自动管理 token、构建文章、创建草稿。
+
+        Args:
+            reports: List of DailyReport instances.
+            db: Database session.
+            progress_callback: Optional progress callback.
+
+        Returns:
+            List of push result dicts.
+        """
+        from common.wechat_mp.client import WeChatMPClient
+        from common.wechat_mp.draft_service import WeChatDraftService
+
+        logger.info(
+            "Pushing %d reports to WeChat MP draft box...", len(reports)
+        )
+
+        # 解析分类封面图配置（JSON 格式字符串 -> dict）
+        category_thumbs: dict[str, str] = {}
+        if settings.wechat_mp_category_thumbs:
+            try:
+                category_thumbs = json.loads(settings.wechat_mp_category_thumbs)
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(
+                    "Failed to parse WECHAT_MP_CATEGORY_THUMBS: %s", e
+                )
+
+        # 创建客户端和推送服务
+        client = WeChatMPClient(
+            appid=settings.wechat_mp_appid,
+            secret=settings.wechat_mp_secret,
+        )
+        draft_service = WeChatDraftService(
+            client,
+            default_thumb_media_id=settings.wechat_mp_default_thumb,
+            category_thumbs=category_thumbs,
+            retry_times=settings.wechat_mp_retry_times,
+            retry_delay=settings.wechat_mp_retry_delay,
+        )
+
+        try:
+            results = await draft_service.push_reports(reports, db)
+
+            # 日志统计
+            success_count = sum(1 for r in results if r.get("success"))
+            total_drafts = len(results)
+            logger.info(
+                "WeChat MP draft push completed: %d/%d drafts successful",
+                success_count,
+                total_drafts,
+            )
+
+            if progress_callback:
+                if success_count == total_drafts:
+                    await progress_callback(
+                        100, f"微信推送完成，{success_count} 个草稿创建成功"
+                    )
+                else:
+                    await progress_callback(
+                        100,
+                        f"微信推送部分失败：{success_count}/{total_drafts} 成功",
+                    )
+
+            return results
+
+        except Exception as e:
+            logger.error("WeChat MP draft push error: %s", e)
+            # 标记所有报告推送失败
+            for report in reports:
+                report.wechat_push_status = "failed"
+                report.wechat_push_error = str(e)[:2000]
+                report.wechat_pushed_at = datetime.now(timezone.utc)
+                db.add(report)
+            await db.commit()
+
+            return [{"success": False, "error": str(e), "report_ids": [r.id for r in reports]}]
+
+        finally:
+            await client.close()
+
+    async def _notify_push_failure(
+        self,
+        report_date: date,
+        failed_results: list[dict[str, Any]],
+    ) -> None:
+        """Send email notification when WeChat push fails.
+
+        推送失败时发送邮件通知管理员。
+        邮件地址复用 SUPERUSER_EMAIL 配置项。
+
+        Args:
+            report_date: Report date.
+            failed_results: List of failed push result dicts.
+        """
+        # 检查邮件服务是否可用
+        if not settings.email_enabled or not settings.superuser_email:
+            logger.warning(
+                "Email notification skipped: email_enabled=%s, superuser_email=%s",
+                settings.email_enabled,
+                settings.superuser_email,
+            )
+            return
+
+        try:
+            from common.email import send_notification_email
+
+            # 构建邮件内容
+            subject = f"[ResearchPulse] 微信公众号推送失败 - {report_date}"
+
+            error_details = []
+            for result in failed_results:
+                report_ids = result.get("report_ids", [])
+                error_msg = result.get("error", "未知错误")
+                error_details.append(
+                    f"- 报告 ID: {report_ids}\n  错误: {error_msg}"
+                )
+
+            body = (
+                f"微信公众号草稿推送失败通知\n\n"
+                f"日期: {report_date}\n"
+                f"失败数: {len(failed_results)}\n\n"
+                f"详细信息:\n"
+                + "\n".join(error_details)
+                + "\n\n请检查微信公众号配置和 API 状态。"
+            )
+
+            html_body = (
+                f"<h2>微信公众号草稿推送失败通知</h2>"
+                f"<p><strong>日期:</strong> {report_date}</p>"
+                f"<p><strong>失败数:</strong> {len(failed_results)}</p>"
+                f"<h3>详细信息:</h3><ul>"
+            )
+            for result in failed_results:
+                report_ids = result.get("report_ids", [])
+                error_msg = result.get("error", "未知错误")
+                html_body += (
+                    f"<li>报告 ID: {report_ids}<br/>"
+                    f"错误: <code>{error_msg}</code></li>"
+                )
+            html_body += "</ul><p>请检查微信公众号配置和 API 状态。</p>"
+
+            await send_notification_email(
+                to_addr=settings.superuser_email,
+                subject=subject,
+                body=body,
+                html_body=html_body,
+            )
+
+            logger.info(
+                "Push failure notification sent to %s",
+                settings.superuser_email,
+            )
+
+        except Exception as e:
+            # 邮件发送失败不应影响主流程
+            logger.error(
+                "Failed to send push failure notification email: %s", e
+            )
 
     async def get_report(
         self,

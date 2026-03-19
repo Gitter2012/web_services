@@ -254,12 +254,18 @@ daily_report:
   translate_title: true
   offset_days: 1
 
-# Notification Configuration
-notification:
-  wechat:
-    enabled: false
-    appid: ""
-    appsecret: ""
+# WeChat MP (公众号) Draft Push Configuration
+wechat_mp:
+  enabled: false
+  appid: ""
+  secret: ""
+  default_thumb_media_id: ""
+  # 分类封面图映射（每个分类可使用不同封面）
+  category_thumbs: {}
+  push_after_report: true
+  retry_times: 3
+  retry_delay: 5
+  notify_on_failure: true
 
 # Video Generation Configuration (optional)
 video:

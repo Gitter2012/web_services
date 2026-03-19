@@ -731,6 +731,44 @@ class Settings(BaseSettings):
         validation_alias="DAILY_REPORT_OFFSET_DAYS",
     )
 
+    # ======================== 微信公众号配置 ========================
+    # 微信公众号功能总开关
+    wechat_mp_enabled: bool = Field(
+        default=False,
+        validation_alias="WECHAT_MP_ENABLED",
+    )
+    # 微信公众号 AppID
+    wechat_mp_appid: str = Field(
+        default="",
+        validation_alias="WECHAT_MP_APPID",
+    )
+    # 微信公众号 AppSecret
+    wechat_mp_secret: str = Field(
+        default="",
+        validation_alias="WECHAT_MP_SECRET",
+    )
+    # 默认封面图 MediaID（降级使用）
+    wechat_mp_default_thumb: str = Field(
+        default="",
+        validation_alias="WECHAT_MP_DEFAULT_THUMB",
+    )
+    # 分类封面图映射（JSON 格式字符串）
+    wechat_mp_category_thumbs: str = Field(
+        default="",
+        validation_alias="WECHAT_MP_CATEGORY_THUMBS",
+    )
+    # 失败重试次数
+    wechat_mp_retry_times: int = Field(
+        default=3,
+        validation_alias="WECHAT_MP_RETRY_TIMES",
+    )
+    # 重试间隔（秒）
+    wechat_mp_retry_delay: int = Field(
+        default=5,
+        validation_alias="WECHAT_MP_RETRY_DELAY",
+    )
+    # 失败时邮件通知（邮件地址复用 superuser_email）
+
     # pydantic-settings 的模型配置
     # env_file: 指定 .env 文件路径
     # case_sensitive: 环境变量名不区分大小写
