@@ -523,6 +523,27 @@ class DailyReportService:
             "Pushing %d reports to WeChat MP draft box...", len(reports)
         )
 
+        # 校验凭证
+        if not settings.wechat_mp_appid or not settings.wechat_mp_secret:
+            logger.error(
+                "WeChat MP credentials are not configured. "
+                "Please set WECHAT_MP_APPID and WECHAT_MP_SECRET."
+            )
+            # 标记所有报告推送失败
+            for report in reports:
+                report.wechat_push_status = "failed"
+                report.wechat_push_error = "WeChat credentials not configured"
+                report.wechat_pushed_at = datetime.now(timezone.utc)
+                db.add(report)
+            await db.commit()
+            return [
+                {
+                    "success": False,
+                    "error": "WeChat credentials not configured",
+                    "report_ids": [r.id for r in reports],
+                }
+            ]
+
         # 解析分类封面图配置（JSON 格式字符串 -> dict）
         category_thumbs: dict[str, str] = {}
         if settings.wechat_mp_category_thumbs:

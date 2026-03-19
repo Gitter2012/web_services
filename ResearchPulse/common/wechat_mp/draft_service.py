@@ -98,11 +98,19 @@ class WeChatDraftService:
             category: arXiv category code (e.g., "cs.LG").
 
         Returns:
-            Thumb media_id string.
+            Thumb media_id string (may be empty if not configured).
         """
         thumb = self.category_thumbs.get(category, "")
         if not thumb:
             thumb = self.default_thumb_media_id
+        
+        if not thumb:
+            logger.warning(
+                "No cover image configured for category %s. "
+                "Draft creation may fail if thumb_media_id is required.",
+                category,
+            )
+        
         return thumb
 
     def _build_article(self, report: Any) -> dict[str, Any]:
