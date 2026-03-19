@@ -56,7 +56,7 @@ class TokenManager:
         self._cache_ttl = cache_ttl
         self._token: Optional[str] = None
         self._expires_at: float = 0.0
-        self._lock = asyncio.Lock()
+        self._lock: Optional[asyncio.Lock] = None  # Lazy-initialized per event loop
 
     @property
     def is_valid(self) -> bool:
@@ -85,6 +85,10 @@ class TokenManager:
             return self._token  # type: ignore
 
         # 慢路径：需要刷新 token，使用锁保证并发安全
+        # 延迟初始化锁以支持多事件循环场景
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+
         async with self._lock:
             # 二次检查：可能在等待锁时已被其他协程刷新
             if self.is_valid and not force_refresh:

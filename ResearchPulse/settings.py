@@ -26,6 +26,7 @@ Configuration precedence (highest to lowest):
 
 from __future__ import annotations
 
+import json
 import secrets
 from pathlib import Path
 from typing import List, Optional
@@ -755,7 +756,7 @@ class Settings(BaseSettings):
     )
     # 分类封面图映射（JSON 格式字符串）
     wechat_mp_category_thumbs: str = Field(
-        default=_wechat_mp_config.get("category_thumbs", ""),
+        default=lambda: json.dumps(_wechat_mp_config.get("category_thumbs", {})),
         validation_alias="WECHAT_MP_CATEGORY_THUMBS",
     )
     # 失败重试次数

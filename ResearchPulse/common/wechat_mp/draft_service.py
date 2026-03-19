@@ -207,8 +207,9 @@ class WeChatDraftService:
         """
         report_ids = [r.id for r in reports]
 
-        # 构建文章数据
+        # 构建文章数据，记录失败的报告
         articles = []
+        failed_reports = []  # 记录构建失败的报告
         for report in reports:
             try:
                 article = self._build_article(report)
@@ -220,12 +221,16 @@ class WeChatDraftService:
                     report.category,
                     e,
                 )
-                # 标记该报告推送失败
-                await self._update_push_status(
-                    report, db, success=False, error=f"构建文章失败: {e}"
-                )
+                # 记录失败，稍后统一处理
+                failed_reports.append((report, f"构建文章失败: {e}"))
 
+        # 如果所有报告构建都失败
         if not articles:
+            # 现在统一标记所有报告失败并提交一次
+            for report, error in failed_reports:
+                await self._update_push_status(
+                    report, db, success=False, error=error
+                )
             await db.commit()
             return {
                 "success": False,
@@ -284,10 +289,13 @@ class WeChatDraftService:
                 await asyncio.sleep(delay)
 
         # 所有重试都失败
+        # 只标记参与推送的报告（那些构建成功的）为失败
+        # 构建失败的报告已在前面标记过了
         for report in reports:
-            await self._update_push_status(
-                report, db, success=False, error=last_error
-            )
+            if report.wechat_push_status == "pending":  # 只标记还未处理的报告
+                await self._update_push_status(
+                    report, db, success=False, error=last_error
+                )
         await db.commit()
 
         logger.error(
