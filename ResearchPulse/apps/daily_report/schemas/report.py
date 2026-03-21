@@ -22,6 +22,7 @@ class DailyReportResponse(BaseModel):
 
     id: int
     report_date: date
+    source_type: str = "arxiv"
     category: str
     category_name: str
     title: str
@@ -65,7 +66,15 @@ class GenerateReportRequest(BaseModel):
     )
     categories: Optional[list[str]] = Field(
         default=None,
-        description="要生成的分类列表，默认使用配置中的所有分类"
+        description="要生成的分类列表（arxiv），默认使用配置中的所有分类"
+    )
+    source_types: Optional[list[str]] = Field(
+        default=None,
+        description="数据源类型列表，可选: arxiv, hackernews, reddit, weibo, rss"
+    )
+    aggregated: bool = Field(
+        default=False,
+        description="是否生成聚合报告（所有数据源合并为一份）"
     )
 
 

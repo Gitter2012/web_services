@@ -249,7 +249,10 @@ daily_report:
   enabled: true
   hour: 8
   minute: 0
-  categories: "cs.LG,cs.CV,cs.CL,cs.AI,cs.RO,cs.NE"
+  # 数据源类型: arxiv, hackernews, reddit, weibo, rss
+  source_types: "arxiv,hackernews,reddit,weibo,rss"  # 多数据源
+  # arxiv 分类列表
+  categories: "cs.LG,cs.CV,cs.CL,cs.AI,cs.RO,cs.NE,cs.IR"
   max_articles: 50
   translate_title: true
   offset_days: 1

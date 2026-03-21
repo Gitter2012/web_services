@@ -27,6 +27,7 @@ async def daily_report_job() -> None:
 
     触发时间: 根据配置 daily_report.hour 和 daily_report.minute
     功能开关: daily_report.enabled
+    数据源类型: daily_report.source_types (默认 arxiv)
     """
     # 检查功能是否启用
     if not feature_config.get_bool("daily_report.enabled", True):
@@ -35,9 +36,20 @@ async def daily_report_job() -> None:
 
     logger.info("Starting daily report generation job")
 
+    # 从配置读取数据源类型
+    source_types_str = feature_config.get("daily_report.source_types", "arxiv")
+    source_types = [s.strip() for s in source_types_str.split(",") if s.strip()]
+
+    # 从配置读取分类（用于 arxiv）
+    categories_str = feature_config.get("daily_report.categories", "cs.LG,cs.CV,cs.CL,cs.AI")
+    categories = [c.strip() for c in categories_str.split(",") if c.strip()]
+
     try:
         service = DailyReportService()
-        reports = await service.generate_daily_reports()
+        reports = await service.generate_daily_reports(
+            source_types=source_types,
+            categories=categories,
+        )
 
         logger.info(f"Daily report job completed, generated {len(reports)} reports")
 
@@ -65,7 +77,7 @@ def register_daily_report_job(scheduler: AsyncIOScheduler) -> None:
         daily_report_job,
         trigger=trigger,
         id="daily_report_job",
-        name="每日 arXiv 报告生成",
+        name="每日报告生成（多数据源）",
         replace_existing=True,
         max_instances=1,  # 同一时间只允许一个实例运行
         misfire_grace_time=3600,  # 允许 1 小时内的延迟执行

@@ -54,11 +54,32 @@ class DailyReportService:
     7. 推送失败时发送邮件通知
     """
 
+    # 数据源类型配置
+    SOURCE_TYPES = {
+        "arxiv": {"name": "arXiv", "name_zh": "arXiv 论文"},
+        "hackernews": {"name": "Hacker News", "name_zh": "Hacker News"},
+        "reddit": {"name": "Reddit", "name_zh": "Reddit"},
+        "weibo": {"name": "微博热搜", "name_zh": "微博热搜"},
+        "rss": {"name": "RSS", "name_zh": "RSS 订阅"},
+    }
+
+    # 非聚合数据源（每个源独立生成报告）
+    NON_AGGREGATE_SOURCES = ["arxiv", "rss"]
+    # 聚合数据源（多个源合并为一个报告）
+    AGGREGATE_SOURCES = ["hackernews", "reddit", "weibo"]
+
     def __init__(self):
         self.generator = ReportGenerator()
         self.wechat_formatter = WeChatFormatter()
         # 分类名称缓存
         self._category_names_cache: dict[str, str] = {}
+
+    def get_source_type_label(self, source_type: str) -> str:
+        """Get display label for source type.
+
+        获取数据源类型的显示标签。
+        """
+        return self.SOURCE_TYPES.get(source_type, {}).get("name_zh", source_type)
 
     async def _load_category_names(self, db: AsyncSession) -> dict[str, str]:
         """Load category names from database.
@@ -95,12 +116,36 @@ class DailyReportService:
         """
         return category_names.get(category, category)
 
+    def _generate_report_title(
+        self, report_date: date, source_type: str, category_name: str
+    ) -> str:
+        """Generate report title based on source type.
+
+        根据数据源类型生成报告标题。
+        """
+        date_str = report_date.strftime("%Y年%m月%d日")
+        source_label = self.get_source_type_label(source_type)
+
+        if source_type == "arxiv":
+            return f"【每日 arXiv】{date_str} {category_name}领域新论文"
+        elif source_type == "hackernews":
+            return f"【Hacker News】{date_str} 热门技术话题"
+        elif source_type == "reddit":
+            return f"【Reddit】{date_str} 热门讨论"
+        elif source_type == "weibo":
+            return f"【微博热搜】{date_str} 热点话题"
+        elif source_type == "rss":
+            return f"【RSS 订阅】{date_str} {category_name}精选内容"
+        else:
+            return f"【{source_label}】{date_str} {category_name}"
+
     async def get_articles_for_date(
         self,
         db: AsyncSession,
         report_date: date,
         category: str,
         max_articles: int = 50,
+        source_type: str = "arxiv",
     ) -> list[Article]:
         """Get articles for a specific date and category.
 
@@ -109,8 +154,9 @@ class DailyReportService:
         Args:
             db: Database session.
             report_date: Report date.
-            category: arXiv category code.
+            category: Category code (e.g., cs.LG for arxiv, feed_id for rss).
             max_articles: Maximum number of articles to return.
+            source_type: Source type (arxiv/rss/wechat/weibo/hackernews/reddit/twitter).
 
         Returns:
             List of articles.
@@ -119,20 +165,26 @@ class DailyReportService:
         start_datetime = datetime.combine(report_date, datetime.min.time()).replace(tzinfo=timezone.utc)
         end_datetime = start_datetime + timedelta(days=1)
 
-        # 查询条件：
-        # 1. 来源类型为 arxiv
-        # 2. 发布时间在指定日期范围内
-        # 3. 主分类匹配（arxiv_primary_category 或 category）
-        # 4. 未归档
-        query = (
-            select(Article)
-            .where(Article.source_type == "arxiv")
-            .where(Article.publish_time >= start_datetime)
-            .where(Article.publish_time < end_datetime)
-            .where(
+        # 构建基础查询条件
+        query = select(Article).where(Article.source_type == source_type)
+
+        # 根据数据源类型添加分类过滤条件
+        if source_type == "arxiv":
+            # arXiv 特有逻辑：主分类或分类字段匹配
+            query = query.where(
                 (Article.arxiv_primary_category == category) |
                 (Article.category == category)
             )
+        elif category != "all":
+            # 其他数据源：仅当指定了具体分类时才过滤
+            # category="all" 表示获取该数据源的所有文章
+            query = query.where(Article.category == category)
+
+        # 添加时间范围、归档状态、排序和限制
+        query = (
+            query
+            .where(Article.publish_time >= start_datetime)
+            .where(Article.publish_time < end_datetime)
             .where(Article.is_archived.is_(False))
             .order_by(Article.publish_time.desc())
             .limit(max_articles)
@@ -298,18 +350,20 @@ class DailyReportService:
         progress_callback: Optional[callable] = None,
         category_index: int = 1,
         total_categories: int = 1,
+        source_type: str = "arxiv",
     ) -> Optional[DailyReport]:
-        """Generate a daily report for a specific category.
+        """Generate a daily report for a specific category and source type.
 
-        为指定分类生成每日报告。
+        为指定分类和数据源生成每日报告。
 
         Args:
             db: Database session.
             report_date: Report date.
-            category: arXiv category code.
+            category: Category code.
             progress_callback: Optional callback for progress updates.
             category_index: Current category index (for progress calculation).
             total_categories: Total number of categories.
+            source_type: Data source type (arxiv, hackernews, reddit, weibo, rss).
 
         Returns:
             Generated DailyReport or None if no articles.
@@ -324,13 +378,14 @@ class DailyReportService:
             return min(base_progress + step_progress, 99)
 
         # 更新进度：开始处理分类
+        source_label = self.get_source_type_label(source_type)
         if progress_callback:
             await progress_callback(base_progress, f"[{category_index}/{total_categories}] {category}: 检查报告...")
 
         # 检查是否已存在报告
-        existing = await self.get_report(db, report_date, category)
+        existing = await self.get_report(db, report_date, category, source_type)
         if existing:
-            logger.info(f"Report already exists for {report_date} / {category}")
+            logger.info(f"Report already exists for {report_date} / {source_type} / {category}")
             if progress_callback:
                 await progress_callback(base_progress + int(category_progress_range), f"[{category_index}/{total_categories}] {category}: 已存在，跳过")
             return existing
@@ -352,11 +407,11 @@ class DailyReportService:
 
         # 获取文章
         articles = await self.get_articles_for_date(
-            db, report_date, category, max_articles
+            db, report_date, category, max_articles, source_type
         )
 
         if not articles:
-            logger.info(f"No articles found for {report_date} / {category}")
+            logger.info(f"No articles found for {report_date} / {source_type} / {category}")
             if progress_callback:
                 await progress_callback(base_progress + int(category_progress_range), f"[{category_index}/{total_categories}] {category}: 无文章")
             return None
@@ -377,16 +432,18 @@ class DailyReportService:
             progress = calc_progress(9, 10)
             await progress_callback(progress, f"[{category_index}/{total_categories}] {category}: 生成报告内容...")
 
-        # 生成报告
-        title = f"【每日 arXiv】{report_date.strftime('%Y年%m月%d日')} {category_name}领域新论文"
+        # 生成报告标题（根据数据源类型）
+        title = self._generate_report_title(report_date, source_type, category_name)
+
         content_markdown = self.generator.generate(
-            report_date, category, category_name, articles
+            report_date, category, category_name, articles, source_type
         )
         content_wechat = self.wechat_formatter.format(content_markdown)
 
         # 创建报告记录
         report = DailyReport(
             report_date=report_date,
+            source_type=source_type,
             category=category,
             category_name=category_name,
             title=title,
@@ -412,16 +469,20 @@ class DailyReportService:
         self,
         report_date: Optional[date] = None,
         categories: Optional[list[str]] = None,
+        source_types: Optional[list[str]] = None,
         progress_callback: Optional[callable] = None,
+        aggregated: bool = False,
     ) -> list[DailyReport]:
-        """Generate daily reports for all configured categories.
+        """Generate daily reports for all configured source types and categories.
 
-        为所有配置的分类生成每日报告。
+        为所有配置的数据源和分类生成每日报告。
 
         Args:
             report_date: Report date, defaults to yesterday.
-            categories: Categories to generate, defaults to config.
+            categories: Categories to generate (for arxiv), defaults to config.
+            source_types: Source types to generate, defaults to config.
             progress_callback: Optional callback for progress updates (progress, message).
+            aggregated: If True, generate a single aggregated report combining all sources.
 
         Returns:
             List of generated reports.
@@ -431,7 +492,12 @@ class DailyReportService:
             offset_days = feature_config.get_int("daily_report.report_offset_days", 1)
             report_date = date.today() - timedelta(days=offset_days)
 
-        # 确定分类
+        # 确定数据源类型
+        if source_types is None:
+            source_types_str = feature_config.get("daily_report.source_types", "arxiv")
+            source_types = [s.strip() for s in source_types_str.split(",") if s.strip()]
+
+        # 确定 arxiv 分类
         if categories is None:
             categories_str = feature_config.get("daily_report.categories", "cs.LG,cs.CV,cs.CL,cs.AI")
             categories = [c.strip() for c in categories_str.split(",") if c.strip()]
@@ -441,36 +507,94 @@ class DailyReportService:
             logger.info("Daily report feature is disabled")
             return []
 
-        logger.info(f"Generating daily reports for {report_date}, categories: {categories}")
-
-        # 更新进度：开始
-        if progress_callback:
-            await progress_callback(0, f"开始生成报告，共 {len(categories)} 个分类...")
-
         session_factory = get_session_factory()
         reports = []
-        total_categories = len(categories)
 
         async with session_factory() as db:
-            for idx, category in enumerate(categories, 1):
-                try:
-                    report = await self.generate_report(
-                        db, report_date, category,
-                        progress_callback=progress_callback,
-                        category_index=idx,
-                        total_categories=total_categories,
-                    )
-                    if report:
-                        reports.append(report)
-                except Exception as e:
-                    logger.error(f"Failed to generate report for {category}: {e}")
+            # 聚合报告模式：所有数据源合并为一份报告
+            if aggregated:
+                reports = await self._generate_aggregated_report(
+                    db, report_date, source_types, progress_callback
+                )
+                # 最终进度
+                if progress_callback:
+                    await progress_callback(100, f"完成，共生成聚合报告 {len(reports)} 份")
+
+                # 推送到微信公众号
+                if reports and settings.wechat_mp_enabled:
                     if progress_callback:
-                        progress = int(idx / total_categories * 100)
-                        await progress_callback(progress, f"[{idx}/{total_categories}] {category}: 失败 - {str(e)[:50]}")
+                        await progress_callback(100, "正在推送到微信公众号草稿箱...")
+                    push_results = await self._push_to_wechat_draft(reports, db, progress_callback)
+                    failed_results = [r for r in push_results if not r.get("success")]
+                    if failed_results:
+                        await self._notify_push_failure(report_date, failed_results)
+
+                return reports
+
+            # 常规模式：每个数据源/分类单独生成报告
+            # 计算总任务数（用于进度计算）
+            total_tasks = 0
+            for source_type in source_types:
+                if source_type == "arxiv":
+                    total_tasks += len(categories)
+                else:
+                    total_tasks += 1  # 其他源每天一份
+
+            logger.info(f"Generating daily reports for {report_date}, sources: {source_types}")
+
+            # 更新进度：开始
+            if progress_callback:
+                await progress_callback(0, f"开始生成报告，共 {total_tasks} 个任务...")
+
+            task_index = 0
+            for source_type in source_types:
+                source_label = self.get_source_type_label(source_type)
+
+                if source_type == "arxiv":
+                    # arxiv：按分类生成多份报告
+                    for category in categories:
+                        task_index += 1
+                        try:
+                            report = await self.generate_report(
+                                db, report_date, category,
+                                progress_callback=progress_callback,
+                                category_index=task_index,
+                                total_categories=total_tasks,
+                                source_type="arxiv",
+                            )
+                            if report:
+                                reports.append(report)
+                        except Exception as e:
+                            logger.error(f"Failed to generate report for arxiv/{category}: {e}")
+                            if progress_callback:
+                                await progress_callback(
+                                    int(task_index / total_tasks * 100),
+                                    f"[{task_index}/{total_tasks}] arxiv/{category}: 失败 - {str(e)[:50]}"
+                                )
+                else:
+                    # 其他源：每天生成一份汇总报告
+                    task_index += 1
+                    try:
+                        report = await self.generate_report(
+                            db, report_date, "all",
+                            progress_callback=progress_callback,
+                            category_index=task_index,
+                            total_categories=total_tasks,
+                            source_type=source_type,
+                        )
+                        if report:
+                            reports.append(report)
+                    except Exception as e:
+                        logger.error(f"Failed to generate report for {source_type}: {e}")
+                        if progress_callback:
+                            await progress_callback(
+                                int(task_index / total_tasks * 100),
+                                f"[{task_index}/{total_tasks}] {source_label}: 失败 - {str(e)[:50]}"
+                            )
 
             # 最终进度
             if progress_callback:
-                await progress_callback(100, f"完成，共生成 {len(reports)}/{total_categories} 份报告")
+                await progress_callback(100, f"完成，共生成 {len(reports)}/{total_tasks} 份报告")
 
             # ---- 报告生成后推送到微信公众号草稿箱 ----
             if reports and settings.wechat_mp_enabled:
@@ -686,19 +810,116 @@ class DailyReportService:
                 "Failed to send push failure notification email: %s", e
             )
 
+    async def _generate_aggregated_report(
+        self,
+        db: AsyncSession,
+        report_date: date,
+        source_types: list[str],
+        progress_callback: Optional[callable] = None,
+    ) -> list[DailyReport]:
+        """Generate a single aggregated report combining all sources.
+
+        生成一份聚合报告，将所有数据源的内容合并。
+
+        Args:
+            db: Database session.
+            report_date: Report date.
+            source_types: List of source types to include.
+            progress_callback: Optional progress callback.
+
+        Returns:
+            List containing the single aggregated report.
+        """
+        # 检查是否已存在聚合报告
+        existing = await self.get_report(db, report_date, "all", "aggregated")
+        if existing:
+            logger.info(f"Aggregated report already exists for {report_date}")
+            if progress_callback:
+                await progress_callback(100, "聚合报告已存在，跳过")
+            return [existing]
+
+        # 更新进度
+        if progress_callback:
+            await progress_callback(10, "正在收集各数据源文章...")
+
+        # 收集所有数据源的文章
+        # 聚合报告默认不限制每个源的条数（设置为很大的值）
+        max_articles_per_source = 10000
+        articles_by_source: dict[str, list[Article]] = {}
+
+        for idx, source_type in enumerate(source_types):
+            source_label = self.get_source_type_label(source_type)
+            if progress_callback:
+                progress = 10 + int(40 * idx / len(source_types))
+                await progress_callback(progress, f"正在获取 {source_label} 文章...")
+
+            articles = await self.get_articles_for_date(
+                db, report_date, "all", max_articles_per_source, source_type
+            )
+            if articles:
+                articles_by_source[source_type] = articles
+                logger.info(f"Found {len(articles)} articles for {source_type}")
+
+        if not articles_by_source:
+            logger.info(f"No articles found for aggregated report on {report_date}")
+            if progress_callback:
+                await progress_callback(100, "无文章，跳过聚合报告")
+            return []
+
+        # 更新进度
+        if progress_callback:
+            await progress_callback(60, "正在生成聚合报告内容...")
+
+        # 使用 generator 生成聚合报告内容
+        content_markdown = self.generator.generate_aggregated_report(
+            report_date, articles_by_source, source_types
+        )
+
+        # 生成报告标题
+        date_str = report_date.strftime("%Y年%m月%d日")
+        title = f"【每日精选】{date_str} 信息聚合"
+        total_articles = sum(len(a) for a in articles_by_source.values())
+
+        # 创建报告记录
+        report = DailyReport(
+            report_date=report_date,
+            source_type="aggregated",
+            category="all",
+            category_name="聚合",
+            title=title,
+            content_markdown=content_markdown,
+            content_wechat=self.wechat_formatter.format(content_markdown),
+            article_count=total_articles,
+            article_ids=[a.id for articles in articles_by_source.values() for a in articles],
+            status="draft",
+        )
+
+        db.add(report)
+        await db.commit()
+        await db.refresh(report)
+
+        # 更新进度
+        if progress_callback:
+            await progress_callback(90, f"聚合报告生成完成，共 {total_articles} 条内容")
+
+        logger.info(f"Generated aggregated report for {report_date} with {total_articles} articles")
+        return [report]
+
     async def get_report(
         self,
         db: AsyncSession,
         report_date: date,
         category: str,
+        source_type: str = "arxiv",
     ) -> Optional[DailyReport]:
-        """Get a specific report by date and category.
+        """Get a specific report by date, source type and category.
 
-        获取指定日期和分类的报告。
+        获取指定日期、数据源和分类的报告。
         """
         query = select(DailyReport).where(
             and_(
                 DailyReport.report_date == report_date,
+                DailyReport.source_type == source_type,
                 DailyReport.category == category,
             )
         )
@@ -724,6 +945,7 @@ class DailyReportService:
         report_date: Optional[date] = None,
         category: Optional[str] = None,
         status: Optional[str] = None,
+        source_type: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[DailyReport], int]:
@@ -739,6 +961,8 @@ class DailyReportService:
             query = query.where(DailyReport.category == category)
         if status:
             query = query.where(DailyReport.status == status)
+        if source_type:
+            query = query.where(DailyReport.source_type == source_type)
 
         # 计算总数
         count_query = query
@@ -771,6 +995,17 @@ class DailyReportService:
         content = report.content_markdown
         if format == "wechat":
             content = report.content_wechat or report.content_markdown
+        elif format == "wechat_html":
+            # 使用 WeChatHTMLFormatter 动态生成微信兼容 HTML
+            from .formatters import WeChatHTMLFormatter
+
+            from common.feature_config import feature_config
+
+            truncate = feature_config.get_bool("wechat.html_truncate", False)
+            max_length = feature_config.get_int("wechat.html_max_length", 19000)
+
+            formatter = WeChatHTMLFormatter()
+            content = formatter.format(report.content_markdown, truncate=truncate, max_length=max_length)
 
         return {
             "id": report.id,

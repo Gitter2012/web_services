@@ -126,8 +126,14 @@ class WeChatDraftService:
         """
         formatter = self._get_html_formatter()
 
+        # 从配置读取截断设置
+        from common.feature_config import feature_config
+
+        truncate = feature_config.get_bool("wechat.html_truncate", False)
+        max_length = feature_config.get_int("wechat.html_max_length", 19000)
+
         # 生成 HTML 内容
-        content_html = formatter.format(report.content_markdown)
+        content_html = formatter.format(report.content_markdown, truncate=truncate, max_length=max_length)
 
         # 生成摘要（最多 128 字）
         digest = formatter.generate_digest(report)

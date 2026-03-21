@@ -1,14 +1,14 @@
 # =============================================================================
 # 模块: apps/daily_report/models/daily_report.py
 # 功能: 每日报告数据模型定义
-# 架构角色: 数据持久化层，定义每日 arXiv 报告的数据结构
+# 架构角色: 数据持久化层，定义每日报告的数据结构
 # 设计决策:
-#   1. 每个分类每天生成一份报告，通过 (report_date, category) 唯一约束
+#   1. 每个分类每天每个数据源生成一份报告，通过 (report_date, source_type, category) 唯一约束
 #   2. 同时存储标准 Markdown 和微信公众号专用格式
 #   3. 记录收录的文章 ID 列表，便于追溯和更新
 # =============================================================================
 
-"""Daily arXiv report model."""
+"""Daily report model for multiple data sources."""
 
 from __future__ import annotations
 
@@ -22,14 +22,15 @@ from core.models.base import Base, TimestampMixin
 
 
 class DailyReport(Base, TimestampMixin):
-    """Daily arXiv report model.
+    """Daily report model for multiple data sources.
 
-    每日 arXiv 报告模型，按分类存储当天发布的论文信息。
+    每日报告模型，按分类和数据源存储当天发布的内容信息。
 
     Attributes:
         id: 主键
         report_date: 报告日期
-        category: arXiv 分类代码（如 cs.LG）
+        source_type: 数据源类型（arxiv, hackernews, reddit, weibo, rss）
+        category: 分类代码（如 cs.LG, technology）
         category_name: 分类中文名称（如 机器学习）
         title: 报告标题
         content_markdown: Markdown 格式的报告内容
@@ -56,11 +57,18 @@ class DailyReport(Base, TimestampMixin):
         index=True,
         comment="报告日期",
     )
+    source_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="arxiv",
+        index=True,
+        comment="数据源类型: arxiv, hackernews, reddit, weibo, rss",
+    )
     category: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
         index=True,
-        comment="arXiv 分类代码，如 cs.LG, cs.CV",
+        comment="分类代码，如 cs.LG, cs.CV, technology",
     )
     category_name: Mapped[str] = mapped_column(
         String(100),
@@ -125,7 +133,7 @@ class DailyReport(Base, TimestampMixin):
     wechat_push_error: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
-        comment="微信推送错误信息",
+        comment="微信推送错误错误信息",
     )
     wechat_pushed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -135,14 +143,12 @@ class DailyReport(Base, TimestampMixin):
 
     # ---- 数据库索引定义 ----
     __table_args__ = (
-        # 联合唯一索引：确保每天每个分类只有一份报告
-        Index("ix_daily_reports_date_category", "report_date", "category", unique=True),
+        # 联合唯一索引：确保每天每个数据源每个分类只有一份报告
+        Index("ix_daily_reports_date_source_category", "report_date", "source_type", "category", unique=True),
         # 状态索引：支持按状态筛选
         Index("ix_daily_reports_status", "status"),
-        # 微信推送状态索引：支持按推送状态查询
-        Index("ix_daily_reports_wechat_push_status", "wechat_push_status"),
     )
 
     def __repr__(self) -> str:
         """Return a readable daily report representation."""
-        return f"<DailyReport(id={self.id}, date={self.report_date}, category={self.category})>"
+        return f"<DailyReport(id={self.id}, date={self.report_date}, source={self.source_type}, category={self.category})>"

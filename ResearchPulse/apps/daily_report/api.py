@@ -149,17 +149,26 @@ async def generate_reports_async(
     else:
         categories = request.categories
 
+    # 确定数据源类型
+    if request.source_types is None:
+        source_types_str = feature_config.get("daily_report.source_types", "arxiv")
+        source_types = [s.strip() for s in source_types_str.split(",") if s.strip()]
+    else:
+        source_types = request.source_types
+
     # 创建任务名称
     category_str = ", ".join(categories) if categories else "全部"
-    task_name = f"生成 {report_date} 报告 ({category_str})"
+    source_str = ", ".join(source_types) if source_types else "arxiv"
+    report_type = "聚合报告" if request.aggregated else "报告"
+    task_name = f"生成 {report_date} {report_type} ({source_str} - {category_str})"
 
     # 获取任务管理器
     task_manager = TaskManager()
 
     # 检查是否有相同参数的待处理任务
     existing_task = await task_manager.get_task(
-        await _get_existing_task_id("daily_report", report_date, categories)
-    ) if await _check_existing_task("daily_report", report_date, categories) else None
+        await _get_existing_task_id("daily_report", report_date, categories, source_types)
+    ) if await _check_existing_task("daily_report", report_date, categories, source_types) else None
 
     if existing_task and existing_task.status in ["pending", "running"]:
         return GenerateReportAsyncResponse(
@@ -175,6 +184,8 @@ async def generate_reports_async(
         params={
             "report_date": report_date.isoformat(),
             "categories": categories,
+            "source_types": source_types,
+            "aggregated": request.aggregated,
         },
         created_by=user.id if hasattr(user, "id") else None,
     )
@@ -190,11 +201,15 @@ async def generate_reports_async(
         reports = await service.generate_daily_reports(
             report_date=report_date,
             categories=categories,
+            source_types=source_types,
             progress_callback=update_progress,
+            aggregated=request.aggregated,
         )
         return {
             "report_date": report_date.isoformat(),
             "categories": categories,
+            "source_types": source_types,
+            "aggregated": request.aggregated,
             "generated_count": len(reports),
             "report_ids": [r.id for r in reports],
         }
@@ -209,7 +224,7 @@ async def generate_reports_async(
     )
 
 
-async def _check_existing_task(task_type: str, report_date: date, categories: list[str]) -> bool:
+async def _check_existing_task(task_type: str, report_date: date, categories: list[str], source_types: list[str], aggregated: bool = False) -> bool:
     """Check if there's an existing pending/running task with same params."""
     from sqlalchemy import select
     from core.database import get_session_factory
@@ -226,12 +241,14 @@ async def _check_existing_task(task_type: str, report_date: date, categories: li
         for t in tasks:
             params = t.params or {}
             if (params.get("report_date") == report_date.isoformat() and
-                params.get("categories") == categories):
+                params.get("categories") == categories and
+                params.get("source_types") == source_types and
+                params.get("aggregated") == aggregated):
                 return True
     return False
 
 
-async def _get_existing_task_id(task_type: str, report_date: date, categories: list[str]) -> str:
+async def _get_existing_task_id(task_type: str, report_date: date, categories: list[str], source_types: list[str], aggregated: bool = False) -> str:
     """Get existing task ID."""
     from sqlalchemy import select
     from core.database import get_session_factory
@@ -248,7 +265,9 @@ async def _get_existing_task_id(task_type: str, report_date: date, categories: l
         for t in tasks:
             params = t.params or {}
             if (params.get("report_date") == report_date.isoformat() and
-                params.get("categories") == categories):
+                params.get("categories") == categories and
+                params.get("source_types") == source_types and
+                params.get("aggregated") == aggregated):
                 return t.task_id
     return ""
 
@@ -265,10 +284,18 @@ async def generate_reports_sync(
     """手动触发报告生成（同步模式，已废弃，请使用 /generate）"""
     service = DailyReportService()
 
+    # 确定数据源类型
+    if request.source_types is None:
+        source_types_str = feature_config.get("daily_report.source_types", "arxiv")
+        source_types = [s.strip() for s in source_types_str.split(",") if s.strip()]
+    else:
+        source_types = request.source_types
+
     try:
         reports = await service.generate_daily_reports(
             report_date=request.report_date,
             categories=request.categories,
+            source_types=source_types,
         )
 
         return GenerateReportResponse(
@@ -327,12 +354,13 @@ async def export_daily(
 
 # --------------------------------------------------------------------------
 # GET /daily-reports - 获取报告列表
-# 功能: 查询每日报告列表，支持按日期、分类、状态筛选
+# 功能: 查询每日报告列表，支持按日期、分类、数据源、状态筛选
 # --------------------------------------------------------------------------
 @router.get("", response_model=DailyReportListResponse)
 async def list_reports(
     report_date: Optional[date] = Query(None, description="报告日期"),
-    category: Optional[str] = Query(None, description="arXiv 分类代码"),
+    category: Optional[str] = Query(None, description="分类代码"),
+    source_type: Optional[str] = Query(None, description="数据源类型: arxiv, hackernews, reddit, weibo, rss"),
     status: Optional[str] = Query(None, description="报告状态"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
@@ -345,6 +373,7 @@ async def list_reports(
         db,
         report_date=report_date,
         category=category,
+        source_type=source_type,
         status=status,
         page=page,
         page_size=page_size,
@@ -380,12 +409,12 @@ async def get_report(
 
 # --------------------------------------------------------------------------
 # GET /daily-reports/{report_id}/export - 导出报告
-# 功能: 导出报告为指定格式（markdown 或 wechat）
+# 功能: 导出报告为指定格式（markdown、wechat 或 wechat_html）
 # --------------------------------------------------------------------------
 @router.get("/{report_id}/export", response_model=ExportResponse)
 async def export_report(
     report_id: int,
-    format: str = Query("markdown", description="导出格式: markdown 或 wechat"),
+    format: str = Query("markdown", description="导出格式: markdown, wechat, wechat_html"),
     user=Depends(require_permissions("daily_report:export")),
     db: AsyncSession = Depends(get_session),
 ):

@@ -50,13 +50,17 @@ class WeChatHTMLFormatter(BaseFormatter):
         "accent_color": "#1e6bb8",
     }
 
-    def format(self, content: str) -> str:
+    def format(self, content: str, truncate: bool = False, max_length: int = 19000) -> str:
         """Format Markdown content to WeChat-compatible HTML.
 
         将 Markdown 报告转换为微信公众号 HTML。
 
         Args:
             content: Markdown report content.
+            truncate: Whether to truncate content when exceeding max_length.
+                      Default is False (no truncation).
+            max_length: Maximum character length when truncate is True.
+                        Default is 19000 (WeChat limit is 20000).
 
         Returns:
             WeChat-compatible HTML string.
@@ -185,10 +189,9 @@ class WeChatHTMLFormatter(BaseFormatter):
 
         result = "\n".join(html_parts)
 
-        # 检查内容长度限制
-        if len(result) > 19000:
-            # 微信限制 20000 字符，预留一些余量
-            result = self._truncate_html(result, 19000)
+        # 检查内容长度限制（仅在启用截断时）
+        if truncate and len(result) > max_length:
+            result = self._truncate_html(result, max_length)
 
         return result
 

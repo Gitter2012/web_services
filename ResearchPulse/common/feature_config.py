@@ -71,6 +71,9 @@ DEFAULT_CONFIGS: Dict[str, tuple[str, str]] = {
     "scheduler.report_weekly_day": ("mon", "Day of week for weekly report generation"),
     "scheduler.report_weekly_hour": ("6", "Hour of day for weekly report generation (0-23)"),
     "scheduler.report_monthly_hour": ("7", "Hour of day for monthly report generation on 1st (0-23)"),
+    # ---- 微信公众号配置 ----
+    "wechat.html_truncate": ("false", "Truncate HTML content for WeChat MP (19000 chars limit)"),
+    "wechat.html_max_length": ("19000", "Max HTML content length when truncate is enabled"),
     # ---- 邮件通知调度参数 ----
     "scheduler.notification_hour": ("9", "Hour of day to send notification emails (0-23)"),
     "scheduler.notification_minute": ("0", "Minute of hour to send notification emails (0-59)"),

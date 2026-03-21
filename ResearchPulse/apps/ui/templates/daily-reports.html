@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}每日 arXiv 报告 - ResearchPulse{% endblock %}
+{% block title %}每日报告 - ResearchPulse{% endblock %}
 
 {% block extra_styles %}
 <style>
@@ -8,6 +8,8 @@
     .filter-bar input[type="date"] { width: 140px; }
     .filter-bar button.secondary { background: #4ecdc4; color: #1a1a2e; }
     .filter-bar button.secondary:hover { background: #3dbdb5; }
+    .nav-btn { padding: 8px 12px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    .nav-btn:hover { background: #e8e8e8; }
 
     .report-list { display: flex; flex-direction: column; gap: 16px; }
     .report-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); transition: box-shadow 0.2s; overflow: hidden; }
@@ -110,9 +112,20 @@
 {% block content %}
 <div class="main">
     <div class="page-header">
-        <h2>每日 arXiv 报告</h2>
+        <h2>每日报告</h2>
         <div class="filter-bar">
+            <button onclick="changeDate(-1)" class="nav-btn" title="前一天">◀</button>
             <input type="date" id="filter-date" onchange="loadReports()">
+            <button onclick="changeDate(1)" class="nav-btn" title="后一天">▶</button>
+            <select id="filter-source" onchange="loadReports()">
+                <option value="">全部来源</option>
+                <option value="aggregated">聚合报告</option>
+                <option value="arxiv">arXiv</option>
+                <option value="hackernews">Hacker News</option>
+                <option value="reddit">Reddit</option>
+                <option value="weibo">微博热搜</option>
+                <option value="rss">RSS</option>
+            </select>
             <select id="filter-category" onchange="loadReports()">
                 <option value="">全部分类</option>
             </select>
@@ -157,11 +170,37 @@
                     <div class="hint">默认为昨天</div>
                 </div>
                 <div class="form-group">
-                    <label>分类（可多选）</label>
-                    <select id="generate-categories" multiple style="height: 120px;">
-                        <option value="">使用默认配置</option>
+                    <label>报告类型</label>
+                    <select id="generate-report-type" onchange="updateReportTypeOptions()">
+                        <option value="normal">普通报告（每个数据源/分类单独生成）</option>
+                        <option value="aggregated">聚合报告（所有数据源合并为一份）</option>
                     </select>
-                    <div class="hint">按住 Ctrl/Cmd 可多选，不选则使用系统配置的默认分类</div>
+                    <div class="hint">聚合报告将所有选中数据源的内容合并为一份报告，仅包含标题和链接</div>
+                </div>
+                <div class="form-group" id="source-options-group">
+                    <label>数据源（可多选）</label>
+                    <select id="generate-sources" multiple style="height: 100px;" onchange="updateSourceOptions()">
+                        <option value="arxiv">arXiv 论文</option>
+                        <option value="hackernews">Hacker News</option>
+                        <option value="reddit">Reddit</option>
+                        <option value="weibo">微博热搜</option>
+                        <option value="rss">RSS 订阅</option>
+                    </select>
+                    <div class="hint">按住 Ctrl/Cmd 可多选，不选则使用默认配置</div>
+                </div>
+                <!-- arxiv 分类选择（仅选中 arxiv 且非聚合报告时显示） -->
+                <div class="form-group" id="arxiv-options" style="display: none;">
+                    <label>arXiv 分类（可多选）</label>
+                    <select id="generate-categories" multiple style="height: 120px;">
+                    </select>
+                    <div class="hint">不选则使用系统配置的默认分类</div>
+                </div>
+                <!-- RSS 源选择（仅选中 rss 时显示） -->
+                <div class="form-group" id="rss-options" style="display: none;">
+                    <label>RSS 源（可多选）</label>
+                    <select id="generate-rss-feeds" multiple style="height: 120px;">
+                    </select>
+                    <div class="hint">不选则生成全部 RSS 源的汇总报告</div>
                 </div>
             </div>
         </div>
@@ -233,8 +272,9 @@
                     filterSelect.innerHTML += `<option value="${c.code}">${c.code} - ${name}</option>`;
                 });
                 
+                // arxiv 分类选择器（生成弹窗）
                 const genSelect = document.getElementById('generate-categories');
-                genSelect.innerHTML = '<option value="">使用默认配置</option>';
+                genSelect.innerHTML = '';
                 categories.forEach(c => {
                     const name = c.name_zh || c.name || c.code;
                     genSelect.innerHTML += `<option value="${c.code}">${c.code} - ${name}</option>`;
@@ -243,13 +283,72 @@
         } catch(e) {}
     }
 
+    // 加载数据源选项（用于生成报告弹窗）
+    async function loadSourceOptions() {
+        try {
+            const res = await fetch(`${API_BASE}/sources`, { headers: getHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                
+                // 填充 RSS 源选择器
+                const rssSelect = document.getElementById('generate-rss-feeds');
+                rssSelect.innerHTML = '';
+                if (data.rss_feeds) {
+                    data.rss_feeds.forEach(f => {
+                        rssSelect.innerHTML += `<option value="${f.id}">${f.title}</option>`;
+                    });
+                }
+            }
+        } catch(e) {}
+    }
+
+    // 获取选中的数据源
+    function getSelectedSources() {
+        const select = document.getElementById('generate-sources');
+        return Array.from(select.selectedOptions).map(o => o.value);
+    }
+
+    // 报告类型切换
+    function updateReportTypeOptions() {
+        const reportType = document.getElementById('generate-report-type').value;
+        const isAggregated = reportType === 'aggregated';
+
+        // 聚合报告隐藏 arxiv 分类选项（因为不分分类）
+        updateSourceOptions();
+    }
+
+    // 数据源选择联动
+    function updateSourceOptions() {
+        const sources = getSelectedSources();
+        const reportType = document.getElementById('generate-report-type').value;
+        const isAggregated = reportType === 'aggregated';
+
+        // 普通报告：显示 arxiv 分类选项
+        // 聚合报告：隐藏 arxiv 分类选项（聚合报告不按分类）
+        document.getElementById('arxiv-options').style.display =
+            (sources.includes('arxiv') && !isAggregated) ? 'block' : 'none';
+        document.getElementById('rss-options').style.display =
+            sources.includes('rss') ? 'block' : 'none';
+    }
+
+    // 日期切换
+    function changeDate(delta) {
+        const dateInput = document.getElementById('filter-date');
+        const currentDate = new Date(dateInput.value || new Date());
+        currentDate.setDate(currentDate.getDate() + delta);
+        dateInput.value = currentDate.toISOString().split('T')[0];
+        loadReports();
+    }
+
     async function loadReports() {
         const date = document.getElementById('filter-date').value;
         const category = document.getElementById('filter-category').value;
+        const sourceType = document.getElementById('filter-source').value;
 
         const params = new URLSearchParams({ page: currentPage, page_size: pageSize });
         if (date) params.append('report_date', date);
         if (category) params.append('category', category);
+        if (sourceType) params.append('source_type', sourceType);
 
         try {
             const res = await fetch(`${API_BASE}/daily-reports?${params}`, { headers: getHeaders() });
@@ -270,6 +369,30 @@
         }
     }
 
+    function getSourceLabel(sourceType) {
+        const labels = {
+            'arxiv': 'arXiv',
+            'hackernews': 'Hacker News',
+            'reddit': 'Reddit',
+            'weibo': '微博热搜',
+            'rss': 'RSS',
+            'aggregated': '聚合报告'
+        };
+        return labels[sourceType] || sourceType;
+    }
+
+    function getArticleLabel(sourceType) {
+        const labels = {
+            'arxiv': '篇论文',
+            'hackernews': '条热门',
+            'reddit': '条讨论',
+            'weibo': '条热搜',
+            'rss': '篇内容',
+            'aggregated': '条内容'
+        };
+        return labels[sourceType] || '篇';
+    }
+
     function renderReports(reports) {
         const container = document.getElementById('report-list');
         if (!reports || reports.length === 0) {
@@ -281,6 +404,12 @@
             const statusClass = r.status || 'draft';
             const statusLabel = statusClass === 'draft' ? '草稿' : statusClass === 'published' ? '已发布' : statusClass;
             const created = r.created_at ? formatDate(r.created_at) : '';
+            const sourceLabel = getSourceLabel(r.source_type || 'arxiv');
+            const articleLabel = getArticleLabel(r.source_type || 'arxiv');
+            const isAggregated = r.source_type === 'aggregated';
+
+            // 聚合报告显示特殊标签
+            const categoryDisplay = isAggregated ? '全数据源' : `${r.category} - ${r.category_name}`;
 
             return `
                 <div class="report-card">
@@ -288,16 +417,16 @@
                         <div class="report-info">
                             <div class="report-title">${escapeHtml(r.title || '无标题')}</div>
                             <div class="report-meta">
-                                <span class="report-category">${r.category} - ${r.category_name}</span>
+                                <span class="report-category">${sourceLabel} · ${categoryDisplay}</span>
                                 <span class="report-status ${statusClass}">${statusLabel}</span>
                                 <span>&#128197; ${r.report_date}</span>
-                                <span>&#128196; ${r.article_count} 篇论文</span>
+                                <span>&#128196; ${r.article_count} ${articleLabel}</span>
                                 ${created ? `<span>&#128336; ${created}</span>` : ''}
                             </div>
                         </div>
                         <div class="report-actions" onclick="event.stopPropagation()">
                             <button onclick="exportReport(${r.id}, 'markdown')">MD</button>
-                            <button class="primary" onclick="exportReport(${r.id}, 'wechat')">微信格式</button>
+                            <button class="primary" onclick="exportReport(${r.id}, 'wechat_html')">微信格式</button>
                         </div>
                     </div>
                     <div class="report-content" id="report-content-${idx}" data-report-id="${r.id}" data-loaded="false">
@@ -348,19 +477,76 @@
             const res = await fetch(`${API_BASE}/daily-reports/${reportId}/export?format=${format}`, { headers: getHeaders() });
             if (!res.ok) { showToast('导出失败', 'error'); return; }
             const data = await res.json();
-            document.getElementById('export-content').textContent = data.content;
-            document.getElementById('export-modal').classList.add('open');
+
+            // 判断是否为 HTML 格式
+            if (format === 'wechat_html') {
+                showHtmlExportModal(data);
+            } else {
+                document.getElementById('export-content').textContent = data.content;
+                document.getElementById('export-modal').classList.add('open');
+            }
         } catch(e) {
             showToast('网络错误', 'error');
         }
     }
 
-    function copyExportContent() {
-        const content = document.getElementById('export-content').textContent;
-        navigator.clipboard.writeText(content).then(() => showToast('已复制到剪贴板', 'success')).catch(() => showToast('复制失败', 'error'));
+    function showHtmlExportModal(data) {
+        // 更新弹窗标题
+        document.querySelector('#export-modal .modal-header h3').textContent = '微信 HTML 格式';
+
+        // 设置预览区域（渲染 HTML）
+        const previewArea = document.getElementById('export-content');
+        previewArea.innerHTML = data.content;
+        previewArea.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        previewArea.style.whiteSpace = 'normal';
+        previewArea.style.background = '#fff';
+        previewArea.style.padding = '20px';
+
+        // 存储 HTML 内容供复制使用
+        previewArea.dataset.htmlContent = data.content;
+
+        document.getElementById('export-modal').classList.add('open');
     }
 
-    function closeExportModal() { document.getElementById('export-modal').classList.remove('open'); }
+    function copyExportContent() {
+        const contentArea = document.getElementById('export-content');
+        const htmlContent = contentArea.dataset.htmlContent;
+
+        if (htmlContent) {
+            // HTML 格式：写入 text/html 和 text/plain 到剪贴板
+            // 这样粘贴到微信公众号编辑器时能保留样式
+            const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+            const textBlob = new Blob([contentArea.textContent], { type: 'text/plain' });
+
+            navigator.clipboard.write([
+                new ClipboardItem({
+                    'text/html': htmlBlob,
+                    'text/plain': textBlob
+                })
+            ])
+            .then(() => showToast('已复制，可直接粘贴到微信公众号', 'success'))
+            .catch(() => showToast('复制失败', 'error'));
+        } else {
+            // 普通文本格式
+            navigator.clipboard.writeText(contentArea.textContent)
+                .then(() => showToast('已复制到剪贴板', 'success'))
+                .catch(() => showToast('复制失败', 'error'));
+        }
+    }
+
+    function closeExportModal() {
+        document.getElementById('export-modal').classList.remove('open');
+        // 重置预览区域样式
+        const contentArea = document.getElementById('export-content');
+        contentArea.innerHTML = '';
+        contentArea.style.fontFamily = 'monospace';
+        contentArea.style.whiteSpace = 'pre-wrap';
+        contentArea.style.background = '#f5f5f5';
+        contentArea.style.padding = '16px';
+        delete contentArea.dataset.htmlContent;
+        // 重置标题
+        document.querySelector('#export-modal .modal-header h3').textContent = '导出报告';
+    }
 
     function openGenerateModal() { document.getElementById('generate-modal').classList.add('open'); }
 
@@ -379,12 +565,21 @@
 
     async function generateReports() {
         const date = document.getElementById('generate-date').value;
-        const select = document.getElementById('generate-categories');
-        const selectedCategories = Array.from(select.selectedOptions).map(o => o.value).filter(v => v);
+        const sources = getSelectedSources();
+        const reportType = document.getElementById('generate-report-type').value;
+        const isAggregated = reportType === 'aggregated';
 
         const body = {};
         if (date) body.report_date = date;
-        if (selectedCategories.length > 0) body.categories = selectedCategories;
+        if (sources.length > 0) body.source_types = sources;
+        body.aggregated = isAggregated;
+
+        // 仅当选择 arxiv 且非聚合报告时才收集分类
+        if (sources.includes('arxiv') && !isAggregated) {
+            const catSelect = document.getElementById('generate-categories');
+            const selectedCategories = Array.from(catSelect.selectedOptions).map(o => o.value).filter(v => v);
+            if (selectedCategories.length > 0) body.categories = selectedCategories;
+        }
 
         document.getElementById('generate-btn').disabled = true;
         document.getElementById('generate-btn').textContent = '启动中...';
@@ -509,6 +704,13 @@
         let articleMeta = {};
         let articleContent = [];
 
+        // 检测是否为聚合报告格式（包含简单的列表项如 "1. [标题](链接)"）
+        const isAggregated = lines.some(l => l.match(/^\d+\.\s*\[.+\]\(.+\)$/));
+
+        if (isAggregated) {
+            return parseAggregatedReport(md);
+        }
+
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             if (line.match(/^#\s+/)) continue;
@@ -554,6 +756,96 @@
         if (currentArticle) result.push(renderArticleCard(currentArticle, articleMeta, articleContent));
         if (result.length === 0) return renderSimpleMarkdown(md);
         return result.join('\n');
+    }
+
+    // 解析聚合报告格式
+    function parseAggregatedReport(md) {
+        const lines = md.split('\n');
+        let result = [];
+        let currentSection = null;
+        let sectionItems = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+
+            // 标题行
+            if (line.match(/^#\s+/)) continue;
+
+            // 引言行
+            if (line.match(/^(&gt;|>)\s+/)) {
+                const count = line.replace(/^(&gt;|>)\s*/, '').trim();
+                result.push(`<div class="report-summary-badge">${escapeHtml(count)}</div>`);
+                continue;
+            }
+
+            // 分隔线
+            if (line.match(/^---+$/)) continue;
+
+            // 数据源标题（## 开头）
+            const sectionMatch = line.match(/^##\s+(.+)$/);
+            if (sectionMatch) {
+                // 保存上一个 section
+                if (currentSection && sectionItems.length > 0) {
+                    result.push(renderAggregatedSection(currentSection, sectionItems));
+                    sectionItems = [];
+                }
+                currentSection = sectionMatch[1];
+                continue;
+            }
+
+            // 列表项（如 "1. [标题](链接)"）
+            const itemMatch = line.match(/^(\d+)\.\s*(.+)$/);
+            if (itemMatch && currentSection) {
+                const index = itemMatch[1];
+                let content = itemMatch[2];
+
+                // 解析链接
+                const linkMatch = content.match(/^\[([^\]]*)\]\(([^)]+)\)$/);
+                if (linkMatch) {
+                    sectionItems.push({
+                        index: index,
+                        title: linkMatch[1],
+                        url: linkMatch[2]
+                    });
+                } else {
+                    sectionItems.push({
+                        index: index,
+                        title: content,
+                        url: null
+                    });
+                }
+            }
+        }
+
+        // 保存最后一个 section
+        if (currentSection && sectionItems.length > 0) {
+            result.push(renderAggregatedSection(currentSection, sectionItems));
+        }
+
+        return result.join('\n');
+    }
+
+    // 渲染聚合报告的数据源区块
+    function renderAggregatedSection(sectionTitle, items) {
+        const itemsHtml = items.map(item => {
+            if (item.url) {
+                return `<li><a href="${escapeHtml(item.url)}" target="_blank">${escapeHtml(item.title)}</a></li>`;
+            } else {
+                return `<li>${escapeHtml(item.title)}</li>`;
+            }
+        }).join('\n');
+
+        return `
+            <div class="aggregated-section" style="margin: 20px 0;">
+                <h3 style="font-size: 16px; font-weight: 600; color: #1a1a2e; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #4ecdc4;">
+                    ${escapeHtml(sectionTitle)}
+                    <span style="font-size: 12px; color: #666; font-weight: normal; margin-left: 8px;">(${items.length} 条)</span>
+                </h3>
+                <ol style="margin: 0; padding-left: 20px; line-height: 2;">
+                    ${itemsHtml}
+                </ol>
+            </div>
+        `;
     }
 
     function renderSimpleMarkdown(md) {
@@ -627,6 +919,7 @@
 
     checkAuth().then(() => {
         loadCategories();
+        loadSourceOptions();
         loadReports();
         checkRunningTask();
     });

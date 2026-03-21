@@ -410,13 +410,14 @@ CREATE TABLE `arxiv_categories` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='arXiv分类表';
 
 -- -----------------------------------------------------------------------------
--- daily_reports 表 - 每日 arXiv 报告
+-- daily_reports 表 - 每日报告（支持多数据源）
 -- -----------------------------------------------------------------------------
 DROP TABLE IF EXISTS `daily_reports`;
 CREATE TABLE `daily_reports` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `report_date` DATE NOT NULL COMMENT '报告日期',
-  `category` VARCHAR(50) NOT NULL COMMENT 'arXiv 分类代码，如 cs.LG, cs.CV',
+  `source_type` VARCHAR(20) NOT NULL DEFAULT 'arxiv' COMMENT '数据源类型: arxiv, hackernews, reddit, weibo, rss',
+  `category` VARCHAR(50) NOT NULL COMMENT '分类代码，如 cs.LG, cs.CV, technology',
   `category_name` VARCHAR(100) NOT NULL COMMENT '分类中文名称，如 机器学习',
   `title` VARCHAR(200) NOT NULL COMMENT '报告标题',
   `content_markdown` MEDIUMTEXT NOT NULL COMMENT 'Markdown 格式的报告内容',
@@ -432,10 +433,11 @@ CREATE TABLE `daily_reports` (
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `ix_daily_reports_date_category` (`report_date`, `category`),
+  UNIQUE KEY `ix_daily_reports_date_source_category` (`report_date`, `source_type`, `category`),
   KEY `ix_daily_reports_status` (`status`),
-  KEY `ix_daily_reports_wechat_push_status` (`wechat_push_status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='每日 arXiv 报告表';
+  KEY `ix_daily_reports_wechat_push_status` (`wechat_push_status`),
+  KEY `ix_daily_reports_source_type` (`source_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='每日报告表（支持多数据源）';
 
 -- -----------------------------------------------------------------------------
 -- wechat_accounts 表 - 微信公众号
