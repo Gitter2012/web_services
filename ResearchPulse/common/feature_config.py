@@ -71,6 +71,15 @@ DEFAULT_CONFIGS: Dict[str, tuple[str, str]] = {
     "scheduler.report_weekly_day": ("mon", "Day of week for weekly report generation"),
     "scheduler.report_weekly_hour": ("6", "Hour of day for weekly report generation (0-23)"),
     "scheduler.report_monthly_hour": ("7", "Hour of day for monthly report generation on 1st (0-23)"),
+    # ---- 每日报告生成参数 ----
+    "daily_report.enabled": ("true", "Enable daily report generation"),
+    "daily_report.hour": ("9", "Hour of day for daily report generation (0-23)"),
+    "daily_report.minute": ("0", "Minute of hour for daily report generation (0-59)"),
+    "daily_report.source_types": ("arxiv,hackernews,reddit,weibo,rss", "Daily report source types (comma-separated)"),
+    "daily_report.categories": ("cs.LG,cs.CV,cs.CL,cs.AI,cs.RO,cs.NE,cs.IR", "arXiv categories for daily report (comma-separated)"),
+    "daily_report.max_articles": ("50", "Max articles per source in daily report"),
+    "daily_report.offset_days": ("1", "Days to offset for report (1 = yesterday)"),
+    "daily_report.translate_title": ("true", "Enable title translation for daily report"),
     # ---- 微信公众号配置 ----
     "wechat.html_truncate": ("false", "Truncate HTML content for WeChat MP (19000 chars limit)"),
     "wechat.html_max_length": ("19000", "Max HTML content length when truncate is enabled"),

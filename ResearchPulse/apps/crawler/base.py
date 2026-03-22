@@ -150,6 +150,19 @@ class BaseCrawler(ABC):
                     # arxiv_id / url / cover_image_url 只在新数据更新时才覆盖
                     new_updated_time = article_data.get("arxiv_updated_time")
                     existing_updated_time = existing.arxiv_updated_time
+
+                    # 时区统一处理：MySQL 读取的 datetime 可能是 naive（无时区），
+                    # 而新数据可能是 aware（有时区），直接比较会抛出 TypeError。
+                    # 统一将 aware datetime 转换为 naive datetime 后再比较。
+                    def _normalize_datetime(dt):
+                        """将 datetime 统一为 naive datetime（去除时区信息）"""
+                        if dt is not None and hasattr(dt, 'tzinfo') and dt.tzinfo is not None:
+                            return dt.replace(tzinfo=None)
+                        return dt
+
+                    new_updated_time = _normalize_datetime(new_updated_time)
+                    existing_updated_time = _normalize_datetime(existing_updated_time)
+
                     is_newer = (
                         new_updated_time is not None
                         and (

@@ -800,6 +800,10 @@
                         <span class="nav-icon"><i data-lucide="file-text"></i></span>
                         <span>报告管理</span>
                     </a>
+                    <a href="#" class="nav-item" data-section="daily-report">
+                        <span class="nav-icon"><i data-lucide="calendar-days"></i></span>
+                        <span>每日报告</span>
+                    </a>
                     <a href="#" class="nav-item" data-section="backups">
                         <span class="nav-icon"><i data-lucide="hard-drive"></i></span>
                         <span>备份管理</span>
@@ -1822,6 +1826,124 @@
                 </div>
             </div>
 
+            <!-- Daily Report Section -->
+            <div id="section-daily-report" class="section" style="display:none;">
+                <div class="page-header">
+                    <h1>每日报告</h1>
+                    <p>管理每日自动报告的生成、调度和微信公众号推送</p>
+                </div>
+
+                <!-- Status Card -->
+                <div class="card">
+                    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
+                        <h3>运行状态</h3>
+                        <button class="btn btn-sm btn-secondary" onclick="loadDailyReportStatus()">刷新</button>
+                    </div>
+                    <div class="card-body" id="daily-report-status-body">
+                        <div style="text-align:center;color:#888;padding:20px;">加载中...</div>
+                    </div>
+                </div>
+
+                <!-- Config Card -->
+                <div class="card" style="margin-top:16px;">
+                    <div class="card-header">
+                        <h3>报告配置</h3>
+                    </div>
+                    <div class="card-body">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <input type="checkbox" id="dr-enabled"> 启用每日报告
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">标题翻译</label>
+                                <label>
+                                    <input type="checkbox" id="dr-translate-title"> 翻译文章标题
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">生成时间（小时，0-23）</label>
+                                <input type="number" class="form-input" id="dr-hour" min="0" max="23" value="9">
+                                <small class="form-hint">修改后自动重新调度，无需重启</small>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">生成时间（分钟，0-59）</label>
+                                <input type="number" class="form-input" id="dr-minute" min="0" max="59" value="0">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">报告偏移天数</label>
+                                <input type="number" class="form-input" id="dr-offset-days" min="1" max="7" value="1">
+                                <small class="form-hint">1 = 生成昨天的报告</small>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">每源最大文章数</label>
+                                <input type="number" class="form-input" id="dr-max-articles" min="1" max="200" value="50">
+                            </div>
+                            <div class="form-group" style="grid-column:1/-1;">
+                                <label class="form-label">数据源（逗号分隔）</label>
+                                <input type="text" class="form-input" id="dr-source-types" placeholder="arxiv,hackernews,reddit,weibo,rss">
+                            </div>
+                            <div class="form-group" style="grid-column:1/-1;">
+                                <label class="form-label">arXiv 分类（逗号分隔）</label>
+                                <input type="text" class="form-input" id="dr-categories" placeholder="cs.LG,cs.CV,cs.CL,cs.AI">
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" style="margin-top:12px;" onclick="saveDailyReportConfig()">保存配置</button>
+                    </div>
+                </div>
+
+                <!-- Action Card -->
+                <div class="card" style="margin-top:16px;">
+                    <div class="card-header">
+                        <h3>手动操作</h3>
+                    </div>
+                    <div class="card-body" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                        <button class="btn btn-primary" onclick="triggerDailyReportGeneration()">立即生成昨日报告</button>
+                        <span id="dr-trigger-status" style="color:#888;font-size:13px;"></span>
+                    </div>
+                </div>
+
+                <!-- History Card -->
+                <div class="card" style="margin-top:16px;">
+                    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                        <h3>历史记录</h3>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <input type="date" class="form-input" id="dr-filter-date" style="width:160px;" onchange="loadDailyReportHistory()">
+                            <select class="form-select" id="dr-filter-source" style="width:140px;" onchange="loadDailyReportHistory()">
+                                <option value="">全部数据源</option>
+                                <option value="arxiv">arXiv</option>
+                                <option value="hackernews">HackerNews</option>
+                                <option value="reddit">Reddit</option>
+                                <option value="weibo">微博</option>
+                                <option value="rss">RSS</option>
+                            </select>
+                            <button class="btn btn-sm btn-secondary" onclick="loadDailyReportHistory()">查询</button>
+                        </div>
+                    </div>
+                    <div class="card-body" style="overflow-x:auto;">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>日期</th>
+                                    <th>数据源</th>
+                                    <th>分类</th>
+                                    <th>标题</th>
+                                    <th>文章数</th>
+                                    <th>状态</th>
+                                    <th>微信推送</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dr-history-body">
+                                <tr><td colspan="8" style="text-align:center;color:#888;">点击查询加载数据</td></tr>
+                            </tbody>
+                        </table>
+                        <div id="dr-history-pagination" style="margin-top:12px;display:flex;gap:8px;align-items:center;"></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Config Section -->
             <div id="section-config" class="section" style="display:none;">
                 <div class="page-header">
@@ -2348,6 +2470,7 @@
             if (name === 'reports') loadReports();
             if (name === 'roles') loadRoles();
             if (name === 'pipeline') loadPipelineMonitor();
+            if (name === 'daily-report') { loadDailyReportStatus(); loadDailyReportHistory(); }
         }
 
         // Navigation click handler (event delegation)
@@ -6536,6 +6659,229 @@
                 `).join('');
             } catch(e) {
                 tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#dc2626;">加载失败</td></tr>`;
+            }
+        }
+
+        // ============================================
+        // Daily Report Management
+        // ============================================
+
+        let drHistoryCurrentPage = 1;
+
+        async function loadDailyReportStatus() {
+            const token = localStorage.getItem('access_token');
+            const body = document.getElementById('daily-report-status-body');
+            body.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">加载中...</div>';
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/daily-reports/status`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) { body.innerHTML = '<div style="color:red;">加载失败</div>'; return; }
+                const data = await res.json();
+
+                const cfg = data.config || {};
+                const sch = data.scheduler || {};
+                const last = data.last_run || {};
+                const wechat = data.wechat_push_stats_7d || {};
+
+                // Populate config form
+                document.getElementById('dr-enabled').checked = cfg.enabled !== false;
+                document.getElementById('dr-hour').value = cfg.hour ?? 9;
+                document.getElementById('dr-minute').value = cfg.minute ?? 0;
+                document.getElementById('dr-offset-days').value = cfg.offset_days ?? 1;
+                document.getElementById('dr-max-articles').value = cfg.max_articles ?? 50;
+                document.getElementById('dr-translate-title').checked = cfg.translate_title !== false;
+                document.getElementById('dr-source-types').value = (cfg.source_types || []).join(',');
+                document.getElementById('dr-categories').value = (cfg.categories || []).join(',');
+
+                // Render status cards
+                const jobStatusBadge = sch.status === 'scheduled'
+                    ? `<span class="badge badge-success">已调度</span>`
+                    : `<span class="badge badge-danger">未找到</span>`;
+
+                const wechatSucc = wechat['success'] || 0;
+                const wechatFail = wechat['failed'] || 0;
+                const wechatPend = wechat['pending'] || 0;
+
+                body.innerHTML = `
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px;">
+                        <div style="background:var(--bg-secondary);border-radius:8px;padding:16px;">
+                            <div style="font-size:12px;color:#888;margin-bottom:4px;">调度状态</div>
+                            <div>${jobStatusBadge}</div>
+                            <div style="font-size:12px;color:#888;margin-top:4px;">${sch.schedule || '-'}</div>
+                            <div style="font-size:11px;color:#aaa;margin-top:2px;">下次: ${sch.next_run_time ? formatDate(sch.next_run_time) : '-'}</div>
+                        </div>
+                        <div style="background:var(--bg-secondary);border-radius:8px;padding:16px;">
+                            <div style="font-size:12px;color:#888;margin-bottom:4px;">昨日报告数</div>
+                            <div style="font-size:24px;font-weight:600;">${last.report_count || 0}</div>
+                            <div style="font-size:11px;color:#aaa;margin-top:2px;">报告日期: ${last.report_date || '-'}</div>
+                        </div>
+                        <div style="background:var(--bg-secondary);border-radius:8px;padding:16px;">
+                            <div style="font-size:12px;color:#888;margin-bottom:4px;">最新报告日期</div>
+                            <div style="font-size:18px;font-weight:600;">${data.latest_report_date || '-'}</div>
+                            <div style="font-size:11px;color:#aaa;margin-top:2px;">最后生成: ${last.last_generated_at ? formatDate(last.last_generated_at) : '-'}</div>
+                        </div>
+                        <div style="background:var(--bg-secondary);border-radius:8px;padding:16px;">
+                            <div style="font-size:12px;color:#888;margin-bottom:4px;">微信推送（近7天）</div>
+                            <div style="font-size:13px;">
+                                <span style="color:#4CAF50;">✓ 成功 ${wechatSucc}</span> &nbsp;
+                                <span style="color:#f44336;">✗ 失败 ${wechatFail}</span> &nbsp;
+                                <span style="color:#FF9800;">⏳ 待推 ${wechatPend}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                body.innerHTML = '<div style="color:red;">加载失败: ' + escapeHtml(e.message) + '</div>';
+            }
+        }
+
+        async function saveDailyReportConfig() {
+            const token = localStorage.getItem('access_token');
+            const configs = {
+                'daily_report.enabled': document.getElementById('dr-enabled').checked ? 'true' : 'false',
+                'daily_report.hour': document.getElementById('dr-hour').value,
+                'daily_report.minute': document.getElementById('dr-minute').value,
+                'daily_report.offset_days': document.getElementById('dr-offset-days').value,
+                'daily_report.max_articles': document.getElementById('dr-max-articles').value,
+                'daily_report.translate_title': document.getElementById('dr-translate-title').checked ? 'true' : 'false',
+                'daily_report.source_types': document.getElementById('dr-source-types').value,
+                'daily_report.categories': document.getElementById('dr-categories').value,
+            };
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/batch-config`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ configs })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    let msg = `配置已保存（${data.count} 项）`;
+                    if (data.rescheduled_jobs && data.rescheduled_jobs.length > 0) {
+                        msg += `，调度已更新: ${data.rescheduled_jobs.join(', ')}`;
+                    }
+                    alert(msg);
+                    loadDailyReportStatus();
+                } else {
+                    alert(data.detail || '保存失败');
+                }
+            } catch (e) {
+                alert('保存失败: ' + e.message);
+            }
+        }
+
+        async function triggerDailyReportGeneration() {
+            const token = localStorage.getItem('access_token');
+            const statusEl = document.getElementById('dr-trigger-status');
+            if (!confirm('确认立即生成昨日每日报告？此操作将在后台运行。')) return;
+
+            statusEl.textContent = '正在触发...';
+            try {
+                const res = await fetch(`${ADMIN_BASE}/daily-reports/trigger`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    statusEl.style.color = '#4CAF50';
+                    statusEl.textContent = data.message || '已触发';
+                    setTimeout(() => { statusEl.textContent = ''; loadDailyReportStatus(); }, 5000);
+                } else {
+                    statusEl.style.color = '#f44336';
+                    statusEl.textContent = data.detail || '触发失败';
+                }
+            } catch (e) {
+                statusEl.style.color = '#f44336';
+                statusEl.textContent = '触发失败: ' + e.message;
+            }
+        }
+
+        async function loadDailyReportHistory(page) {
+            if (page) drHistoryCurrentPage = page;
+            const token = localStorage.getItem('access_token');
+            const tbody = document.getElementById('dr-history-body');
+            const paginationEl = document.getElementById('dr-history-pagination');
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;">加载中...</td></tr>';
+
+            const filterDate = document.getElementById('dr-filter-date').value;
+            const filterSource = document.getElementById('dr-filter-source').value;
+            let url = `${ADMIN_BASE}/daily-reports/history?page=${drHistoryCurrentPage}&page_size=20`;
+            if (filterDate) url += `&report_date=${filterDate}`;
+            if (filterSource) url += `&source_type=${filterSource}`;
+
+            try {
+                const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (!res.ok) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:red;">加载失败</td></tr>'; return; }
+                const data = await res.json();
+                const reports = data.reports || [];
+
+                if (reports.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;">暂无记录</td></tr>';
+                    paginationEl.innerHTML = '';
+                    return;
+                }
+
+                const wechatBadge = (status, error) => {
+                    const map = {
+                        'success': '<span class="badge badge-success">推送成功</span>',
+                        'failed': `<span class="badge badge-danger" title="${escapeHtml(error || '')}">推送失败</span>`,
+                        'pending': '<span class="badge badge-warning">待推送</span>',
+                        'skipped': '<span class="badge badge-secondary">已跳过</span>',
+                    };
+                    return map[status] || `<span class="badge">${escapeHtml(status)}</span>`;
+                };
+
+                tbody.innerHTML = reports.map(r => `
+                    <tr>
+                        <td>${escapeHtml(r.report_date)}</td>
+                        <td><span class="badge badge-info">${escapeHtml(r.source_type)}</span></td>
+                        <td>${escapeHtml(r.category)}</td>
+                        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.title)}">${escapeHtml(r.title)}</td>
+                        <td>${r.article_count}</td>
+                        <td><span class="badge badge-${r.status === 'published' ? 'success' : 'secondary'}">${escapeHtml(r.status)}</span></td>
+                        <td>${wechatBadge(r.wechat_push_status, r.wechat_push_error)}</td>
+                        <td>
+                            ${(r.wechat_push_status === 'failed' || r.wechat_push_status === 'pending')
+                                ? `<button class="btn btn-sm btn-secondary" onclick="retryWechatPush(${r.id})">重试推送</button>`
+                                : ''}
+                        </td>
+                    </tr>
+                `).join('');
+
+                // Pagination
+                const totalPages = data.pages || 1;
+                let paginationHtml = `<span style="color:#888;font-size:13px;">共 ${data.total} 条，第 ${drHistoryCurrentPage}/${totalPages} 页</span>`;
+                if (drHistoryCurrentPage > 1) paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="loadDailyReportHistory(${drHistoryCurrentPage - 1})">上一页</button>`;
+                if (drHistoryCurrentPage < totalPages) paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="loadDailyReportHistory(${drHistoryCurrentPage + 1})">下一页</button>`;
+                paginationEl.innerHTML = paginationHtml;
+
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:red;">加载失败: ${escapeHtml(e.message)}</td></tr>`;
+            }
+        }
+
+        async function retryWechatPush(reportId) {
+            if (!confirm(`确认重试报告 #${reportId} 的微信推送？`)) return;
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/daily-reports/${reportId}/retry-wechat`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (res.ok && data.status === 'success') {
+                    alert(`推送成功！media_id: ${data.media_id || '-'}`);
+                } else {
+                    alert(`推送失败：${data.message || data.detail || '未知错误'}`);
+                }
+                loadDailyReportHistory();
+            } catch (e) {
+                alert('请求失败: ' + e.message);
             }
         }
 

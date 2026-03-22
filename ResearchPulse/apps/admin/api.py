@@ -54,6 +54,7 @@ from apps.crawler.models import (
     EmailConfig,
     AuditLog,
 )
+from apps.daily_report.models.daily_report import DailyReport
 from common.feature_config import feature_config
 
 logger = logging.getLogger(__name__)
@@ -1085,6 +1086,8 @@ _SCHEDULER_CONFIG_MAP = {
     "scheduler.report_weekly_day": ("weekly_report_job", "cron_day"),
     "scheduler.report_weekly_hour": ("weekly_report_job", "cron"),
     "scheduler.report_monthly_hour": ("monthly_report_job", "cron"),
+    "daily_report.hour": ("daily_report_job", "cron_hour_minute"),
+    "daily_report.minute": ("daily_report_job", "cron_hour_minute"),
 }
 
 
@@ -1225,6 +1228,17 @@ async def _reschedule_jobs_for_config_keys(config_keys: List[str], updated_by: i
                     )
                     logger.info("Rescheduled job '%s' with hour=%d minute=%d", job_id, hour, minute)
 
+            elif trigger_type == "cron_hour_minute":
+                # 特殊处理：daily_report_job 使用 daily_report.hour 和 daily_report.minute
+                if job_id == "daily_report_job":
+                    hour = feature_config.get_int("daily_report.hour", 9)
+                    minute = feature_config.get_int("daily_report.minute", 0)
+                    scheduler.reschedule_job(
+                        job_id,
+                        trigger=CronTrigger(hour=hour, minute=minute)
+                    )
+                    logger.info("Rescheduled job '%s' with hour=%d minute=%d", job_id, hour, minute)
+
             rescheduled.append(job_id)
 
         except Exception as e:
@@ -1258,11 +1272,14 @@ async def batch_update_config(
         await feature_config.async_set(key, value, updated_by=admin.id)
         updated.append(key)
 
-    # 检测 scheduler.* 配置变更，自动重新调度相关任务
+    # 检测 scheduler.* 和 daily_report.hour/minute 配置变更，自动重新调度相关任务
     rescheduled = []
-    scheduler_keys = [k for k in updated if k.startswith("scheduler.")]
-    if scheduler_keys:
-        rescheduled = await _reschedule_jobs_for_config_keys(scheduler_keys, admin.id)
+    reschedule_keys = [
+        k for k in updated
+        if k.startswith("scheduler.") or k in ("daily_report.hour", "daily_report.minute")
+    ]
+    if reschedule_keys:
+        rescheduled = await _reschedule_jobs_for_config_keys(reschedule_keys, admin.id)
 
     result = {"status": "ok", "updated": updated, "count": len(updated)}
     if rescheduled:
@@ -1270,6 +1287,289 @@ async def batch_update_config(
         result["rescheduled_jobs"] = list(set(rescheduled))
 
     return result
+
+
+# ============================================================================
+# Daily Report Management
+# ============================================================================
+# 每日报告管理 —— 查看报告状态、手动触发生成、历史记录、微信推送管理
+
+
+@router.get("/daily-reports/status")
+async def get_daily_report_status(
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Get daily report system status and configuration.
+
+    返回每日报告系统的当前状态，包括配置参数、调度信息和最近一次运行结果。
+
+    Returns:
+        Dict[str, Any]: Status info including config, last run, and scheduler info.
+    """
+    from apps.scheduler.tasks import get_scheduler
+    from datetime import date, timedelta
+
+    # 从配置中读取参数
+    enabled = feature_config.get_bool("daily_report.enabled", True)
+    hour = feature_config.get_int("daily_report.hour", 9)
+    minute = feature_config.get_int("daily_report.minute", 0)
+    source_types_str = feature_config.get("daily_report.source_types", "arxiv")
+    categories_str = feature_config.get("daily_report.categories", "cs.LG,cs.CV,cs.CL,cs.AI,cs.RO,cs.NE,cs.IR")
+    max_articles = feature_config.get_int("daily_report.max_articles", 50)
+    offset_days = feature_config.get_int("daily_report.offset_days", 1)
+    translate_title = feature_config.get_bool("daily_report.translate_title", True)
+
+    # 查询最近一次生成的报告日期和数量
+    today = date.today()
+    yesterday = today - timedelta(days=offset_days)
+    result = await session.execute(
+        select(
+            func.count(DailyReport.id).label("total"),
+            func.max(DailyReport.created_at).label("last_generated_at"),
+        ).where(DailyReport.report_date == yesterday)
+    )
+    row = result.one()
+    last_count = row.total or 0
+    last_generated_at = row.last_generated_at
+
+    # 查询最新报告日期
+    latest_date_result = await session.execute(
+        select(DailyReport.report_date).order_by(desc(DailyReport.report_date)).limit(1)
+    )
+    latest_date_row = latest_date_result.scalar()
+
+    # 获取 scheduler 中任务的下次执行时间
+    scheduler = get_scheduler()
+    job = scheduler.get_job("daily_report_job")
+    next_run_time = None
+    job_status = "not_found"
+    if job:
+        job_status = "scheduled"
+        if job.next_run_time:
+            next_run_time = job.next_run_time.isoformat()
+
+    # 查询微信推送统计（最近 7 天）
+    seven_days_ago = today - timedelta(days=7)
+    wechat_result = await session.execute(
+        select(
+            DailyReport.wechat_push_status,
+            func.count(DailyReport.id).label("cnt"),
+        ).where(
+            DailyReport.report_date >= seven_days_ago
+        ).group_by(DailyReport.wechat_push_status)
+    )
+    wechat_stats = {row.wechat_push_status: row.cnt for row in wechat_result}
+
+    return {
+        "config": {
+            "enabled": enabled,
+            "hour": hour,
+            "minute": minute,
+            "source_types": [s.strip() for s in source_types_str.split(",") if s.strip()],
+            "categories": [c.strip() for c in categories_str.split(",") if c.strip()],
+            "max_articles": max_articles,
+            "offset_days": offset_days,
+            "translate_title": translate_title,
+        },
+        "scheduler": {
+            "job_id": "daily_report_job",
+            "status": job_status,
+            "next_run_time": next_run_time,
+            "schedule": f"{hour:02d}:{minute:02d} daily",
+        },
+        "last_run": {
+            "report_date": yesterday.isoformat(),
+            "report_count": last_count,
+            "last_generated_at": last_generated_at.isoformat() if last_generated_at else None,
+        },
+        "latest_report_date": latest_date_row.isoformat() if latest_date_row else None,
+        "wechat_push_stats_7d": wechat_stats,
+    }
+
+
+@router.post("/daily-reports/trigger")
+async def trigger_daily_report_generation(
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Manually trigger daily report generation for yesterday.
+
+    手动触发每日报告生成任务（生成昨天的报告）。
+    不影响调度器的正常调度计划。
+
+    Returns:
+        Dict[str, Any]: Trigger status and generated report count.
+    """
+    import asyncio
+    from apps.daily_report.tasks import daily_report_job
+
+    logger.info("Admin manually triggered daily report generation (user=%d)", admin.id)
+
+    # 在后台异步运行，避免请求超时
+    asyncio.create_task(daily_report_job())
+
+    return {
+        "status": "triggered",
+        "message": "每日报告生成任务已触发，请稍后查看历史记录确认结果",
+    }
+
+
+@router.get("/daily-reports/history")
+async def list_daily_report_history(
+    page: int = 1,
+    page_size: int = 20,
+    report_date: Optional[str] = None,
+    source_type: Optional[str] = None,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """List daily report history with optional filters.
+
+    查询每日报告历史记录，支持按日期和数据源过滤。
+
+    Args:
+        page: Page number (default 1).
+        page_size: Items per page (default 20).
+        report_date: Filter by date (YYYY-MM-DD).
+        source_type: Filter by source type (arxiv, hackernews, etc.).
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Paginated daily report records.
+    """
+    from datetime import date
+
+    query = select(DailyReport).order_by(desc(DailyReport.report_date), DailyReport.source_type)
+
+    if report_date:
+        try:
+            filter_date = date.fromisoformat(report_date)
+            query = query.where(DailyReport.report_date == filter_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid date format: {report_date}. Use YYYY-MM-DD.")
+
+    if source_type:
+        query = query.where(DailyReport.source_type == source_type)
+
+    # 总数
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await session.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # 分页
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size)
+    result = await session.execute(query)
+    reports = result.scalars().all()
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size,
+        "reports": [
+            {
+                "id": r.id,
+                "report_date": r.report_date.isoformat(),
+                "source_type": r.source_type,
+                "category": r.category,
+                "category_name": r.category_name,
+                "title": r.title,
+                "article_count": r.article_count,
+                "status": r.status,
+                "wechat_push_status": r.wechat_push_status,
+                "wechat_draft_media_id": r.wechat_draft_media_id,
+                "wechat_pushed_at": r.wechat_pushed_at.isoformat() if r.wechat_pushed_at else None,
+                "wechat_push_error": r.wechat_push_error,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in reports
+        ],
+    }
+
+
+@router.post("/daily-reports/{report_id}/retry-wechat")
+async def retry_wechat_push(
+    report_id: int,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Retry WeChat push for a specific daily report.
+
+    对指定报告重试微信公众号推送。
+
+    Args:
+        report_id: DailyReport ID to retry push for.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Retry result.
+    """
+    report = await session.get(DailyReport, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail=f"Daily report #{report_id} not found")
+
+    # 只允许对 failed 状态的报告重试
+    if report.wechat_push_status not in ("failed", "pending"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot retry push for report with status '{report.wechat_push_status}'. Only 'failed' or 'pending' reports can be retried."
+        )
+
+    from settings import settings
+    from common.wechat_mp.client import WeChatMPClient
+    from common.wechat_mp.draft_service import WeChatDraftService
+    import json
+
+    # 检查微信 MP 是否启用
+    if not getattr(settings, "wechat_mp_enabled", False):
+        raise HTTPException(status_code=400, detail="WeChat MP is not enabled in settings")
+
+    appid = getattr(settings, "wechat_mp_appid", "")
+    secret = getattr(settings, "wechat_mp_secret", "")
+    if not appid or not secret:
+        raise HTTPException(status_code=400, detail="WeChat MP credentials (APPID/SECRET) are not configured")
+
+    # 解析 category_thumbs
+    category_thumbs_raw = getattr(settings, "wechat_mp_category_thumbs", "{}")
+    try:
+        category_thumbs = json.loads(category_thumbs_raw) if isinstance(category_thumbs_raw, str) else category_thumbs_raw
+    except (json.JSONDecodeError, TypeError):
+        category_thumbs = {}
+
+    default_thumb = getattr(settings, "wechat_mp_default_thumb", "")
+
+    logger.info("Admin retrying WeChat push for report #%d (user=%d)", report_id, admin.id)
+
+    try:
+        client = WeChatMPClient(appid=appid, secret=secret)
+        draft_service = WeChatDraftService(
+            client=client,
+            category_thumbs=category_thumbs,
+            default_thumb=default_thumb,
+        )
+        results = await draft_service.push_reports([report], session=session)
+        await session.commit()
+
+        if results and results[0].get("status") == "success":
+            return {
+                "status": "success",
+                "message": f"微信推送成功，media_id: {results[0].get('media_id')}",
+                "media_id": results[0].get("media_id"),
+            }
+        else:
+            error = results[0].get("error", "Unknown error") if results else "No result"
+            return {
+                "status": "failed",
+                "message": f"微信推送失败：{error}",
+                "error": error,
+            }
+    except Exception as e:
+        logger.error("WeChat push retry failed for report #%d: %s", report_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"WeChat push retry failed: {e}")
 
 
 # ============================================================================
