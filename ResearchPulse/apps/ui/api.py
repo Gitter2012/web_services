@@ -306,6 +306,8 @@ class ArticleDetailResponse(BaseModel):
 async def list_articles(
     source_type: Optional[str] = None,    # 筛选条件：数据源类型（如 "arxiv"、"rss"、"wechat"）
     category: Optional[str] = None,       # 筛选条件：分类（支持分类代码和名称的模糊匹配）
+    news_country: Optional[str] = None,   # 筛选条件：新闻源国家 "CN" / "EN"
+    news_category: Optional[str] = None,  # 筛选条件：新闻分类 "tech" / "general" 等
     keyword: Optional[str] = None,        # 筛选条件：关键词（标题和摘要中搜索）
     from_date: Optional[str] = None,      # 筛选条件：起始日期（ISO 格式）
     starred: Optional[bool] = None,       # 筛选条件：仅显示收藏文章（需要登录）
@@ -324,6 +326,8 @@ async def list_articles(
     Args:
         source_type: Source type filter.
         category: Category filter.
+        news_country: News source country filter ("CN" / "EN").
+        news_category: News category filter ("tech" / "general" etc.).
         keyword: Keyword search.
         from_date: Start date (ISO).
         starred: Filter starred articles (login required).
@@ -370,6 +374,14 @@ async def list_articles(
                     Article.arxiv_primary_category == category,
                 )
             )
+
+    # 按新闻源国家筛选 (CN / EN)
+    if news_country:
+        query = query.where(Article.news_source_country == news_country)
+
+    # 按新闻分类筛选
+    if news_category:
+        query = query.where(Article.news_category == news_category)
 
     # 按关键词搜索：在标题和摘要中进行不区分大小写的模糊匹配
     # 转义 LIKE 通配符 % 和 _，防止用户输入被解释为通配符
@@ -1631,6 +1643,10 @@ def _article_to_dict(article: Article) -> Dict[str, Any]:
         "content": article.content or "",     # 正文内容，None 时返回空字符串
         "content_summary": article.content_summary,  # AI 生成的内容摘要或翻译
         "category": article.category,         # 所属分类
+        "news_source_country": article.news_source_country,  # 新闻源国家 CN/EN
+        "news_category": article.news_category,              # 新闻分类
+        "image_url": article.image_url,                      # 封面图 URL（新闻专用）
+        "source_crawler_type": article.source_crawler_type,  # 爬虫类型
         "tags": article.tags or [],           # 标签列表，None 时返回空列表
         "publish_time": article.publish_time.isoformat() if article.publish_time else None,
         "crawl_time": article.crawl_time.isoformat() if article.crawl_time else None,

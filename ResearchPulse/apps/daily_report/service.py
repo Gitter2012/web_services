@@ -61,10 +61,11 @@ class DailyReportService:
         "reddit": {"name": "Reddit", "name_zh": "Reddit"},
         "weibo": {"name": "微博热搜", "name_zh": "微博热搜"},
         "rss": {"name": "RSS", "name_zh": "RSS 订阅"},
+        "cn_news": {"name": "Chinese News", "name_zh": "中文新闻"},
     }
 
     # 非聚合数据源（每个源独立生成报告）
-    NON_AGGREGATE_SOURCES = ["arxiv", "rss"]
+    NON_AGGREGATE_SOURCES = ["arxiv", "rss", "cn_news"]
     # 聚合数据源（多个源合并为一个报告）
     AGGREGATE_SOURCES = ["hackernews", "reddit", "weibo"]
 
@@ -136,6 +137,8 @@ class DailyReportService:
             return f"【微博热搜】{date_str} 热点话题"
         elif source_type == "rss":
             return f"【RSS 订阅】{date_str} {category_name}精选内容"
+        elif source_type == "cn_news":
+            return f"【中文新闻】{date_str} {category_name}新闻摘要"
         else:
             return f"【{source_label}】{date_str} {category_name}"
 

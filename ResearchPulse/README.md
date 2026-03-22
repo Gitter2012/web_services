@@ -673,5 +673,5 @@ MIT License
 
 ## 联系方式
 
-- 项目地址: https://github.com/web_services/ResearchPulse
-- 问题反馈: https://github.com/web_services/ResearchPulse/issues
+- 项目地址: https://github.com/DragonZS/ResearchPulse.git
+- 问题反馈: https://github.com/DragonZS/ResearchPulse/issues

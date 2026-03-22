@@ -404,6 +404,48 @@ async def start_scheduler() -> None:
     else:
         logger.info("Daily arXiv report job skipped (daily_report.enabled disabled)")
 
+    # ---- 中文官媒爬取任务（每6小时） ----
+    # 功能: 定期从 news_sources 表中的中文官方媒体站点抓取新闻
+    # 前置条件: 需要启用 crawler.cn_news.enabled 功能开关
+    # 触发方式: 间隔触发，默认每6小时
+    # 设计原因: cn_news 源需要独立于通用 crawl_job 调度（间隔不同、反爬策略不同）
+    if feature_config.get_bool("crawler.cn_news.enabled", True):
+        from apps.scheduler.jobs.news_crawl_job import run_news_crawl_job
+        news_interval = feature_config.get_int("scheduler.news_crawl_interval_hours", 6)
+        scheduler.add_job(
+            run_news_crawl_job,
+            IntervalTrigger(
+                hours=news_interval,
+                start_date=_calculate_interval_start_date(1),
+            ),
+            id="news_crawl_job",
+            name="Crawl Chinese news sources",
+            replace_existing=True,
+        )
+        logger.info("News crawl job registered (interval=%d hours)", news_interval)
+    else:
+        logger.info("News crawl job skipped (crawler.cn_news.enabled disabled)")
+
+    # ---- 新闻报告生成（每日） ----
+    # 功能: 每天生成中英文新闻报告
+    # 前置条件: 需要启用 daily_report.news_report.enabled 功能开关
+    # 触发方式: 每天定时执行（Cron 触发），默认 8:30
+    if feature_config.get_bool("daily_report.news_report.enabled", True):
+        from apps.scheduler.jobs.news_report_job import run_news_report_job
+        scheduler.add_job(
+            run_news_report_job,
+            CronTrigger(
+                hour=feature_config.get_int("daily_report.news_report.hour", 8),
+                minute=feature_config.get_int("daily_report.news_report.minute", 30),
+            ),
+            id="news_report_job",
+            name="Generate daily news reports",
+            replace_existing=True,
+        )
+        logger.info("News report job registered")
+    else:
+        logger.info("News report job skipped (daily_report.news_report.enabled disabled)")
+
     # 所有任务注册完毕后，启动调度器开始按计划执行任务
     scheduler.start()
     logger.info("Scheduler started")

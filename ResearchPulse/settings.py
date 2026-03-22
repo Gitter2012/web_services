@@ -76,6 +76,7 @@ _topic_config = _yaml_config.get("topic", {})             # 话题发现配置
 _action_config = _yaml_config.get("action", {})           # 行动项配置
 _report_config = _yaml_config.get("report", {})           # 报告生成配置
 _weibo_config = _crawler_config.get("weibo", {})         # 微博热搜爬虫配置
+_cn_news_config = _crawler_config.get("cn_news", {})     # 中文新闻爬虫配置
 _wechat_mp_config = _yaml_config.get("wechat_mp", {})    # 微信公众号配置
 
 
@@ -312,6 +313,18 @@ class Settings(BaseSettings):
     weibo_cookie: str = Field(
         default="",
         validation_alias="WEIBO_COOKIE",
+    )
+
+    # ======================== 中文新闻爬虫配置 ========================
+    # 中文新闻爬取请求间的基础延迟（秒）
+    cn_news_delay_base: float = Field(
+        default=_cn_news_config.get("delay_base", 5.0),
+        validation_alias="CN_NEWS_DELAY_BASE",
+    )
+    # 延迟抖动范围（秒）
+    cn_news_delay_jitter: float = Field(
+        default=_cn_news_config.get("delay_jitter", 3.0),
+        validation_alias="CN_NEWS_DELAY_JITTER",
     )
 
     # ======================== Twitter 爬虫配置 ========================

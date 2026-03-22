@@ -959,6 +959,7 @@
                     <button class="tab" onclick="switchSourceTab('hackernews')">HackerNews</button>
                     <button class="tab" onclick="switchSourceTab('reddit')">Reddit</button>
                     <button class="tab" onclick="switchSourceTab('twitter')">Twitter</button>
+                    <button class="tab" onclick="switchSourceTab('news')">新闻源</button>
                 </div>
 
                 <!-- ArXiv Categories -->
@@ -989,8 +990,8 @@
                         </div>
                         <div class="card-body">
                             <div style="display: flex; gap: 12px; margin-bottom: 16px;">
-                                <input type="text" class="form-input" id="rss-search" placeholder="搜索..." style="flex: 1;" oninput="loadRssFeeds()">
-                                <select class="form-select" id="rss-category-filter" style="width: 150px;" onchange="loadRssFeeds()">
+                                <input type="text" class="form-input" id="rss-search" placeholder="搜索..." style="flex: 1;" oninput="loadRssFeeds(1)">
+                                <select class="form-select" id="rss-category-filter" style="width: 150px;" onchange="loadRssFeeds(1)">
                                     <option value="">全部分类</option>
                                 </select>
                             </div>
@@ -1000,6 +1001,7 @@
                                         <th><input type="checkbox" id="rss-select-all" onchange="toggleSelectAll('rss')"></th>
                                         <th>标题</th>
                                         <th>分类</th>
+                                        <th>来源国</th>
                                         <th>状态</th>
                                         <th>最后抓取</th>
                                         <th>操作</th>
@@ -1007,6 +1009,7 @@
                                 </thead>
                                 <tbody id="rss-list"></tbody>
                             </table>
+                            <div id="rss-pagination" style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:12px;"></div>
                         </div>
                     </div>
                 </div>
@@ -1111,7 +1114,7 @@
                                 <strong>说明：</strong>Reddit 使用公开 RSS 接口，无需 API 密钥。支持订阅 subreddit，格式如 <code>programming</code> 或 <code>r/programming</code>。
                             </div>
                             <div style="display: flex; gap: 12px; margin-bottom: 16px;">
-                                <input type="text" class="form-input" id="reddit-search" placeholder="搜索 subreddit..." style="flex: 1;" oninput="loadRedditSources()">
+                                <input type="text" class="form-input" id="reddit-search" placeholder="搜索 subreddit..." style="flex: 1;" oninput="loadRedditSources(1)">
                             </div>
                             <table class="table">
                                 <thead>
@@ -1126,6 +1129,7 @@
                                 </thead>
                                 <tbody id="reddit-list"></tbody>
                             </table>
+                            <div id="reddit-pagination" style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:12px;"></div>
                         </div>
                     </div>
                 </div>
@@ -1142,7 +1146,7 @@
                                 <strong>说明：</strong>Twitter 数据抓取需要配置 API 凭证。请在系统配置中设置 <code>TWITTER_BEARER_TOKEN</code> 或 <code>TWITTER_API_KEY</code> 等环境变量。
                             </div>
                             <div style="display: flex; gap: 12px; margin-bottom: 16px;">
-                                <input type="text" class="form-input" id="twitter-search" placeholder="搜索用户名..." style="flex: 1;" oninput="loadTwitterSources()">
+                                <input type="text" class="form-input" id="twitter-search" placeholder="搜索用户名..." style="flex: 1;" oninput="loadTwitterSources(1)">
                             </div>
                             <table class="table">
                                 <thead>
@@ -1157,6 +1161,7 @@
                                 </thead>
                                 <tbody id="twitter-list"></tbody>
                             </table>
+                            <div id="twitter-pagination" style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:12px;"></div>
                         </div>
                     </div>
                 </div>
@@ -1180,6 +1185,50 @@
                                 </thead>
                                 <tbody id="pending-rss-list"></tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- News Sources -->
+                <div id="source-news" class="source-panel" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>新闻源管理</h3>
+                            <button class="btn btn-primary btn-sm" onclick="showAddNewsSourceModal()">添加新闻源</button>
+                        </div>
+                        <div class="card-body">
+                            <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+                                <input type="text" class="form-input" id="news-search" placeholder="搜索名称或 URL..." style="flex: 1;" oninput="loadNewsSources(1)">
+                                <select class="form-select" id="news-country-filter" style="width: 120px;" onchange="loadNewsSources(1)">
+                                    <option value="">全部国家</option>
+                                    <option value="CN">🇨🇳 CN</option>
+                                    <option value="EN">🌐 EN</option>
+                                </select>
+                                <select class="form-select" id="news-category-filter" style="width: 130px;" onchange="loadNewsSources(1)">
+                                    <option value="">全部分类</option>
+                                    <option value="general">general</option>
+                                    <option value="tech">tech</option>
+                                    <option value="finance">finance</option>
+                                    <option value="politics">politics</option>
+                                    <option value="sports">sports</option>
+                                </select>
+                            </div>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>名称</th>
+                                        <th>来源国</th>
+                                        <th>分类</th>
+                                        <th>编码</th>
+                                        <th>状态</th>
+                                        <th>最后抓取</th>
+                                        <th>错误次数</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="news-sources-list"></tbody>
+                            </table>
+                            <div id="news-pagination" style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:12px;"></div>
                         </div>
                     </div>
                 </div>
@@ -2863,15 +2912,16 @@
             event.target.classList.add('active');
             document.querySelectorAll('.source-panel').forEach(p => p.style.display = 'none');
             document.getElementById(`source-${tab}`).style.display = 'block';
-            
+
             if (tab === 'arxiv') loadArxivCategories();
-            if (tab === 'rss') loadRssFeeds();
+            if (tab === 'rss') { loadRssCategories(); loadRssFeeds(1); }
             if (tab === 'wechat') loadWechatAccounts();
             if (tab === 'weibo') loadWeiboBoards();
             if (tab === 'pending') loadPendingRss();
             if (tab === 'hackernews') loadHackerNewsSources();
-            if (tab === 'reddit') loadRedditSources();
-            if (tab === 'twitter') loadTwitterSources();
+            if (tab === 'reddit') loadRedditSources(1);
+            if (tab === 'twitter') loadTwitterSources(1);
+            if (tab === 'news') loadNewsSources(1);
         }
 
         async function loadSources() {
@@ -2975,18 +3025,49 @@
             }
         }
 
-        async function loadRssFeeds() {
+        let rssCurrentPage = 1;
+        const RSS_PAGE_SIZE = 20;
+
+        let redditCurrentPage = 1;
+        const REDDIT_PAGE_SIZE = 20;
+
+        let twitterCurrentPage = 1;
+        const TWITTER_PAGE_SIZE = 20;
+
+        let newsCurrentPage = 1;
+        const NEWS_PAGE_SIZE = 20;
+
+        async function loadRssCategories() {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`/api/categories?source_type=rss`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const select = document.getElementById('rss-category-filter');
+                while (select.options.length > 1) select.remove(1);
+                (data.categories || []).forEach(cat => {
+                    const opt = document.createElement('option');
+                    opt.value = cat.code;
+                    opt.textContent = cat.name;
+                    select.appendChild(opt);
+                });
+            } catch (e) { /* 静默失败 */ }
+        }
+
+        async function loadRssFeeds(page = rssCurrentPage) {
+            rssCurrentPage = page;
             const token = localStorage.getItem('access_token');
             const search = document.getElementById('rss-search')?.value || '';
             const category = document.getElementById('rss-category-filter')?.value || '';
             const tbody = document.getElementById('rss-list');
-            
+
             try {
-                const res = await fetch(`${ADMIN_BASE}/sources/rss?search=${encodeURIComponent(search)}&category=${encodeURIComponent(category)}`, {
+                const res = await fetch(`${ADMIN_BASE}/sources/rss?search=${encodeURIComponent(search)}&category=${encodeURIComponent(category)}&page=${page}&page_size=${RSS_PAGE_SIZE}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
-                
+
                 tbody.innerHTML = data.feeds.map(f => `
                     <tr>
                         <td><input type="checkbox" data-id="${f.id}"></td>
@@ -2995,10 +3076,11 @@
                             <br><small style="color: #888;">${escapeHtml(f.feed_url)}</small>
                         </td>
                         <td>${f.category || '-'}</td>
+                        <td>${f.country ? `<span class="badge badge-info">${escapeHtml(f.country)}</span>` : '-'}</td>
                         <td><span class="badge ${f.is_active ? 'badge-success' : 'badge-warning'}">${f.is_active ? '活跃' : '禁用'}</span></td>
                         <td>${f.last_fetched_at ? formatDate(f.last_fetched_at) : '从未'}</td>
                         <td>
-                            <button class="btn btn-sm btn-primary" onclick="showEditRssModal(${f.id}, '${escapeHtml(f.title).replace(/'/g, "\\'")}', '${escapeHtml(f.feed_url || '').replace(/'/g, "\\'")}', '${escapeHtml(f.category || '').replace(/'/g, "\\'")}', '${escapeHtml(f.site_url || '').replace(/'/g, "\\'")}')">编辑</button>
+                            <button class="btn btn-sm btn-primary" onclick="showEditRssModal(${f.id}, '${escapeHtml(f.title).replace(/'/g, "\\'")}', '${escapeHtml(f.feed_url || '').replace(/'/g, "\\'")}', '${escapeHtml(f.category || '').replace(/'/g, "\\'")}', '${escapeHtml(f.site_url || '').replace(/'/g, "\\'")}', '${(f.country || '').replace(/'/g, "\\'")}', '${escapeHtml(f.news_category || '').replace(/'/g, "\\'")}')">编辑</button>
                             <button class="btn btn-sm ${f.is_active ? 'btn-danger' : 'btn-success'}" onclick="toggleRssFeed(${f.id}, ${!f.is_active})">
                                 ${f.is_active ? '禁用' : '启用'}
                             </button>
@@ -3006,20 +3088,25 @@
                         </td>
                     </tr>
                 `).join('');
-                
-                // Update category filter options
-                if (!document.getElementById('rss-category-filter').options.length) {
-                    const categories = [...new Set(data.feeds.map(f => f.category).filter(Boolean))];
-                    const select = document.getElementById('rss-category-filter');
-                    categories.forEach(cat => {
-                        const opt = document.createElement('option');
-                        opt.value = cat;
-                        opt.textContent = cat;
-                        select.appendChild(opt);
-                    });
+
+                // 渲染分页控件
+                const totalPages = Math.ceil((data.total || 0) / RSS_PAGE_SIZE);
+                const pager = document.getElementById('rss-pagination');
+                if (totalPages <= 1) {
+                    pager.innerHTML = '';
+                } else {
+                    pager.innerHTML = `
+                        <button class="btn btn-sm" ${page <= 1 ? 'disabled' : ''}
+                                onclick="loadRssFeeds(${page - 1})">上一页</button>
+                        <span style="font-size:13px; color:#666;">
+                            第 ${page} / ${totalPages} 页，共 ${data.total} 条
+                        </span>
+                        <button class="btn btn-sm" ${page >= totalPages ? 'disabled' : ''}
+                                onclick="loadRssFeeds(${page + 1})">下一页</button>
+                    `;
                 }
             } catch (e) {
-                tbody.innerHTML = '<tr><td colspan="6">加载失败</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7">加载失败</td></tr>';
             }
         }
 
@@ -3342,6 +3429,18 @@
                             <label class="form-label">分类</label>
                             <input type="text" class="form-input" id="new-rss-category" value="其他">
                         </div>
+                        <div class="form-group">
+                            <label class="form-label">来源国</label>
+                            <select class="form-select" id="new-rss-country">
+                                <option value="">— 非新闻类 —</option>
+                                <option value="EN">EN（英文媒体）</option>
+                                <option value="CN">CN（中文媒体）</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">新闻分类</label>
+                            <input type="text" class="form-input" id="new-rss-news-category" placeholder="general / tech / finance（留空则为 null）">
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button class="btn" onclick="this.closest('.modal').remove()">取消</button>
@@ -3357,12 +3456,14 @@
             const feedUrl = document.getElementById('new-rss-url').value;
             const title = document.getElementById('new-rss-title').value;
             const category = document.getElementById('new-rss-category').value;
-            
+            const country = document.getElementById('new-rss-country').value || null;
+            const newsCategory = document.getElementById('new-rss-news-category').value || null;
+
             if (!feedUrl) {
                 alert('请输入 Feed URL');
                 return;
             }
-            
+
             try {
                 const res = await fetch(`${ADMIN_BASE}/sources/rss`, {
                     method: 'POST',
@@ -3370,7 +3471,7 @@
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ feed_url: feedUrl, title, category })
+                    body: JSON.stringify({ feed_url: feedUrl, title, category, country, news_category: newsCategory })
                 });
                 
                 if (res.ok) {
@@ -3385,7 +3486,7 @@
             }
         }
 
-        function showEditRssModal(feedId, title, feedUrl, category, siteUrl) {
+        function showEditRssModal(feedId, title, feedUrl, category, siteUrl, country, newsCategory) {
             const modal = document.createElement('div');
             modal.className = 'modal active';
             modal.innerHTML = `
@@ -3411,6 +3512,18 @@
                             <label class="form-label">网站 URL</label>
                             <input type="text" class="form-input" id="edit-rss-site-url" value="${escapeHtml(siteUrl)}">
                         </div>
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label class="form-label">来源国</label>
+                            <select class="form-select" id="edit-rss-country">
+                                <option value="" ${!country ? 'selected' : ''}>— 非新闻类 —</option>
+                                <option value="EN" ${country === 'EN' ? 'selected' : ''}>EN（英文媒体）</option>
+                                <option value="CN" ${country === 'CN' ? 'selected' : ''}>CN（中文媒体）</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label class="form-label">新闻分类</label>
+                            <input type="text" class="form-input" id="edit-rss-news-category" value="${escapeHtml(newsCategory || '')}" placeholder="general / tech / finance（留空则为 null）">
+                        </div>
                         <button class="btn btn-primary" onclick="saveEditRss(${feedId})">保存</button>
                     </div>
                 </div>
@@ -3425,6 +3538,8 @@
                 feed_url: document.getElementById('edit-rss-url').value,
                 category: document.getElementById('edit-rss-category').value,
                 site_url: document.getElementById('edit-rss-site-url').value,
+                country: document.getElementById('edit-rss-country').value || null,
+                news_category: document.getElementById('edit-rss-news-category').value || null,
             };
 
             try {
@@ -6137,17 +6252,18 @@
         }
 
         // Reddit Management
-        async function loadRedditSources() {
+        async function loadRedditSources(page = redditCurrentPage) {
+            redditCurrentPage = page;
             const token = localStorage.getItem('access_token');
             const search = document.getElementById('reddit-search')?.value || '';
             const tbody = document.getElementById('reddit-list');
-            
+
             try {
-                const res = await fetch(`${ADMIN_BASE}/sources/reddit?search=${encodeURIComponent(search)}`, {
+                const res = await fetch(`${ADMIN_BASE}/sources/reddit?search=${encodeURIComponent(search)}&page=${page}&page_size=${REDDIT_PAGE_SIZE}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
-                
+
                 tbody.innerHTML = data.sources?.length ? data.sources.map(s => `
                     <tr>
                         <td><input type="checkbox" data-id="${s.id}" class="reddit-checkbox"></td>
@@ -6164,6 +6280,23 @@
                         </td>
                     </tr>
                 `).join('') : '<tr><td colspan="6" style="text-align: center; color: #888;">暂无 Reddit 订阅源</td></tr>';
+
+                // 渲染分页控件
+                const totalPages = Math.ceil((data.total || 0) / REDDIT_PAGE_SIZE);
+                const pager = document.getElementById('reddit-pagination');
+                if (totalPages <= 1) {
+                    pager.innerHTML = '';
+                } else {
+                    pager.innerHTML = `
+                        <button class="btn btn-sm" ${page <= 1 ? 'disabled' : ''}
+                                onclick="loadRedditSources(${page - 1})">上一页</button>
+                        <span style="font-size:13px; color:#666;">
+                            第 ${page} / ${totalPages} 页，共 ${data.total} 条
+                        </span>
+                        <button class="btn btn-sm" ${page >= totalPages ? 'disabled' : ''}
+                                onclick="loadRedditSources(${page + 1})">下一页</button>
+                    `;
+                }
             } catch (e) {
                 tbody.innerHTML = '<tr><td colspan="6">加载失败</td></tr>';
             }
@@ -6322,18 +6455,19 @@
         }
 
         // Twitter Management
-        async function loadTwitterSources() {
+        async function loadTwitterSources(page = twitterCurrentPage) {
+            twitterCurrentPage = page;
             const token = localStorage.getItem('access_token');
             const search = document.getElementById('twitter-search')?.value || '';
             const tbody = document.getElementById('twitter-list');
-            
+
             try {
-                const res = await fetch(`${ADMIN_BASE}/sources/twitter?search=${encodeURIComponent(search)}`, {
+                const res = await fetch(`${ADMIN_BASE}/sources/twitter?search=${encodeURIComponent(search)}&page=${page}&page_size=${TWITTER_PAGE_SIZE}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
-                
-                tbody.innerHTML = data.users?.length ? data.users.map(u => `
+
+                tbody.innerHTML = data.sources?.length ? data.sources.map(u => `
                     <tr>
                         <td><input type="checkbox" data-id="${u.id}" class="twitter-checkbox"></td>
                         <td><strong>@${escapeHtml(u.username)}</strong></td>
@@ -6349,6 +6483,23 @@
                         </td>
                     </tr>
                 `).join('') : '<tr><td colspan="6" style="text-align: center; color: #888;">暂无 Twitter 用户订阅</td></tr>';
+
+                // 渲染分页控件
+                const totalPages = Math.ceil((data.total || 0) / TWITTER_PAGE_SIZE);
+                const pager = document.getElementById('twitter-pagination');
+                if (totalPages <= 1) {
+                    pager.innerHTML = '';
+                } else {
+                    pager.innerHTML = `
+                        <button class="btn btn-sm" ${page <= 1 ? 'disabled' : ''}
+                                onclick="loadTwitterSources(${page - 1})">上一页</button>
+                        <span style="font-size:13px; color:#666;">
+                            第 ${page} / ${totalPages} 页，共 ${data.total} 条
+                        </span>
+                        <button class="btn btn-sm" ${page >= totalPages ? 'disabled' : ''}
+                                onclick="loadTwitterSources(${page + 1})">下一页</button>
+                    `;
+                }
             } catch (e) {
                 tbody.innerHTML = '<tr><td colspan="6">加载失败</td></tr>';
             }
@@ -6504,6 +6655,249 @@
             } catch (e) {
                 alert('删除失败');
             }
+        }
+
+        // ============================================================================
+        // News Sources Management
+        // ============================================================================
+
+        async function loadNewsSources(page = newsCurrentPage) {
+            newsCurrentPage = page;
+            const token = localStorage.getItem('access_token');
+            const search = document.getElementById('news-search')?.value || '';
+            const country = document.getElementById('news-country-filter')?.value || '';
+            const category = document.getElementById('news-category-filter')?.value || '';
+
+            const params = new URLSearchParams({ page: page, page_size: NEWS_PAGE_SIZE });
+            if (search) params.append('search', search);
+            if (country) params.append('country', country);
+            if (category) params.append('news_category', category);
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/news?${params}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const tbody = document.getElementById('news-sources-list');
+                if (!tbody) return;
+                tbody.innerHTML = data.sources.map(src => `
+                    <tr>
+                        <td><a href="${escapeHtml(src.site_url)}" target="_blank" title="${escapeHtml(src.list_url)}">${escapeHtml(src.name)}</a></td>
+                        <td>${escapeHtml(src.country)}</td>
+                        <td>${escapeHtml(src.news_category)}</td>
+                        <td>${escapeHtml(src.encoding)}</td>
+                        <td><span class="badge ${src.is_active ? 'badge-success' : 'badge-secondary'}">${src.is_active ? '启用' : '停用'}</span></td>
+                        <td>${src.last_fetched_at ? formatDate(src.last_fetched_at) : '—'}</td>
+                        <td>${src.error_count}</td>
+                        <td>
+                            <button class="btn btn-sm" onclick="editNewsSource(${src.id}, ${JSON.stringify(src).replace(/"/g, '&quot;')})">编辑</button>
+                            <button class="btn btn-sm ${src.is_active ? 'btn-warning' : 'btn-success'}" onclick="toggleNewsSource(${src.id}, ${!src.is_active})">${src.is_active ? '停用' : '启用'}</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteNewsSource(${src.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+
+                // 渲染分页控件
+                const totalPages = Math.ceil((data.total || 0) / NEWS_PAGE_SIZE);
+                const pager = document.getElementById('news-pagination');
+                if (pager) {
+                    if (totalPages <= 1) {
+                        pager.innerHTML = '';
+                    } else {
+                        pager.innerHTML = `
+                            <button class="btn btn-sm" ${page <= 1 ? 'disabled' : ''}
+                                    onclick="loadNewsSources(${page - 1})">上一页</button>
+                            <span style="font-size:13px; color:#666;">
+                                第 ${page} / ${totalPages} 页，共 ${data.total} 条
+                            </span>
+                            <button class="btn btn-sm" ${page >= totalPages ? 'disabled' : ''}
+                                    onclick="loadNewsSources(${page + 1})">下一页</button>
+                        `;
+                    }
+                }
+            } catch (e) {
+                console.error('loadNewsSources failed', e);
+            }
+        }
+
+        function showAddNewsSourceModal() {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content" style="width: 560px;">
+                    <div class="modal-header">
+                        <h3>添加新闻源</h3>
+                        <span class="modal-close" onclick="this.closest('.modal').remove()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label class="form-label">名称 *</label>
+                            <input type="text" class="form-input" id="ns-name" placeholder="新华网-科技">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label class="form-label">站点首页 URL *</label>
+                            <input type="url" class="form-input" id="ns-site-url" placeholder="https://example.com">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label class="form-label">文章列表页 URL *</label>
+                            <input type="url" class="form-input" id="ns-list-url" placeholder="https://example.com/tech/index.html">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label class="form-label">CSS 选择器 JSON *</label>
+                            <textarea class="form-input" id="ns-selectors" rows="4" placeholder='{"article_list":"ul.list li","title":"h3 a","link":"h3 a","summary":"p","time":"span.time","image":"img","content":"div.article-body"}'></textarea>
+                        </div>
+                        <div style="display: flex; gap: 12px;">
+                            <div class="form-group" style="flex: 1; margin-bottom: 10px;">
+                                <label class="form-label">国家</label>
+                                <select class="form-select" id="ns-country">
+                                    <option value="CN">CN（中文）</option>
+                                    <option value="EN">EN（英文）</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 1; margin-bottom: 10px;">
+                                <label class="form-label">分类</label>
+                                <input type="text" class="form-input" id="ns-news-category" value="general">
+                            </div>
+                            <div class="form-group" style="flex: 1; margin-bottom: 10px;">
+                                <label class="form-label">编码</label>
+                                <input type="text" class="form-input" id="ns-encoding" value="utf-8">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn" onclick="this.closest('.modal').remove()">取消</button>
+                        <button class="btn btn-primary" onclick="submitAddNewsSource()">添加</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function submitAddNewsSource() {
+            const token = localStorage.getItem('access_token');
+            const name = document.getElementById('ns-name').value.trim();
+            const site_url = document.getElementById('ns-site-url').value.trim();
+            const list_url = document.getElementById('ns-list-url').value.trim();
+            const selectorsRaw = document.getElementById('ns-selectors').value.trim();
+            const country = document.getElementById('ns-country').value;
+            const news_category = document.getElementById('ns-news-category').value.trim();
+            const encoding = document.getElementById('ns-encoding').value.trim();
+
+            if (!name || !site_url || !list_url || !selectorsRaw) {
+                alert('请填写所有必填字段');
+                return;
+            }
+            let selectors;
+            try { selectors = JSON.parse(selectorsRaw); } catch { alert('CSS 选择器必须是合法 JSON'); return; }
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/news`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, site_url, list_url, selectors, country, news_category, encoding })
+                });
+                if (res.ok) {
+                    document.querySelector('.modal').remove();
+                    loadNewsSources();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || '添加失败');
+                }
+            } catch (e) { alert('添加失败'); }
+        }
+
+        function editNewsSource(id, src) {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content" style="width: 560px;">
+                    <div class="modal-header">
+                        <h3>编辑新闻源</h3>
+                        <span class="modal-close" onclick="this.closest('.modal').remove()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label class="form-label">名称</label>
+                            <input type="text" class="form-input" id="ens-name" value="${escapeHtml(src.name)}">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label class="form-label">文章列表页 URL</label>
+                            <input type="text" class="form-input" id="ens-list-url" value="${escapeHtml(src.list_url)}">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label class="form-label">CSS 选择器 JSON</label>
+                            <textarea class="form-input" id="ens-selectors" rows="4">${escapeHtml(JSON.stringify(src.selectors, null, 2))}</textarea>
+                        </div>
+                        <div style="display: flex; gap: 12px;">
+                            <div class="form-group" style="flex: 1; margin-bottom: 10px;">
+                                <label class="form-label">国家</label>
+                                <select class="form-select" id="ens-country">
+                                    <option value="CN" ${src.country === 'CN' ? 'selected' : ''}>CN</option>
+                                    <option value="EN" ${src.country === 'EN' ? 'selected' : ''}>EN</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 1; margin-bottom: 10px;">
+                                <label class="form-label">分类</label>
+                                <input type="text" class="form-input" id="ens-news-category" value="${escapeHtml(src.news_category)}">
+                            </div>
+                            <div class="form-group" style="flex: 1; margin-bottom: 10px;">
+                                <label class="form-label">编码</label>
+                                <input type="text" class="form-input" id="ens-encoding" value="${escapeHtml(src.encoding)}">
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" onclick="saveEditNewsSource(${id})">保存</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function saveEditNewsSource(id) {
+            const token = localStorage.getItem('access_token');
+            const selectorsRaw = document.getElementById('ens-selectors').value.trim();
+            let selectors;
+            try { selectors = JSON.parse(selectorsRaw); } catch { alert('CSS 选择器必须是合法 JSON'); return; }
+            const data = {
+                name: document.getElementById('ens-name').value.trim(),
+                list_url: document.getElementById('ens-list-url').value.trim(),
+                selectors,
+                country: document.getElementById('ens-country').value,
+                news_category: document.getElementById('ens-news-category').value.trim(),
+                encoding: document.getElementById('ens-encoding').value.trim(),
+            };
+            try {
+                const res = await fetch(`${ADMIN_BASE}/sources/news/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (res.ok) { document.querySelector('.modal').remove(); loadNewsSources(); }
+                else { const err = await res.json(); alert(err.detail || '保存失败'); }
+            } catch (e) { alert('保存失败'); }
+        }
+
+        async function toggleNewsSource(id, isActive) {
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/sources/news/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_active: isActive })
+                });
+                loadNewsSources();
+            } catch (e) { alert('操作失败'); }
+        }
+
+        async function deleteNewsSource(id) {
+            if (!confirm('确定删除该新闻源？')) return;
+            const token = localStorage.getItem('access_token');
+            try {
+                await fetch(`${ADMIN_BASE}/sources/news/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                loadNewsSources();
+            } catch (e) { alert('删除失败'); }
         }
 
         // Utils

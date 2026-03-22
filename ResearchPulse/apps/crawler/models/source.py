@@ -22,6 +22,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, Index, Integer, String, Text
+from sqlalchemy.dialects.mysql import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.models.base import Base, TimestampMixin
@@ -142,6 +143,16 @@ class RssFeed(Base, TimestampMixin):
         nullable=False,
         default="",
         index=True,
+    )
+    # 新闻源所属国家（RSS 新闻源用，非新闻类 RSS 置 None）
+    country: Mapped[str | None] = mapped_column(
+        String(5), nullable=True, index=True,
+        comment="News source country: CN, EN, null for non-news RSS",
+    )
+    # 新闻分类
+    news_category: Mapped[str | None] = mapped_column(
+        String(50), nullable=True,
+        comment="News category: tech, general, finance, etc.",
     )
     # 订阅源描述信息
     description: Mapped[str] = mapped_column(
@@ -528,3 +539,97 @@ class TwitterSource(Base, TimestampMixin):
         返回 Twitter 订阅源的字符串表示。
         """
         return f"<TwitterSource(username={self.username})>"
+
+
+# =============================================================================
+# NewsSource 模型
+# 职责: 存储 HTML 新闻源的配置（CSS选择器存数据库，支持零代码扩展）
+# 表名: news_sources
+# 使用场景: 配置需要通过 HTML 解析抓取的新闻站点（如新华网、人民网、央视新闻）；
+#           爬虫调度时查询所有活跃的新闻源进行爬取。
+# 设计决策:
+#   1. selectors 使用 JSON 字段存储 CSS 选择器配置，实现零代码扩展
+#   2. 支持不同编码（UTF-8/GBK 等）以兼容中文新闻站点
+#   3. country 和 news_category 字段与 Article 模型对应，便于报告生成时筛选
+# =============================================================================
+class NewsSource(Base, TimestampMixin):
+    """HTML news source config — CSS selectors stored in DB for zero-code extension.
+
+    HTML 新闻源配置模型，CSS 选择器存储在数据库中，支持零代码扩展。
+    """
+
+    __tablename__ = "news_sources"
+
+    # 主键
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 站点名称（如 "新华网-时政"）
+    name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        comment="站点名称",
+    )
+    # 站点首页 URL
+    site_url: Mapped[str] = mapped_column(
+        String(2000),
+        nullable=False,
+        comment="站点首页URL",
+    )
+    # 文章列表页 URL（爬虫入口页）
+    list_url: Mapped[str] = mapped_column(
+        String(2000),
+        nullable=False,
+        comment="文章列表页URL",
+    )
+    # CSS 选择器配置 JSON
+    # 格式: {"article_list": "div.news-list li", "title": "a", "link": "a",
+    #         "summary": "p.desc", "time": "span.time", "image": "img", "content": "div.article-body"}
+    selectors: Mapped[dict] = mapped_column(
+        JSON,
+        nullable=False,
+        comment="CSS选择器配置JSON",
+    )
+    # 新闻源所属国家（CN 或 EN）
+    country: Mapped[str] = mapped_column(
+        String(5),
+        nullable=False,
+        default="CN",
+        comment="CN or EN",
+    )
+    # 新闻分类（general, tech, finance 等）
+    news_category: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="general",
+        comment="News category: general, tech, finance, etc.",
+    )
+    # 页面编码（UTF-8 / GBK 等）
+    encoding: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="utf-8",
+        comment="Page encoding: utf-8, gbk, etc.",
+    )
+    # 是否活跃：False 表示已停用
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
+    # 最后一次成功抓取的时间
+    last_fetched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    # 连续抓取失败次数
+    error_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    def __repr__(self) -> str:
+        """Return a readable NewsSource representation.
+
+        返回新闻源的字符串表示。
+        """
+        return f"<NewsSource(id={self.id}, name={self.name}, country={self.country})>"

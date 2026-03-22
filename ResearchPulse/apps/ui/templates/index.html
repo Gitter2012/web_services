@@ -119,6 +119,12 @@ const sourceGroups = [
         defaultExpanded: true
     },
     {
+        id: 'news',
+        name: '新闻',
+        sources: ['cn_news'],
+        defaultExpanded: true
+    },
+    {
         id: 'social',
         name: '社交媒体',
         sources: ['hackernews', 'reddit', 'twitter'],
@@ -141,7 +147,8 @@ const sourceMeta = {
     'hackernews': { name: 'HN', icon: 'HN', color: '#ff6600' },
     'reddit': { name: 'Reddit', icon: 'RD', color: '#ff4500' },
     'twitter': { name: 'Twitter', icon: 'TW', color: '#1da1f2' },
-    'aigc': { name: 'AIGC', icon: 'AI', color: '#667eea' }
+    'aigc': { name: 'AIGC', icon: 'AI', color: '#667eea' },
+    'cn_news': { name: '新闻', icon: '新', color: '#c0392b' }
 };
 
 // 分组状态存储
@@ -453,7 +460,7 @@ async function loadCategories(sourceType = '') {
 
 async function loadStats() {
     try {
-        const sources = ['', 'arxiv', 'rss', 'wechat', 'weibo', 'hackernews', 'reddit', 'twitter', 'aigc'];
+        const sources = ['', 'arxiv', 'rss', 'cn_news', 'wechat', 'weibo', 'hackernews', 'reddit', 'twitter', 'aigc'];
         const counts = {};
 
         for (const src of sources) {
@@ -677,6 +684,11 @@ function renderArticle(article) {
     }
     const tags = tagsArray.slice(0, 5).map(t => `<span class="tag">${escapeHtml(String(t))}</span>`).join('');
 
+    // 新闻分类标签
+    const newsCatBadge = article.news_category
+        ? `<span class="tag">${escapeHtml(article.news_category)}</span>`
+        : '';
+
     let arxivDetails = '';
     let arxivActions = '';
     if (article.source_type === 'arxiv') {
@@ -708,6 +720,9 @@ function renderArticle(article) {
 
     return `
         <div class="article-card">
+            ${article.image_url
+                ? `<img class="article-cover" src="${escapeHtml(article.image_url)}" alt="" loading="lazy" onerror="this.style.display='none'">`
+                : ''}
             <div class="article-header">
                 <div class="article-title">
                     <a href="${escapeHtml(article.url)}" target="_blank">${escapeHtml(article.title)}</a>
@@ -718,6 +733,7 @@ function renderArticle(article) {
                 <span>👤 ${escapeHtml(article.author || '未知作者')}</span>
                 ${timeDisplay}
                 ${article.category ? `<span>📁 ${escapeHtml(article.category)}${categoryNames[article.category] ? ' - ' + escapeHtml(categoryNames[article.category]) : ''}</span>` : ''}
+                ${article.news_source_country ? `<span class="source-country-badge ${article.news_source_country.toLowerCase()}">${article.news_source_country === 'CN' ? '🇨🇳 中文' : '🌐 EN'}</span>` : ''}
                 ${article.ai_category ? `<span>🤖 ${escapeHtml(article.ai_category)}</span>` : ''}
                 ${scoreIndicator}
             </div>
@@ -736,7 +752,7 @@ function renderArticle(article) {
             ${arxivDetails}
             ${aiInsight}
             <div class="article-footer">
-                <div class="article-tags">${tags}</div>
+                <div class="article-tags">${tags}${newsCatBadge}</div>
                 <div class="article-actions">
                     <button class="action-btn ${isStarred ? 'starred' : ''}" onclick="toggleStar(${article.id})">
                         ${isStarred ? '⭐ 已收藏' : '☆ 收藏'}

@@ -47,5 +47,8 @@ tenacity>=8.2.0
 # sentence-transformers>=2.2.0  # For local embedding models (install separately if needed)
 numpy>=1.24.0
 
+# HTML Content Extraction
+readability-lxml>=0.8.1
+
 # Vector Database
 pymilvus>=2.3.0

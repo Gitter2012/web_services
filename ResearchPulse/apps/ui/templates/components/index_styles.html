@@ -83,6 +83,14 @@
     .article-tags { display: flex; flex-wrap: wrap; gap: 6px; }
     .article-actions { display: flex; gap: 8px; }
 
+    /* News article cover image */
+    .article-cover { width: 100%; max-height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 12px; display: block; }
+
+    /* News source country badge */
+    .source-country-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: 500; }
+    .source-country-badge.cn { background: #fff3cd; color: #856404; }
+    .source-country-badge.en { background: #d1ecf1; color: #0c5460; }
+
     /* Export Button */
     .export-btn { width: 100%; padding: 10px 16px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; background: white; cursor: pointer; transition: all 0.2s; }
     .export-btn:hover { background: #f5f5f5; border-color: #4ecdc4; color: #4ecdc4; }

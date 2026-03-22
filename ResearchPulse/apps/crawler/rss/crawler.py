@@ -138,6 +138,8 @@ class RssCrawler(BaseCrawler):
         feed_id: str,
         feed_url: str,
         timeout: float = 30.0,
+        country: str | None = None,
+        category: str | None = None,
     ):
         """Initialize RSS crawler.
 
@@ -147,11 +149,15 @@ class RssCrawler(BaseCrawler):
             feed_id: Feed identifier.
             feed_url: RSS/Atom feed URL.
             timeout: HTTP request timeout in seconds.
+            country: News source country code (e.g. "CN", "EN").
+            category: News category (e.g. "tech", "general").
         """
         super().__init__(feed_id)
         self.feed_id = feed_id
         self.feed_url = feed_url
         self.timeout = timeout
+        self.news_source_country = country
+        self.news_category = category
 
     async def fetch(self) -> str:
         """Fetch RSS feed XML content.
@@ -341,6 +347,9 @@ class RssCrawler(BaseCrawler):
             "cover_image_url": cover_image_url,
             "tags": tags,
             "publish_time": publish_time,
+            "news_source_country": self.news_source_country,
+            "news_category": self.news_category,
+            "source_crawler_type": "rss",
         }
 
     @staticmethod

@@ -77,6 +77,12 @@ crawler:
         name: 游戏榜
         # 需要 Cookie，默认禁用
         enabled: false
+  cn_news:
+    enabled: true
+    timeout: 30
+    delay_base: 5.0
+    delay_jitter: 3.0
+    max_retry: 2
 
 scheduler:
   crawl_interval_hours: 6
@@ -249,13 +255,18 @@ daily_report:
   enabled: true
   hour: 8
   minute: 0
-  # 数据源类型: arxiv, hackernews, reddit, weibo, rss
-  source_types: "arxiv,hackernews,reddit,weibo,rss"  # 多数据源
+  # 数据源类型: arxiv, hackernews, reddit, weibo, rss, cn_news
+  source_types: "arxiv,hackernews,reddit,weibo,rss,cn_news"  # 多数据源
   # arxiv 分类列表
   categories: "cs.LG,cs.CV,cs.CL,cs.AI,cs.RO,cs.NE,cs.IR"
   max_articles: 50
   translate_title: true
   offset_days: 1
+  # 独立新闻报告配置
+  news_report:
+    enabled: true
+    hour: 8
+    minute: 30
 
 # WeChat MP (公众号) Draft Push Configuration
 wechat_mp:

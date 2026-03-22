@@ -99,6 +99,7 @@ class CrawlSummary:
                 "hackernews": [],
                 "reddit": [],
                 "twitter": [],
+                "cn_news": [],
             }
 
     def add_result(self, result: CrawlResult) -> None:
@@ -153,6 +154,7 @@ class CrawlerRunner:
         "hackernews": 2.0,
         "reddit": 2.0,
         "twitter": 2.0,
+        "cn_news": 5.0,  # 中文官媒间隔较长
     }
 
     def __init__(
@@ -510,6 +512,11 @@ class CrawlerRunner:
                 "username": source_id,
                 "max_results": 20,
                 "timeout": 15.0,
+            },
+            "cn_news": {
+                "source_id": source_id,
+                "list_url": "",
+                "selectors": {},
             },
         }
         return kwargs_map.get(source_type, {})

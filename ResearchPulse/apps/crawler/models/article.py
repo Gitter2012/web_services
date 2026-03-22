@@ -119,6 +119,25 @@ class Article(Base, TimestampMixin):
         default="",
         index=True,
     )
+    # ---- 新闻专用字段 ----
+    # 这些字段用于新闻抓取源（cn_news、en_news RSS 等），支持按国家/分类筛选新闻文章
+    news_source_country: Mapped[str | None] = mapped_column(
+        String(5), nullable=True, index=True,
+        comment="News source country: CN, EN, null for non-news",
+    )
+    news_category: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, index=True,
+        comment="News category: tech, finance, general, etc.",
+    )
+    image_url: Mapped[str | None] = mapped_column(
+        String(2000), nullable=True,
+        comment="Article cover image URL",
+    )
+    source_crawler_type: Mapped[str | None] = mapped_column(
+        String(20), nullable=True,
+        comment="Crawler type: rss, cn_news, arxiv, etc.",
+    )
+
     # 标签列表，以 JSON 数组形式存储（如 ["cs.AI", "cs.LG"]）
     tags: Mapped[dict | None] = mapped_column(
         JSON,
@@ -317,6 +336,8 @@ class Article(Base, TimestampMixin):
         # 复合索引：优化 AI 处理和 Embedding 任务的未处理文章查询
         # 覆盖 WHERE ai_processed_at IS NULL AND is_archived = FALSE ORDER BY crawl_time DESC
         Index("ix_articles_ai_unprocessed", "ai_processed_at", "is_archived", "crawl_time"),
+        # 新闻国家+分类复合索引：支持新闻报告按国家/分类查询
+        Index("ix_articles_news_country_category", "news_source_country", "news_category"),
     )
 
     def __repr__(self) -> str:

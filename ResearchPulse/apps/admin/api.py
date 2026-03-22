@@ -54,6 +54,7 @@ from apps.crawler.models import (
     EmailConfig,
     AuditLog,
 )
+from apps.crawler.models.source import NewsSource
 from apps.daily_report.models.daily_report import DailyReport
 from common.feature_config import feature_config
 
@@ -3954,6 +3955,8 @@ class RssFeedCreate(BaseModel):
     site_url: Optional[str] = ""
     category: Optional[str] = "其他"
     description: Optional[str] = ""
+    country: Optional[str] = None
+    news_category: Optional[str] = None
 
 
 class RssFeedUpdate(BaseModel):
@@ -3963,6 +3966,8 @@ class RssFeedUpdate(BaseModel):
     category: Optional[str] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    country: Optional[str] = None
+    news_category: Optional[str] = None
 
 
 @router.get("/sources/rss")
@@ -4028,6 +4033,8 @@ async def list_rss_feeds(
                 "is_active": feed.is_active,
                 "last_fetched_at": feed.last_fetched_at.isoformat() if feed.last_fetched_at else None,
                 "error_count": feed.error_count,
+                "country": feed.country,
+                "news_category": feed.news_category,
             }
             for feed in feeds
         ]
@@ -4067,6 +4074,8 @@ async def create_rss_feed(
         category=feed_data.category or "其他",
         description=feed_data.description or "",
         is_active=True,
+        country=feed_data.country,
+        news_category=feed_data.news_category,
     )
     session.add(feed)
     await session.flush()
@@ -4129,6 +4138,10 @@ async def update_rss_feed(
         feed.description = update.description
     if update.is_active is not None:
         feed.is_active = update.is_active
+    if update.country is not None:
+        feed.country = update.country
+    if update.news_category is not None:
+        feed.news_category = update.news_category
 
     return {
         "status": "ok",
@@ -5396,3 +5409,237 @@ async def list_permissions(
         ],
         "grouped": grouped,
     }
+
+
+# ============================================================================
+# Data Source Management - News Sources
+# ============================================================================
+# 新闻源管理 —— 管理 cn_news 爬虫的 HTML 新闻源配置（CSS 选择器）
+
+class NewsSourceCreate(BaseModel):
+    name: str
+    site_url: str
+    list_url: str
+    selectors: dict          # CSS 选择器配置 JSON
+    country: str = "CN"
+    news_category: str = "general"
+    encoding: str = "utf-8"
+    is_active: bool = True
+
+
+class NewsSourceUpdate(BaseModel):
+    name: Optional[str] = None
+    list_url: Optional[str] = None
+    selectors: Optional[dict] = None
+    country: Optional[str] = None
+    news_category: Optional[str] = None
+    encoding: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+@router.get("/sources/news")
+async def list_news_sources(
+    country: Optional[str] = None,
+    news_category: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    search: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """List news sources with optional filtering.
+
+    列出新闻源配置，支持按国家、分类、状态和关键词筛选。
+
+    Args:
+        country: Filter by country ("CN" / "EN").
+        news_category: Filter by news category.
+        is_active: Filter by active status.
+        search: Search by name or list URL.
+        page: Page number.
+        page_size: Items per page.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Paginated news source list.
+    """
+    query = select(NewsSource)
+
+    if country:
+        query = query.where(NewsSource.country == country)
+    if news_category:
+        query = query.where(NewsSource.news_category == news_category)
+    if is_active is not None:
+        query = query.where(NewsSource.is_active == is_active)
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.where(
+            (NewsSource.name.ilike(search_pattern)) |
+            (NewsSource.list_url.ilike(search_pattern))
+        )
+
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await session.execute(count_query)).scalar() or 0
+
+    query = query.order_by(desc(NewsSource.is_active), NewsSource.country, NewsSource.name)
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    result = await session.execute(query)
+    sources = result.scalars().all()
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "sources": [
+            {
+                "id": src.id,
+                "name": src.name,
+                "site_url": src.site_url,
+                "list_url": src.list_url,
+                "selectors": src.selectors,
+                "country": src.country,
+                "news_category": src.news_category,
+                "encoding": src.encoding,
+                "is_active": src.is_active,
+                "last_fetched_at": src.last_fetched_at.isoformat() if src.last_fetched_at else None,
+                "error_count": src.error_count,
+            }
+            for src in sources
+        ],
+    }
+
+
+@router.post("/sources/news")
+async def create_news_source(
+    source_data: NewsSourceCreate,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Create a new news source.
+
+    创建新的 HTML 新闻源配置。
+
+    Args:
+        source_data: News source payload.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Created source ID and name.
+
+    Raises:
+        HTTPException: If the list URL already exists.
+    """
+    existing = await session.execute(
+        select(NewsSource).where(NewsSource.list_url == source_data.list_url)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="News source list URL already exists")
+
+    source = NewsSource(
+        name=source_data.name,
+        site_url=source_data.site_url,
+        list_url=source_data.list_url,
+        selectors=source_data.selectors,
+        country=source_data.country,
+        news_category=source_data.news_category,
+        encoding=source_data.encoding,
+        is_active=source_data.is_active,
+    )
+    session.add(source)
+    await session.flush()
+
+    return {
+        "status": "ok",
+        "id": source.id,
+        "name": source.name,
+    }
+
+
+@router.put("/sources/news/{source_id}")
+async def update_news_source(
+    source_id: int,
+    update_data: NewsSourceUpdate,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Update news source configuration.
+
+    更新新闻源配置。
+
+    Args:
+        source_id: News source ID.
+        update_data: Fields to update.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Updated source metadata.
+
+    Raises:
+        HTTPException: If the source does not exist.
+    """
+    result = await session.execute(
+        select(NewsSource).where(NewsSource.id == source_id)
+    )
+    source = result.scalar_one_or_none()
+
+    if not source:
+        raise HTTPException(status_code=404, detail="News source not found")
+
+    if update_data.name is not None:
+        source.name = update_data.name
+    if update_data.list_url is not None:
+        source.list_url = update_data.list_url
+    if update_data.selectors is not None:
+        source.selectors = update_data.selectors
+    if update_data.country is not None:
+        source.country = update_data.country
+    if update_data.news_category is not None:
+        source.news_category = update_data.news_category
+    if update_data.encoding is not None:
+        source.encoding = update_data.encoding
+    if update_data.is_active is not None:
+        source.is_active = update_data.is_active
+
+    return {
+        "status": "ok",
+        "id": source.id,
+        "name": source.name,
+    }
+
+
+@router.delete("/sources/news/{source_id}")
+async def delete_news_source(
+    source_id: int,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Delete a news source.
+
+    删除指定新闻源配置。
+
+    Args:
+        source_id: News source ID.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict[str, Any]: Deletion status.
+
+    Raises:
+        HTTPException: If the source does not exist.
+    """
+    result = await session.execute(
+        select(NewsSource).where(NewsSource.id == source_id)
+    )
+    source = result.scalar_one_or_none()
+
+    if not source:
+        raise HTTPException(status_code=404, detail="News source not found")
+
+    await session.delete(source)
+
+    return {"status": "ok", "deleted_id": source_id}

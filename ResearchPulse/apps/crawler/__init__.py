@@ -57,6 +57,7 @@ from apps.crawler.weibo import WeiboCrawler
 from apps.crawler.hackernews import HackerNewsCrawler
 from apps.crawler.reddit import RedditCrawler
 from apps.crawler.twitter import TwitterCrawler
+from apps.crawler.cn_news import CnNewsCrawler
 
 __all__.extend([
     "ArxivCrawler",
@@ -65,4 +66,5 @@ __all__.extend([
     "HackerNewsCrawler",
     "RedditCrawler",
     "TwitterCrawler",
+    "CnNewsCrawler",
 ])

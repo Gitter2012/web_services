@@ -8,6 +8,7 @@ from apps.crawler.models.config import AuditLog, BackupRecord, SystemConfig, Ema
 from apps.crawler.models.source import (
     ArxivCategory,
     HackerNewsSource,
+    NewsSource,
     RedditSource,
     RssFeed,
     TwitterSource,
@@ -20,6 +21,7 @@ __all__ = [
     "Article",
     "ArxivCategory",
     "HackerNewsSource",
+    "NewsSource",
     "RedditSource",
     "RssFeed",
     "TwitterSource",

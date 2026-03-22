@@ -88,6 +88,10 @@ class ReportGenerator:
             header = f"# 【RSS 订阅】{date_str} {category_name}精选内容"
             stats_item = "篇内容"
             source_label = "RSS 订阅"
+        elif source_type == "cn_news":
+            header = f"# 【中文新闻】{date_str} {category_name}新闻摘要"
+            stats_item = "条新闻"
+            source_label = "中文新闻"
         else:
             header = f"# 【{category_name}】{date_str} 精选内容"
             stats_item = "篇内容"
@@ -314,6 +318,7 @@ class ReportGenerator:
             "reddit": "Reddit",
             "weibo": "微博热搜",
             "rss": "RSS 订阅",
+            "cn_news": "中文新闻",
         }
 
         # 按 source_order 顺序遍历数据源

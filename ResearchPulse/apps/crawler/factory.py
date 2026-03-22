@@ -155,6 +155,26 @@ class CrawlerFactory:
         if hasattr(source, 'board_type'):
             config['source_id'] = source.board_type
 
+        # 支持 RssFeed 和其他带有 country/news_category 属性的源
+        if hasattr(source, 'country') and not (hasattr(source, 'list_url') and hasattr(source, 'selectors')):
+            config['country'] = source.country
+        if hasattr(source, 'news_category') and not (hasattr(source, 'list_url') and hasattr(source, 'selectors')):
+            config['news_category'] = source.news_category
+
+        # NewsSource 字段映射 → CnNewsCrawler 构造参数
+        if hasattr(source, 'list_url') and hasattr(source, 'selectors'):
+            config['source_id'] = str(source.id)
+            config['list_url'] = source.list_url
+            config['selectors'] = source.selectors
+            if hasattr(source, 'site_url'):
+                config['site_url'] = source.site_url
+            if hasattr(source, 'encoding'):
+                config['encoding'] = source.encoding
+            if hasattr(source, 'country'):
+                config['country'] = source.country
+            if hasattr(source, 'news_category'):
+                config['news_category'] = source.news_category
+
         return config
 
     @staticmethod
