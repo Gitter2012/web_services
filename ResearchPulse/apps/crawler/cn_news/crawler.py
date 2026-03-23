@@ -15,8 +15,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import random
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
@@ -56,6 +58,22 @@ def _generate_external_id(url: str) -> str:
     return hashlib.md5(normalized.encode("utf-8")).hexdigest()
 
 
+def _strip_html(text: str) -> str:
+    """Strip HTML tags from a string using BeautifulSoup.
+
+    部分 JSON 数据源（如新华网）的标题字段含有 HTML 标签，需要剥离。
+
+    Args:
+        text: 可能含 HTML 标签的字符串
+
+    Returns:
+        str: 纯文本
+    """
+    if not text or "<" not in text:
+        return text
+    return BeautifulSoup(text, "html.parser").get_text(strip=True)
+
+
 @CrawlerRegistry.register("cn_news", model=NewsSource, priority=15)
 class CnNewsCrawler(BaseCrawler):
     """Chinese news HTML crawler with CSS-selector-driven parsing.
@@ -82,6 +100,7 @@ class CnNewsCrawler(BaseCrawler):
         news_category: str = "general",
         timeout: float = 30.0,
         fetch_content: bool = False,
+        fetch_type: str = "html",
     ):
         """Initialize CnNewsCrawler.
 
@@ -95,6 +114,7 @@ class CnNewsCrawler(BaseCrawler):
             news_category: 新闻分类（general/tech/finance 等）
             timeout: HTTP 请求超时时间（秒）
             fetch_content: 是否逐篇获取全文内容
+            fetch_type: 获取方式，"html"（默认）、"json" 或 "jsonp"
         """
         super().__init__(source_id=source_id)
         self.list_url = list_url
@@ -105,6 +125,7 @@ class CnNewsCrawler(BaseCrawler):
         self.news_category = news_category
         self.timeout = timeout
         self.fetch_content = fetch_content
+        self.fetch_type = fetch_type.lower()
 
     def _get_headers(self) -> dict:
         """Build request headers with rotating UA.
@@ -141,12 +162,12 @@ class CnNewsCrawler(BaseCrawler):
         return urljoin(base, href)
 
     async def fetch(self) -> str:
-        """Fetch the news list page HTML.
+        """Fetch the news list page HTML or JSON/JSONP data.
 
-        获取新闻列表页的 HTML 内容。
+        根据 fetch_type 获取新闻列表页的 HTML 内容或 JSON/JSONP 数据。
 
         Returns:
-            str: 列表页 HTML 文本
+            str: 页面文本（HTML / JSON / JSONP）
         """
         self.logger.info(f"Fetching news list page: {self.list_url}")
 
@@ -171,15 +192,34 @@ class CnNewsCrawler(BaseCrawler):
             return response.text
 
     async def parse(self, raw_data: Any) -> List[Dict[str, Any]]:
+        """Parse raw data into article dictionaries.
+
+        根据 fetch_type 将原始数据解析为文章列表。
+        支持 HTML（CSS 选择器）、JSON、JSONP 三种方式。
+
+        Args:
+            raw_data: 文本内容（来自 fetch()）
+
+        Returns:
+            List[Dict]: 文章字典列表，键名与 Article 模型字段对应
+        """
+        if self.fetch_type == "jsonp":
+            return await self._parse_jsonp(raw_data)
+        elif self.fetch_type == "json":
+            return await self._parse_json(raw_data)
+        else:
+            return await self._parse_html(raw_data)
+
+    async def _parse_html(self, raw_data: str) -> List[Dict[str, Any]]:
         """Parse the HTML list page into article dictionaries.
 
         解析 HTML 列表页，提取文章列表。
 
         Args:
-            raw_data: HTML 文本（来自 fetch()）
+            raw_data: HTML 文本
 
         Returns:
-            List[Dict]: 文章字典列表，键名与 Article 模型字段对应
+            List[Dict]: 文章字典列表
         """
         html = raw_data
         soup = BeautifulSoup(html, "html.parser")
@@ -209,6 +249,203 @@ class CnNewsCrawler(BaseCrawler):
         if self.fetch_content and articles:
             articles = await self._fetch_article_contents(articles)
 
+        return articles
+
+    async def _parse_jsonp(self, raw_data: str) -> List[Dict[str, Any]]:
+        """Parse JSONP response into article dictionaries.
+
+        解析 JSONP 格式响应（如央视网 china_1.jsonp），提取文章列表。
+        JSONP 格式: callbackName({...}) 或 callbackName([...])
+
+        selectors 配置字段（JSON 路径）：
+          - data_path:   JSON 中文章列表的路径，如 "data.list"（默认 "data.list"）
+          - title:       标题字段名，如 "title"
+          - link:        链接字段名，如 "url"
+          - summary:     摘要字段名，如 "brief"
+          - time:        时间字段名，如 "focus_date"
+          - image:       图片字段名，如 "image"
+
+        Args:
+            raw_data: JSONP 文本
+
+        Returns:
+            List[Dict]: 文章字典列表
+        """
+        # 剥离 JSONP 外层回调包装: callbackName({...})
+        match = re.match(r"^\w+\(([\s\S]*)\)\s*;?\s*$", raw_data.strip())
+        if not match:
+            self.logger.warning("Failed to strip JSONP wrapper, trying to parse as raw JSON")
+            json_str = raw_data.strip()
+        else:
+            json_str = match.group(1)
+
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Failed to parse JSONP data as JSON: {e}")
+            return []
+
+        # 按 data_path 提取文章列表（支持点分路径如 "data.list"）
+        data_path = self.selectors.get("data_path", "data.list")
+        items = data
+        for key in data_path.split("."):
+            if isinstance(items, dict):
+                items = items.get(key, [])
+            else:
+                self.logger.warning(f"Unexpected data structure at key '{key}' in data_path '{data_path}'")
+                items = []
+                break
+
+        if not isinstance(items, list):
+            self.logger.warning(f"Expected list at data_path '{data_path}', got {type(items)}")
+            return []
+
+        self.logger.info(f"Found {len(items)} items in JSONP response")
+
+        articles = []
+        title_field = self.selectors.get("title", "title")
+        link_field = self.selectors.get("link", "url")
+        summary_field = self.selectors.get("summary", "brief")
+        time_field = self.selectors.get("time", "focus_date")
+        image_field = self.selectors.get("image", "image")
+
+        for item in items:
+            try:
+                # 剥离可能含有的 HTML 标签（如新华网 title 字段为 <a href>...</a>）
+                title = _strip_html(item.get(title_field, "").strip())
+                if not title:
+                    continue
+
+                link = item.get(link_field, "").strip()
+                # 若 link 字段为空，尝试从 title HTML 中提取 href
+                if not link and "<a" in item.get(title_field, ""):
+                    title_soup = BeautifulSoup(item.get(title_field, ""), "html.parser")
+                    a_tag = title_soup.find("a")
+                    if a_tag:
+                        link = a_tag.get("href", "")
+                link = self._resolve_url(link)
+                if not link:
+                    continue
+
+                external_id = _generate_external_id(link)
+
+                summary = _strip_html(item.get(summary_field, "").strip()) if summary_field else ""
+
+                publish_time = None
+                time_val = item.get(time_field, "") if time_field else ""
+                if time_val:
+                    publish_time = self._parse_time(str(time_val).strip())
+
+                image_url = item.get(image_field, "").strip() if image_field else ""
+                image_url = self._resolve_url(image_url) if image_url else ""
+
+                articles.append({
+                    "external_id": external_id,
+                    "title": title,
+                    "url": link,
+                    "summary": summary,
+                    "publish_time": publish_time,
+                    "image_url": image_url,
+                    "cover_image_url": image_url,
+                    "news_source_country": self.country,
+                    "news_category": self.news_category,
+                    "source_crawler_type": "cn_news",
+                })
+            except Exception as e:
+                self.logger.debug(f"Failed to parse JSONP item: {e}")
+                continue
+
+        self.logger.info(f"Parsed {len(articles)} articles from {self.list_url}")
+        return articles
+
+    async def _parse_json(self, raw_data: str) -> List[Dict[str, Any]]:
+        """Parse plain JSON response into article dictionaries.
+
+        解析纯 JSON 格式响应，提取文章列表。
+        selectors 配置与 _parse_jsonp 相同，使用同一字段映射。
+
+        Args:
+            raw_data: JSON 文本
+
+        Returns:
+            List[Dict]: 文章字典列表
+        """
+        try:
+            data = json.loads(raw_data.strip())
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Failed to parse JSON data: {e}")
+            return []
+
+        # 按 data_path 提取文章列表（支持点分路径如 "data.list"）
+        data_path = self.selectors.get("data_path", "data.list")
+        items = data
+        for key in data_path.split("."):
+            if isinstance(items, dict):
+                items = items.get(key, [])
+            else:
+                self.logger.warning(f"Unexpected data structure at key '{key}' in data_path '{data_path}'")
+                items = []
+                break
+
+        if not isinstance(items, list):
+            self.logger.warning(f"Expected list at data_path '{data_path}', got {type(items)}")
+            return []
+
+        self.logger.info(f"Found {len(items)} items in JSON response")
+
+        articles = []
+        title_field = self.selectors.get("title", "title")
+        link_field = self.selectors.get("link", "url")
+        summary_field = self.selectors.get("summary", "brief")
+        time_field = self.selectors.get("time", "focus_date")
+        image_field = self.selectors.get("image", "image")
+
+        for item in items:
+            try:
+                # 剥离可能含有的 HTML 标签（如新华网 title 字段为 <a href>...</a>）
+                title = _strip_html(item.get(title_field, "").strip())
+                if not title:
+                    continue
+
+                link = item.get(link_field, "").strip()
+                # 若 link 字段为空，尝试从 title HTML 中提取 href
+                if not link and "<a" in item.get(title_field, ""):
+                    title_soup = BeautifulSoup(item.get(title_field, ""), "html.parser")
+                    a_tag = title_soup.find("a")
+                    if a_tag:
+                        link = a_tag.get("href", "")
+                link = self._resolve_url(link)
+                if not link:
+                    continue
+
+                external_id = _generate_external_id(link)
+                summary = _strip_html(item.get(summary_field, "").strip()) if summary_field else ""
+
+                publish_time = None
+                time_val = item.get(time_field, "") if time_field else ""
+                if time_val:
+                    publish_time = self._parse_time(str(time_val).strip())
+
+                image_url = item.get(image_field, "").strip() if image_field else ""
+                image_url = self._resolve_url(image_url) if image_url else ""
+
+                articles.append({
+                    "external_id": external_id,
+                    "title": title,
+                    "url": link,
+                    "summary": summary,
+                    "publish_time": publish_time,
+                    "image_url": image_url,
+                    "cover_image_url": image_url,
+                    "news_source_country": self.country,
+                    "news_category": self.news_category,
+                    "source_crawler_type": "cn_news",
+                })
+            except Exception as e:
+                self.logger.debug(f"Failed to parse JSON item: {e}")
+                continue
+
+        self.logger.info(f"Parsed {len(articles)} articles from {self.list_url}")
         return articles
 
     def _parse_item(self, item: BeautifulSoup) -> Optional[Dict[str, Any]]:

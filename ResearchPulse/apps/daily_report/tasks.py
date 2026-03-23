@@ -46,12 +46,24 @@ async def daily_report_job() -> None:
 
     try:
         service = DailyReportService()
+
+        # 1. 生成常规报告（每个数据源/分类单独生成）
         reports = await service.generate_daily_reports(
             source_types=source_types,
             categories=categories,
         )
-
         logger.info(f"Daily report job completed, generated {len(reports)} reports")
+
+        # 2. 生成聚合报告（跨源汇总，【每日精选】）
+        try:
+            agg_reports = await service.generate_daily_reports(
+                source_types=source_types,
+                categories=categories,
+                aggregated=True,
+            )
+            logger.info(f"Aggregated report generated: {len(agg_reports)} reports")
+        except Exception as e:
+            logger.error(f"Aggregated report generation failed: {e}", exc_info=True)
 
     except Exception as e:
         logger.error(f"Daily report job failed: {e}", exc_info=True)

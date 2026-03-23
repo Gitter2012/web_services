@@ -154,18 +154,24 @@ CN_NEWS_SOURCES = [
     {
         "name": "新华网-时政",
         "site_url": "http://www.xinhuanet.com",
-        "list_url": "http://www.news.cn/politics/",
+        # 数据通过 dw.js 动态加载的 JSON 数据源文件获取，datasource ID 来自 politics 页面 HTML
+        # 对应栏目名称：时政关注（1000 条滚动更新）
+        "list_url": "http://www.news.cn/politics/ds_a6d618872de143bdafa2556915a7ae12.json",
         "country": "CN",
         "news_category": "general",
         "encoding": "utf-8",
         "selectors": {
-            "article_list": "div.parts ul li",
-            "title": "a",
-            "link": "a",
-            "summary": "p",
-            "time": "span.time",
-            "image": "img",
-            "content": "div#detail",
+            # fetch_type 存储在 selectors 内，由工厂读取后传给爬虫
+            "fetch_type": "json",
+            # JSON 响应结构: {"datasource": [...]}
+            "data_path": "datasource",
+            # 各字段对应 JSON 数据中的 key 名称
+            # title 字段包含 HTML 标签（<a href>...），解析时需剥离
+            "title": "title",
+            "link": "publishUrl",
+            "summary": "summary",
+            "time": "publishTime",
+            "image": "",
         },
     },
     {
@@ -176,11 +182,13 @@ CN_NEWS_SOURCES = [
         "news_category": "general",
         "encoding": "gbk",
         "selectors": {
-            "article_list": "div.ej_list_box ul li",
+            # 该页面为传统静态 HTML，文章列表位于 <table id="ta_1"> 内的 <td class="p6"> 下
+            # <li> 直接放在 <td> 内，无 <ul> 包裹
+            "article_list": "td.p6 li",
             "title": "a",
             "link": "a",
             "summary": "",
-            "time": "em",
+            "time": "",
             "image": "img",
             "content": "div.rm_txt_con",
         },
@@ -188,17 +196,22 @@ CN_NEWS_SOURCES = [
     {
         "name": "央视网-新闻",
         "site_url": "https://news.cctv.com",
-        "list_url": "https://news.cctv.com/china/",
+        # 央视网通过 JSONP 接口加载文章列表，直接请求数据接口
+        "list_url": "https://news.cctv.com/2019/07/gaiban/cmsdatainterface/page/china_1.jsonp",
         "country": "CN",
         "news_category": "general",
         "encoding": "utf-8",
         "selectors": {
-            "article_list": "div.text_list ul li",
-            "title": "a",
-            "link": "a",
-            "summary": "p",
-            "time": "span.time",
-            "image": "img",
+            # fetch_type 存储在 selectors 内，由工厂读取后传给爬虫
+            "fetch_type": "jsonp",
+            # JSONP 响应结构: china({"data":{"list":[...]}})
+            "data_path": "data.list",
+            # 各字段对应 JSONP 数据中的 key 名称
+            "title": "title",
+            "link": "url",
+            "summary": "brief",
+            "time": "focus_date",
+            "image": "image",
             "content": "div.cnt_bd",
         },
     },
@@ -249,30 +262,43 @@ async def seed_rss_feeds(feeds: list[dict], label: str) -> int:
 
 
 async def seed_news_sources(sources: list[dict]) -> int:
-    """Seed HTML news sources (idempotent via name check).
+    """Seed HTML news sources (upsert via name — updates selectors/list_url if changed).
 
     Args:
         sources: NewsSource data dicts
 
     Returns:
-        Number of new sources inserted
+        Number of new sources inserted (updates are not counted)
     """
     session_factory = get_session_factory()
     inserted = 0
 
     async with session_factory() as session:
         for source_data in sources:
-            # 检查是否已存在（按 name + list_url 判断）
+            # 按 name 匹配（list_url 可能已更新）
             result = await session.execute(
                 select(NewsSource).where(
                     NewsSource.name == source_data["name"],
-                    NewsSource.list_url == source_data["list_url"],
                 )
             )
             existing = result.scalar_one_or_none()
 
             if existing:
-                logger.info(f"  [SKIP] {source_data['name']} - already exists (id={existing.id})")
+                # 更新可能已变更的字段（selectors / list_url / encoding）
+                changed = False
+                if existing.list_url != source_data["list_url"]:
+                    existing.list_url = source_data["list_url"]
+                    changed = True
+                if existing.selectors != source_data["selectors"]:
+                    existing.selectors = source_data["selectors"]
+                    changed = True
+                if existing.encoding != source_data.get("encoding", "utf-8"):
+                    existing.encoding = source_data.get("encoding", "utf-8")
+                    changed = True
+                if changed:
+                    logger.info(f"  [UPDATE] {source_data['name']} (id={existing.id}) - selectors/list_url updated")
+                else:
+                    logger.info(f"  [SKIP] {source_data['name']} - already up-to-date (id={existing.id})")
                 continue
 
             source = NewsSource(

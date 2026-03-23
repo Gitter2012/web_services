@@ -13,6 +13,8 @@
 | `crawl.sh` | 手动爬取触发 |
 | `email.sh` | 手动邮件发送 |
 | `ai-pipeline.sh` | AI 流水线手动运行 |
+| `repair-arxiv.sh` | arXiv 数据修复 |
+| `test.sh` | 测试 |
 | `sync-categories.sh` | arXiv 分类同步 |
 
 ## 快速使用
@@ -79,6 +81,9 @@ JWT_SECRET_KEY=your_secret
 # 爬取微博热搜
 ./scripts/crawl.sh weibo
 
+# 爬取中文官媒新闻
+./scripts/crawl.sh cn_news
+
 # 模拟运行（不写入数据库）
 ./scripts/crawl.sh all --dry-run
 
@@ -86,7 +91,7 @@ JWT_SECRET_KEY=your_secret
 ./scripts/crawl.sh arxiv --verbose
 ```
 
-**支持的数据源**：`all`, `arxiv`, `rss`, `weibo`, `hackernews`, `reddit`, `twitter`
+**支持的数据源**：`all`, `arxiv`, `rss`, `weibo`, `hackernews`, `reddit`, `twitter`, `cn_news`
 
 **选项**：
 - `--dry-run`: 模拟运行，不写入数据库
@@ -193,6 +198,58 @@ JWT_SECRET_KEY=your_secret
 
 **说明**：无论命令行中阶段的输入顺序如何，脚本会自动按流水线依赖顺序（ai → embedding → event → topic）排列执行。功能未启用的阶段默认会被跳过，使用 `--force` 可强制运行。
 
+### 文章重处理（reprocess）
+
+对已有文章重新运行 AI 分析流程，适用于刷库或调试：
+
+```bash
+# Debug 模式（打印完整 AI 输入输出，默认处理 3 篇）
+./scripts/ai-pipeline.sh reprocess --debug
+
+# 重处理指定文章
+./scripts/ai-pipeline.sh reprocess --ids 12188 12189 --debug
+
+# 批量重处理 100 篇（并行 4 个 worker）
+./scripts/ai-pipeline.sh reprocess --limit 100 --concurrency 4
+
+# 仅处理未处理的文章
+./scripts/ai-pipeline.sh reprocess --unprocessed
+
+# 按来源类型筛选
+./scripts/ai-pipeline.sh reprocess --source-type arxiv --limit 50
+
+# 通过 control.sh 调用
+./scripts/control.sh reprocess --debug
+```
+
+**选项**：
+- `--debug, -d`: 打印完整 AI 输入输出（默认处理 3 篇）
+- `--limit <n>`: 处理数量上限
+- `--ids <id...>`: 指定文章 ID
+- `--unprocessed`: 仅处理未处理的文章
+- `--source-type <t>`: 按来源类型筛选
+- `--concurrency, -c`: 并行数（默认 1，debug 模式强制串行）
+
+### 清理 Thinking 标签（clean-thinking）
+
+清理 AI 生成内容中的 `<thinking>` 标签：
+
+```bash
+# 清理所有文章的 content 字段
+./scripts/ai-pipeline.sh clean-thinking
+
+# 清理指定字段和文章
+./scripts/ai-pipeline.sh clean-thinking --field content --field ai_summary --ids 17652
+
+# 仅统计不执行
+./scripts/ai-pipeline.sh clean-thinking --stats
+```
+
+**选项**：
+- `--field, -f <field>`: 指定清理字段（默认: content，可多次指定）
+- `--stats`: 仅统计不执行
+- `--ids <id...>`: 指定文章 ID
+
 ## 数据同步
 
 使用 `sync-categories.sh` 同步 arXiv 分类到数据库：
@@ -220,3 +277,99 @@ JWT_SECRET_KEY=your_secret
 - `--force, -f`: 强制同步，跳过确认
 - `--verbose, -v`: 显示详细输出
 - `--help, -h`: 显示帮助信息
+
+## arXiv 数据修复
+
+使用 `repair-arxiv.sh` 修复数据库中 arXiv 文章缺失的作者和摘要数据：
+
+```bash
+# 仅检查缺失数据（不执行修复）
+./scripts/repair-arxiv.sh --dry-run
+
+# 执行修复
+./scripts/repair-arxiv.sh
+
+# 大批次修复
+./scripts/repair-arxiv.sh --batch-size 50
+
+# 通过 control.sh 调用
+./scripts/control.sh repair arxiv --dry-run
+```
+
+**选项**：
+- `--dry-run`: 仅检查缺失数据，不执行修复
+- `--batch-size <n>`: 每批请求的 arXiv ID 数量（默认 20）
+- `--verbose, -v`: 显示详细输出
+- `--help, -h`: 显示帮助信息
+
+## 测试
+
+使用 `test.sh` 运行各种测试：
+
+```bash
+# 运行单元测试（默认）
+./scripts/test.sh
+
+# 运行所有测试
+./scripts/test.sh all
+
+# 生成覆盖率报告
+./scripts/test.sh coverage
+
+# 生成 HTML 覆盖率报告
+./scripts/test.sh coverage --html
+
+# 运行集成测试（需要数据库）
+./scripts/test.sh integration
+
+# 端到端测试（需要服务运行）
+./scripts/test.sh e2e
+
+# 按关键字过滤测试
+./scripts/test.sh -k auth
+
+# 通过 control.sh 调用
+./scripts/control.sh test unit
+./scripts/control.sh test coverage --html
+```
+
+**命令**：`unit`（单元测试）、`all`（所有测试）、`coverage`（覆盖率）、`integration`（集成测试）、`e2e`（端到端）、`service`（服务功能测试）、`fast`（快速测试）、`watch`（监听模式）
+
+**选项**：
+- `-v, --verbose`: 详细输出
+- `-k KEYWORD`: 按关键字过滤测试
+- `--html`: 生成 HTML 覆盖率报告
+- `--url URL`: E2E 测试基础 URL（默认 http://localhost:8000）
+- `--help, -h`: 显示帮助信息
+
+## 微信封面图上传
+
+使用 `upload_wechat_thumb.py` 上传图片到微信公众号永久素材，获取 `media_id`：
+
+```bash
+# 上传默认封面图（data/imgs/default_cat.png）
+python scripts/upload_wechat_thumb.py
+
+# 上传指定图片
+python scripts/upload_wechat_thumb.py path/to/image.png
+
+# 上传缩略图类型
+python scripts/upload_wechat_thumb.py path/to/thumb.png --type thumb
+```
+
+**前置条件**：`.env` 中已配置 `WECHAT_MP_APPID` 和 `WECHAT_MP_SECRET`
+
+**选项**：
+- `[图片路径]`: 图片文件路径（默认 data/imgs/default_cat.png）
+- `--type image|thumb`: 素材类型（默认 image，最大 10MB；thumb 最大 64KB）
+
+## 新闻数据源播种
+
+使用 `seed_news_sources.py` 初始化新闻数据源（英文 RSS + 中文 RSS + 中文官方媒体 HTML 源）：
+
+```bash
+# 播种所有预置新闻数据源（幂等操作）
+python scripts/seed_news_sources.py
+```
+
+**说明**：基于 unique key 做 `INSERT IGNORE` / upsert，可安全重复执行。

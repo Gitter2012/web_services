@@ -25,6 +25,7 @@ from bs4 import BeautifulSoup
 from apps.crawler.base import BaseCrawler
 from apps.crawler.registry import CrawlerRegistry
 from apps.crawler.models import RssFeed
+from apps.crawler.rss.json_parser import JsonFeedParser
 from common.http import get_text_async
 
 # 模块级日志器
@@ -140,6 +141,8 @@ class RssCrawler(BaseCrawler):
         timeout: float = 30.0,
         country: str | None = None,
         category: str | None = None,
+        feed_format: str = "rss",
+        json_config: str | None = None,
     ):
         """Initialize RSS crawler.
 
@@ -147,10 +150,12 @@ class RssCrawler(BaseCrawler):
 
         Args:
             feed_id: Feed identifier.
-            feed_url: RSS/Atom feed URL.
+            feed_url: RSS/Atom feed URL or JSON API endpoint.
             timeout: HTTP request timeout in seconds.
             country: News source country code (e.g. "CN", "EN").
             category: News category (e.g. "tech", "general").
+            feed_format: 'rss' for XML/Atom feeds, 'json' for JSON API.
+            json_config: JSON config string for JSON API parsing.
         """
         super().__init__(feed_id)
         self.feed_id = feed_id
@@ -158,6 +163,12 @@ class RssCrawler(BaseCrawler):
         self.timeout = timeout
         self.news_source_country = country
         self.news_category = category
+        self.feed_format = feed_format
+        self.json_config = json_config
+        self._json_parser: JsonFeedParser | None = None
+
+        if feed_format == "json" and json_config:
+            self._json_parser = JsonFeedParser(json_config)
 
     async def fetch(self) -> str:
         """Fetch RSS feed XML content.
@@ -183,17 +194,27 @@ class RssCrawler(BaseCrawler):
             raise
 
     async def parse(self, raw_data: str) -> List[Dict[str, Any]]:
-        """Parse RSS XML into article dictionaries.
+        """Parse feed content into article dictionaries.
 
-        使用 feedparser 解析 XML 并逐条处理条目。
-        对于仅提供摘要的 Feed 条目，尝试访问原文 URL 提取完整正文。
+        根据 feed_format 选择解析器：
+          - 'json': 使用 JsonFeedParser 解析 JSON API 响应
+          - 'rss' (默认): 使用 feedparser 解析 XML/Atom
 
         Args:
-            raw_data: RSS/Atom XML text from fetch().
+            raw_data: Raw text from fetch().
 
         Returns:
             List[Dict[str, Any]]: Article dictionaries.
         """
+        if self.feed_format == "json" and self._json_parser:
+            articles = self._json_parser.parse(raw_data)
+            # Inject country/news_category metadata
+            for article in articles:
+                article["news_source_country"] = self.news_source_country
+                article["news_category"] = self.news_category
+            return articles
+
+        # --- Original RSS/Atom parsing below ---
         feed = feedparser.parse(raw_data)
 
         articles = []

@@ -14,6 +14,7 @@
 #   ./scripts/crawl.sh hackernews          # 爬取 HackerNews
 #   ./scripts/crawl.sh reddit              # 爬取 Reddit
 #   ./scripts/crawl.sh twitter             # 爬取 Twitter
+#   ./scripts/crawl.sh cn_news            # 爬取中文官媒新闻
 # =============================================================================
 
 set -e
@@ -50,6 +51,7 @@ show_help() {
     echo -e "  ${CYAN}hackernews${NC}  爬取 HackerNews"
     echo -e "  ${CYAN}reddit${NC}      爬取 Reddit"
     echo -e "  ${CYAN}twitter${NC}     爬取 Twitter"
+    echo -e "  ${CYAN}cn_news${NC}    爬取中文官媒新闻"
     echo ""
     echo "选项:"
     echo "  --dry-run      仅模拟运行，不写入数据库"
@@ -136,7 +138,7 @@ if [ "$SOURCE" = "--help" ] || [ "$SOURCE" = "-h" ]; then
 fi
 
 # 验证数据源
-VALID_SOURCES=("all" "arxiv" "rss" "weibo" "hackernews" "reddit" "twitter")
+VALID_SOURCES=("all" "arxiv" "rss" "weibo" "hackernews" "reddit" "twitter" "cn_news")
 IS_VALID=false
 for s in "${VALID_SOURCES[@]}"; do
     if [ "$SOURCE" = "$s" ]; then

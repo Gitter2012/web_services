@@ -154,6 +154,16 @@ class RssFeed(Base, TimestampMixin):
         String(50), nullable=True,
         comment="News category: tech, general, finance, etc.",
     )
+    # Feed 格式: rss(默认) 或 json(JSON API)
+    feed_format: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="rss",
+        comment="Feed format: rss(XML/Atom), json(JSON API)",
+    )
+    # JSON Feed 解析配置（仅 feed_format=json 时使用）
+    json_config: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+        comment="JSON feed parser config (items_paths, fields mapping)",
+    )
     # 订阅源描述信息
     description: Mapped[str] = mapped_column(
         Text,

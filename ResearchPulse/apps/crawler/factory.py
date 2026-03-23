@@ -161,6 +161,12 @@ class CrawlerFactory:
         if hasattr(source, 'news_category') and not (hasattr(source, 'list_url') and hasattr(source, 'selectors')):
             config['news_category'] = source.news_category
 
+        # JSON Feed 支持：feed_format 和 json_config
+        if hasattr(source, 'feed_format') and source.feed_format == 'json':
+            config['feed_format'] = source.feed_format
+            if hasattr(source, 'json_config') and source.json_config:
+                config['json_config'] = source.json_config
+
         # NewsSource 字段映射 → CnNewsCrawler 构造参数
         if hasattr(source, 'list_url') and hasattr(source, 'selectors'):
             config['source_id'] = str(source.id)
@@ -174,6 +180,9 @@ class CrawlerFactory:
                 config['country'] = source.country
             if hasattr(source, 'news_category'):
                 config['news_category'] = source.news_category
+            # fetch_type 存储在 selectors JSON 内（避免 schema 变更），默认 "html"
+            if isinstance(source.selectors, dict) and 'fetch_type' in source.selectors:
+                config['fetch_type'] = source.selectors['fetch_type']
 
         return config
 

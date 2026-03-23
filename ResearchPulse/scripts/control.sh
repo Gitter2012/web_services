@@ -57,6 +57,7 @@ show_help() {
     echo "              hackernews     HackerNews"
     echo "              reddit         Reddit"
     echo "              twitter        Twitter"
+    echo "              cn_news       中文官媒新闻"
     echo "              --dry-run      模拟运行"
     echo "              --verbose, -v  详细输出"
     echo ""
@@ -83,6 +84,11 @@ show_help() {
     echo "              --unprocessed      仅处理未处理的文章"
     echo "              --source-type <t>  按来源类型筛选"
     echo ""
+    echo -e "  ${CYAN}repair${NC}    修复数据"
+    echo "              arxiv          修复 arXiv 文章缺失的作者和摘要"
+    echo "              --dry-run      仅检查缺失数据"
+    echo "              --batch-size N 每批请求的 arXiv ID 数量"
+    echo ""
     echo -e "  ${CYAN}sync${NC}      同步数据"
     echo "              categories     arXiv 分类"
     echo "              --force, -f    强制同步"
@@ -102,6 +108,8 @@ show_help() {
     echo "  ./scripts/control.sh reprocess --debug"
     echo "  ./scripts/control.sh reprocess --ids 12188 12189 --debug"
     echo "  ./scripts/control.sh reprocess --limit 100"
+    echo "  ./scripts/control.sh repair arxiv"
+    echo "  ./scripts/control.sh repair arxiv --dry-run"
     echo "  ./scripts/control.sh sync categories --force"
     echo ""
 }
@@ -129,6 +137,7 @@ case "$COMMAND" in
     email)         "$SCRIPT_DIR/email.sh" "$@" ;;
     ai)            "$SCRIPT_DIR/ai-pipeline.sh" "$@" ;;
     reprocess)     "$SCRIPT_DIR/ai-pipeline.sh" reprocess "$@" ;;
+    repair)        "$SCRIPT_DIR/repair-arxiv.sh" "$@" ;;
     sync)          "$SCRIPT_DIR/sync-categories.sh" "$@" ;;
     logs)          show_logs "$@" ;;
     help|--help|-h) show_help ;;

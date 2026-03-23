@@ -175,6 +175,9 @@ class BaseCrawler(ABC):
 
                     for key, value in article_data.items():
                         if hasattr(existing, key) and value is not None:
+                            # 将 aware datetime 转为 naive，避免 MySQL DATETIME 不兼容
+                            if isinstance(value, datetime) and value.tzinfo is not None:
+                                value = value.replace(tzinfo=None)
                             # 版本敏感字段：只有新数据更新时才更新
                             if key in version_sensitive_fields:
                                 if is_newer:
@@ -200,6 +203,11 @@ class BaseCrawler(ABC):
                     # 过滤掉非 Article 模型字段，避免子类爬虫传入额外字段导致 TypeError
                     valid_columns = {c.key for c in Article.__table__.columns}
                     filtered_data = {k: v for k, v in article_data.items() if k in valid_columns}
+                    # 将所有 aware datetime 转为 naive datetime，
+                    # 避免 MySQL DATETIME 列与带时区 datetime 不兼容
+                    for key, value in filtered_data.items():
+                        if isinstance(value, datetime) and value.tzinfo is not None:
+                            filtered_data[key] = value.replace(tzinfo=None)
                     article = Article(
                         source_type=self.source_type,
                         source_id=self.source_id,
