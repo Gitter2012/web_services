@@ -1,0 +1,71 @@
+# 📰 ResearchPulse {{ digest_category_name }} · {{ report_date }}
+> 今日从 **{{ total_crawled }}** 篇内容中精选 **{{ selected_count }}** 个重点 · 发现 **{{ hot_cluster_count }}** 个热点事件
+> 覆盖来源：{{ source_list }} · 涉及 {{ category_count }} 个领域
+
+---
+
+## 🔭 今日洞察
+{% if global_insight %}
+{{ global_insight }}
+{% else %}
+*今日精选已就绪，涵盖 AI、技术、研究等多个领域。*
+{% endif %}
+
+---
+{% for category, items in categories_data.items() %}
+
+## {{ category_emoji(category) }} {{ category }}（{{ items|length }}篇{% if category_cluster_counts.get(category, 0) > 0 %} · {{ category_cluster_counts[category] }}个热点{% endif %}）
+{% if category_summaries.get(category) %}
+
+> {{ category_summaries[category] }}
+{% endif %}
+{% for sa in items %}
+{% if sa.cluster_id and sa.cluster_article_count >= 2 %}
+
+### 🔥 {{ sa.rank }}. {{ (sa.article.translated_title or sa.article.title or "无标题") | truncate(80) }}
+> 本话题共有 **{{ sa.cluster_article_count }}** 篇报道（来自 {{ sa | cluster_sources }}）
+{% if sa.article.one_liner %}
+> **事件概述**：{{ sa.article.one_liner }}
+{% endif %}
+
+**📌 代表报道**（综合评分 {{ "%.1f"|format(sa.composite_score) }}）
+**来源** `{{ (sa.article.source_type or "unknown").upper() }}` · **时间** `{{ sa.article.publish_time | format_time }}` · 🔗 [原文]({{ sa.article.url or "#" }})
+{% set summary = sa.article.content_summary or sa.article.ai_summary or sa.article.summary or "" %}
+{% if summary %}
+> {{ summary | truncate(200) }}
+{% endif %}
+{% if sa.related_articles %}
+
+**🔗 相关报道**
+{% for rsa in sa.related_articles %}
+- `{{ (rsa.article.source_type or "unknown").upper() }}` [{{ (rsa.article.translated_title or rsa.article.title or "无标题") | truncate(60) }}]({{ rsa.article.url or "#" }}) — 评分 {{ "%.1f"|format(rsa.composite_score) }}
+{% endfor %}
+{% endif %}
+
+---
+{% else %}
+
+### {{ sa.rank }}. {{ (sa.article.translated_title or sa.article.title or "无标题") | truncate(80) }}
+**评分** `{{ "%.1f"|format(sa.composite_score) }}/10` · **来源** `{{ (sa.article.source_type or "unknown").upper() }}` · **时间** `{{ sa.article.publish_time | format_time }}` · 🔗 [原文]({{ sa.article.url or "#" }})
+{% set one_liner = sa.article.one_liner or sa.article.content_summary or sa.article.ai_summary or "" %}
+{% if one_liner %}
+> {{ one_liner | truncate(200) }}
+{% endif %}
+
+---
+{% endif %}
+{% endfor %}
+{% endfor %}
+
+## 📊 数据一览
+| 指标 | 数值 |
+|------|------|
+| 抓取总量 | {{ total_crawled }} 篇 |
+| 热点事件数（≥2篇） | {{ hot_cluster_count }} 个 |
+| 精选排名位 | {{ selected_count }} |
+| 附带关联报道 | {{ related_count }} 篇 |
+{% for src, cnt in source_breakdown.items() %}
+| {{ src }} | {{ cnt }} 篇 |
+{% endfor %}
+
+*🤖 ResearchPulse AI 生成 · {{ report_date }} {{ generated_at }}*

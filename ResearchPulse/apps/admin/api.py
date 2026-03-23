@@ -1422,18 +1422,20 @@ async def list_daily_report_history(
     page_size: int = 20,
     report_date: Optional[str] = None,
     source_type: Optional[str] = None,
+    category: Optional[str] = None,
     admin: Superuser = None,
     session: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
     """List daily report history with optional filters.
 
-    查询每日报告历史记录，支持按日期和数据源过滤。
+    查询每日报告历史记录，支持按日期、数据源和分类过滤。
 
     Args:
         page: Page number (default 1).
         page_size: Items per page (default 20).
         report_date: Filter by date (YYYY-MM-DD).
-        source_type: Filter by source type (arxiv, hackernews, etc.).
+        source_type: Filter by source type (arxiv, hackernews, digest, etc.).
+        category: Filter by category.
         admin: Superuser dependency.
         session: Async database session.
 
@@ -1453,6 +1455,9 @@ async def list_daily_report_history(
 
     if source_type:
         query = query.where(DailyReport.source_type == source_type)
+
+    if category:
+        query = query.where(DailyReport.category == category)
 
     # 总数
     count_query = select(func.count()).select_from(query.subquery())
@@ -3970,6 +3975,27 @@ class RssFeedUpdate(BaseModel):
     news_category: Optional[str] = None
 
 
+@router.get("/sources/rss/categories")
+async def list_rss_categories_admin(
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """返回全部 RSS 源的去重分类列表（不过滤 is_active，管理员视角）。"""
+    result = await session.execute(
+        select(RssFeed.category)
+        .where(RssFeed.category.isnot(None), RssFeed.category != "")
+        .distinct()
+        .order_by(RssFeed.category)
+    )
+    categories = [row[0] for row in result.fetchall()]
+    return {
+        "categories": [
+            {"id": idx, "code": cat, "name": cat, "description": ""}
+            for idx, cat in enumerate(categories)
+        ]
+    }
+
+
 @router.get("/sources/rss")
 async def list_rss_feeds(
     is_active: Optional[bool] = None,
@@ -5643,3 +5669,158 @@ async def delete_news_source(
     await session.delete(source)
 
     return {"status": "ok", "deleted_id": source_id}
+
+
+# =============================================================================
+# 每日精选管理端点
+# =============================================================================
+
+
+@router.get("/daily-digest/status")
+async def get_daily_digest_status(
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Get daily digest system status and configuration.
+
+    返回每日精选系统的当前状态，包括配置参数、调度信息和今日精选生成数量。
+
+    Returns:
+        Dict[str, Any]: Status info including config, scheduler info, and today's digests.
+    """
+    from apps.scheduler.tasks import get_scheduler
+    from datetime import date
+
+    # 从配置中读取参数
+    enabled = feature_config.get_bool("daily_digest.enabled", False)
+    ai_synthesis = feature_config.get_bool("daily_digest.ai_synthesis", True)
+    categories_str = feature_config.get("daily_digest.categories", "all,AI,金融,技术")
+    top_n = feature_config.get_int("daily_digest.top_n", 25)
+    morning_hour = feature_config.get_int("daily_digest.morning_hour", 8)
+    morning_minute = feature_config.get_int("daily_digest.morning_minute", 5)
+    evening_hour = feature_config.get_int("daily_digest.evening_hour", 20)
+    evening_minute = feature_config.get_int("daily_digest.evening_minute", 10)
+    candidate_window_hours = feature_config.get_int("daily_digest.candidate_window_hours", 28)
+    min_importance_score = feature_config.get_int("daily_digest.min_importance_score", 4)
+
+    # 获取 scheduler 中任务的下次执行时间
+    scheduler = get_scheduler()
+
+    def _get_job_info(job_id: str) -> Dict[str, Any]:
+        job = scheduler.get_job(job_id)
+        if not job:
+            return {"status": "not_found", "next_run_time": None}
+        return {
+            "status": "scheduled",
+            "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+        }
+
+    morning_job_info = _get_job_info("daily_digest_morning_job")
+    evening_job_info = _get_job_info("daily_digest_evening_job")
+
+    # 查询今日（date.today()）所有 source_type="digest" 的 DailyReport 记录
+    today = date.today()
+    today_result = await session.execute(
+        select(
+            DailyReport.category,
+            DailyReport.category_name,
+            func.sum(DailyReport.article_count).label("article_count"),
+        ).where(
+            DailyReport.report_date == today,
+            DailyReport.source_type == "digest",
+        ).group_by(DailyReport.category, DailyReport.category_name)
+    )
+    today_rows = today_result.all()
+
+    return {
+        "config": {
+            "enabled": enabled,
+            "ai_synthesis": ai_synthesis,
+            "categories": [c.strip() for c in categories_str.split(",") if c.strip()],
+            "top_n": top_n,
+            "morning_hour": morning_hour,
+            "morning_minute": morning_minute,
+            "evening_hour": evening_hour,
+            "evening_minute": evening_minute,
+            "candidate_window_hours": candidate_window_hours,
+            "min_importance_score": min_importance_score,
+        },
+        "scheduler": {
+            "morning_job": morning_job_info,
+            "evening_job": evening_job_info,
+        },
+        "today_digests": [
+            {
+                "category": row.category,
+                "category_name": row.category_name,
+                "article_count": int(row.article_count or 0),
+            }
+            for row in today_rows
+        ],
+    }
+
+
+@router.post("/daily-digest/trigger")
+async def trigger_daily_digest(
+    report_date: Optional[str] = None,
+    category: Optional[str] = None,
+    force: bool = False,
+    admin: Superuser = None,
+) -> Dict[str, Any]:
+    """Manually trigger daily digest generation.
+
+    手动触发每日精选生成任务。支持指定日期、分类和是否强制重新生成。
+
+    Args:
+        report_date: Target date (YYYY-MM-DD), defaults to today.
+        category: Specific category to generate, defaults to all configured categories.
+        force: Whether to force regeneration if digest already exists.
+        admin: Superuser dependency.
+
+    Returns:
+        Dict[str, Any]: Trigger status message.
+    """
+    import asyncio
+    from datetime import date
+
+    target_date: Optional[date] = None
+    if report_date:
+        try:
+            target_date = date.fromisoformat(report_date)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid date format: {report_date}. Use YYYY-MM-DD.",
+            )
+
+    logger.info(
+        "Admin manually triggered daily digest generation (user=%d, date=%s, category=%s, force=%s)",
+        admin.id,
+        target_date or "today",
+        category or "all configured",
+        force,
+    )
+
+    async def _run() -> None:
+        from apps.daily_digest.service import DailyDigestService
+        service = DailyDigestService()
+        if category:
+            await service.generate_digest(
+                report_date=target_date,
+                category=category,
+                force=force,
+            )
+        else:
+            await service.generate_multi_digests(
+                report_date=target_date,
+                force=force,
+            )
+
+    asyncio.create_task(_run())
+
+    date_str = target_date.isoformat() if target_date else "今天"
+    cat_str = category if category else "所有配置分类"
+    return {
+        "status": "triggered",
+        "message": f"每日精选生成任务已触发（日期：{date_str}，分类：{cat_str}），请稍后查看历史记录确认结果",
+    }

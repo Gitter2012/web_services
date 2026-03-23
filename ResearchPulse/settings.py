@@ -78,6 +78,9 @@ _report_config = _yaml_config.get("report", {})           # 报告生成配置
 _weibo_config = _crawler_config.get("weibo", {})         # 微博热搜爬虫配置
 _cn_news_config = _crawler_config.get("cn_news", {})     # 中文新闻爬虫配置
 _wechat_mp_config = _yaml_config.get("wechat_mp", {})    # 微信公众号配置
+_sync_config = _yaml_config.get("sync", {})            # 跨服务器数据同步配置
+_sync_sender_config = _sync_config.get("sender", {})    # 同步发送端配置
+_sync_receiver_config = _sync_config.get("receiver", {})  # 同步接收端配置
 
 
 def _get_default_data_dir() -> Path:
@@ -783,6 +786,75 @@ class Settings(BaseSettings):
         validation_alias="WECHAT_MP_RETRY_DELAY",
     )
     # 失败时邮件通知（邮件地址复用 superuser_email）
+
+    # ======================== 跨服务器数据同步配置 ========================
+    # 同步功能总开关
+    sync_enabled: bool = Field(
+        default=_sync_config.get("enabled", False),
+        validation_alias="SYNC_ENABLED",
+    )
+    # ---- 发送端配置（Pipeline 机器 A） ----
+    # 展示端 API 基础地址
+    sync_sender_api_url: str = Field(
+        default=_sync_sender_config.get("api_url", ""),
+        validation_alias="SYNC_SENDER_API_URL",
+    )
+    # 同步 API 密钥
+    sync_sender_api_key: str = Field(
+        default=_sync_sender_config.get("api_key", ""),
+        validation_alias="SYNC_SENDER_API_KEY",
+    )
+    # 请求超时时间（秒）
+    sync_sender_timeout: int = Field(
+        default=_sync_sender_config.get("timeout", 60),
+        validation_alias="SYNC_SENDER_TIMEOUT",
+    )
+    # 每批同步的文章数量
+    sync_sender_batch_size: int = Field(
+        default=_sync_sender_config.get("batch_size", 100),
+        validation_alias="SYNC_SENDER_BATCH_SIZE",
+    )
+    # 最大重试次数
+    sync_sender_retry_times: int = Field(
+        default=_sync_sender_config.get("retry_times", 3),
+        validation_alias="SYNC_SENDER_RETRY_TIMES",
+    )
+    # 重试基础延迟（秒），指数退避
+    sync_sender_retry_delay: int = Field(
+        default=_sync_sender_config.get("retry_delay", 5),
+        validation_alias="SYNC_SENDER_RETRY_DELAY",
+    )
+    # 是否同步文章
+    sync_sender_sync_articles: bool = Field(
+        default=_sync_sender_config.get("sync_articles", True),
+        validation_alias="SYNC_SENDER_SYNC_ARTICLES",
+    )
+    # 是否同步每日报告
+    sync_sender_sync_daily_reports: bool = Field(
+        default=_sync_sender_config.get("sync_daily_reports", True),
+        validation_alias="SYNC_SENDER_SYNC_DAILY_REPORTS",
+    )
+    # 是否同步周报/月报
+    sync_sender_sync_reports: bool = Field(
+        default=_sync_sender_config.get("sync_reports", True),
+        validation_alias="SYNC_SENDER_SYNC_REPORTS",
+    )
+    # 是否在 pipeline 完成后自动同步
+    sync_sender_auto_sync_after_pipeline: bool = Field(
+        default=_sync_sender_config.get("auto_sync_after_pipeline", True),
+        validation_alias="SYNC_SENDER_AUTO_SYNC_AFTER_PIPELINE",
+    )
+    # ---- 接收端配置（Display 机器 B） ----
+    # 接收端期望的 API 密钥
+    sync_receiver_api_key: str = Field(
+        default=_sync_receiver_config.get("api_key", ""),
+        validation_alias="SYNC_RECEIVER_API_KEY",
+    )
+    # 周报/月报用户找不到时的兜底用户名
+    sync_receiver_default_username: str = Field(
+        default=_sync_receiver_config.get("default_username", ""),
+        validation_alias="SYNC_RECEIVER_DEFAULT_USERNAME",
+    )
 
     # pydantic-settings 的模型配置
     # env_file: 指定 .env 文件路径

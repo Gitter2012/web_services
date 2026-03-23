@@ -159,13 +159,21 @@ class CrawlerFactory:
         if hasattr(source, 'country') and not (hasattr(source, 'list_url') and hasattr(source, 'selectors')):
             config['country'] = source.country
         if hasattr(source, 'news_category') and not (hasattr(source, 'list_url') and hasattr(source, 'selectors')):
-            config['news_category'] = source.news_category
+            config['category'] = source.news_category
 
         # JSON Feed 支持：feed_format 和 json_config
         if hasattr(source, 'feed_format') and source.feed_format == 'json':
             config['feed_format'] = source.feed_format
             if hasattr(source, 'json_config') and source.json_config:
                 config['json_config'] = source.json_config
+
+        # RSS Feed 相对路径补全：传入 site_url 供 RssCrawler 使用
+        if (
+            hasattr(source, 'site_url')
+            and hasattr(source, 'feed_url')
+            and not (hasattr(source, 'list_url') and hasattr(source, 'selectors'))
+        ):
+            config['site_url'] = source.site_url
 
         # NewsSource 字段映射 → CnNewsCrawler 构造参数
         if hasattr(source, 'list_url') and hasattr(source, 'selectors'):

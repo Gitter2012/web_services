@@ -617,6 +617,20 @@ class DailyReportService:
                         report_date, failed_results
                     )
 
+            # ---- 同步数据到展示服务器 ----
+            if reports and settings.sync_enabled and settings.sync_sender_auto_sync_after_pipeline:
+                try:
+                    if progress_callback:
+                        await progress_callback(100, "正在同步到展示服务器...")
+                    from apps.sync.sender_service import SyncSenderService
+                    sync_service = SyncSenderService()
+                    await sync_service.sync_all(report_date, reports)
+                    if progress_callback:
+                        await progress_callback(100, "同步完成")
+                except Exception as sync_err:
+                    logger.error("Sync to display machine failed: %s", sync_err)
+                    # 同步失败不中断 pipeline，仅记录日志
+
         return reports
 
     # ========================================================================

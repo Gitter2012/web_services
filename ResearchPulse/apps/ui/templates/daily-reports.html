@@ -106,6 +106,207 @@
         .article-meta-row { flex-direction: column; align-items: flex-start; gap: 8px; }
         .stats-grid { grid-template-columns: 1fr; }
     }
+
+    /* ===== 每日精选专属样式 ===== */
+
+    /* 顶部统计横幅 */
+    .digest-stats-banner {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        border-radius: 12px;
+        padding: 20px 24px;
+        margin-bottom: 20px;
+        color: white;
+    }
+    .dsb-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+    .dsb-date { font-size: 14px; color: rgba(255,255,255,0.7); }
+    .dsb-stats { display: flex; gap: 24px; }
+    .dsb-stat { display: flex; flex-direction: column; align-items: center; }
+    .dsb-num { font-size: 28px; font-weight: 700; color: #4ecdc4; line-height: 1; }
+    .dsb-label { font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 4px; }
+
+    /* 今日洞察卡片 */
+    .digest-insight {
+        background: linear-gradient(135deg, #f0f4ff 0%, #faf5ff 100%);
+        border-left: 4px solid #667eea;
+        border-radius: 0 12px 12px 0;
+        padding: 16px 20px;
+        margin-bottom: 20px;
+    }
+    .digest-insight-title {
+        font-size: 15px; font-weight: 700; color: #667eea; margin-bottom: 10px;
+    }
+    .digest-insight-body {
+        font-size: 14px; color: #444; line-height: 1.8;
+    }
+
+    /* 分类区块 */
+    .digest-category-block {
+        border: 1px solid #e8e8e8;
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 24px;
+    }
+    .digest-category-header {
+        display: flex; align-items: center; gap: 10px;
+        padding: 14px 20px;
+        background: linear-gradient(135deg, #f0fdf9 0%, #ecfdf5 100%);
+        border-bottom: 1px solid #d1fae5;
+    }
+    .digest-cat-emoji { font-size: 20px; }
+    .digest-cat-name { font-size: 16px; font-weight: 700; color: #065f46; flex: 1; }
+    .digest-cat-count {
+        background: #d1fae5; color: #065f46;
+        padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600;
+    }
+    .digest-cat-hot {
+        background: #fee2e2; color: #991b1b;
+        padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600;
+    }
+    .digest-category-summary {
+        font-size: 13px; color: #555; padding: 10px 20px;
+        background: #fafafa; border-bottom: 1px solid #f0f0f0;
+        font-style: italic;
+    }
+    .digest-articles-list { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+
+    /* 热点文章卡片 */
+    .digest-article-hot {
+        background: #fff8f8;
+        border: 1px solid #fecaca;
+        border-left: 4px solid #ef4444;
+        border-radius: 10px;
+        padding: 14px 16px;
+    }
+    .dah-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+    .digest-hot-badge {
+        background: linear-gradient(135deg, #ef4444, #f97316);
+        color: white; font-size: 11px; font-weight: 700;
+        padding: 3px 8px; border-radius: 10px;
+        flex-shrink: 0; margin-top: 2px; white-space: nowrap;
+    }
+    .dah-title { font-size: 15px; font-weight: 600; color: #1a1a2e; margin: 0; line-height: 1.5; flex: 1; }
+    .dah-cluster-info {
+        font-size: 12px; color: #666; background: #fff1f1;
+        padding: 6px 10px; border-radius: 6px; margin-bottom: 8px;
+    }
+    .dah-overview {
+        font-size: 13px; color: #7c3aed; background: #f5f3ff;
+        padding: 8px 12px; border-radius: 6px; margin-bottom: 10px;
+        border-left: 3px solid #7c3aed;
+    }
+    .dah-rep-section {
+        background: white; border: 1px solid #fecaca;
+        border-radius: 8px; padding: 12px; margin-bottom: 10px;
+    }
+    .dah-rep-label {
+        font-size: 12px; font-weight: 600; color: #374151;
+        margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+    }
+    .dah-rep-meta {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+        margin-bottom: 8px;
+    }
+    .dah-time { font-size: 12px; color: #888; }
+    .dah-link {
+        font-size: 12px; color: #2563eb; text-decoration: none;
+        padding: 2px 8px; background: #eff6ff; border-radius: 4px;
+    }
+    .dah-link:hover { background: #dbeafe; }
+    .dah-related { margin-top: 8px; }
+    .dah-related-label {
+        font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 6px;
+    }
+    .dah-related-list { display: flex; flex-direction: column; gap: 4px; }
+    .dah-related-item {
+        display: flex; align-items: center; gap: 8px;
+        padding: 5px 8px; background: #fef2f2; border-radius: 6px;
+        text-decoration: none; color: inherit; font-size: 12px;
+        transition: background 0.15s;
+    }
+    .dah-related-item:hover { background: #fee2e2; }
+    .dah-related-title { flex: 1; color: #1a1a2e; }
+    .dah-related-score {
+        font-size: 11px; font-weight: 600; color: #6b7280;
+        background: #f3f4f6; padding: 1px 5px; border-radius: 4px;
+    }
+
+    /* 普通文章卡片 */
+    .digest-article-normal {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-left: 4px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 14px 16px;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .digest-article-normal:hover {
+        border-left-color: #4ecdc4;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .dan-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+    .dan-rank {
+        font-size: 12px; font-weight: 600; color: #888;
+        background: #f3f4f6; padding: 2px 7px; border-radius: 8px;
+        flex-shrink: 0; margin-top: 2px;
+    }
+    .dan-title { font-size: 14px; font-weight: 600; color: #1a1a2e; margin: 0; flex: 1; line-height: 1.5; }
+    .dan-title a { color: inherit; text-decoration: none; }
+    .dan-title a:hover { color: #2563eb; text-decoration: underline; }
+    .dan-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .dan-time { font-size: 12px; color: #888; }
+
+    /* 通用评分徽章 */
+    .digest-score-badge {
+        font-size: 11px; font-weight: 700;
+        padding: 2px 7px; border-radius: 8px; white-space: nowrap;
+    }
+    .score-high { background: #d1fae5; color: #059669; }
+    .score-mid  { background: #fef3c7; color: #d97706; }
+    .score-low  { background: #f3f4f6; color: #6b7280; }
+
+    /* 来源标签 */
+    .digest-source-tag {
+        font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
+    }
+    .src-arxiv    { background: #e0e7ff; color: #4f46e5; }
+    .src-hackernews, .src-hn { background: #fff7ed; color: #f97316; }
+    .src-reddit   { background: #fee2e2; color: #ef4444; }
+    .src-rss      { background: #d1fae5; color: #059669; }
+    .src-cn_news  { background: #e0f2fe; color: #0ea5e9; }
+    .src-default  { background: #f3f4f6; color: #6b7280; }
+
+    /* 摘要文本 */
+    .digest-summary {
+        font-size: 13px; color: #555; line-height: 1.7;
+        background: #fafafa; border-radius: 6px; padding: 8px 10px;
+        border-left: 2px solid #e5e7eb; margin-top: 6px;
+    }
+
+    /* 数据一览区块 */
+    .digest-stats-section {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 12px; padding: 20px; margin-top: 20px;
+    }
+    .digest-stats-title {
+        font-size: 15px; font-weight: 600; color: #1a1a2e; margin-bottom: 16px;
+    }
+    .digest-stats-grid {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;
+    }
+    .dst-item {
+        background: white; padding: 10px 14px; border-radius: 8px;
+        display: flex; justify-content: space-between; align-items: center;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .dst-label { font-size: 12px; color: #666; }
+    .dst-value { font-size: 13px; font-weight: 600; color: #1a1a2e; }
+
+    /* 底部水印 */
+    .digest-footer {
+        text-align: center; padding: 12px 0; margin-top: 16px;
+        border-top: 1px dashed #e0e0e0;
+        font-size: 12px; color: #aaa; font-style: italic;
+    }
 </style>
 {% endblock %}
 
@@ -120,6 +321,7 @@
             <select id="filter-source" onchange="loadReports()">
                 <option value="">全部来源</option>
                 <option value="aggregated">聚合报告</option>
+                <option value="digest">每日精选</option>
                 <option value="arxiv">arXiv</option>
                 <option value="hackernews">Hacker News</option>
                 <option value="reddit">Reddit</option>
@@ -174,6 +376,7 @@
                     <select id="generate-report-type" onchange="updateReportTypeOptions()">
                         <option value="normal">普通报告（每个数据源/分类单独生成）</option>
                         <option value="aggregated">聚合报告（所有数据源合并为一份）</option>
+                        <option value="digest">每日精选（AI 筛选当日最重要内容）</option>
                     </select>
                     <div class="hint">聚合报告将所有选中数据源的内容合并为一份报告，仅包含标题和链接</div>
                 </div>
@@ -201,6 +404,20 @@
                     <select id="generate-rss-feeds" multiple style="height: 120px;">
                     </select>
                     <div class="hint">不选则生成全部 RSS 源的汇总报告</div>
+                </div>
+                <!-- 每日精选选项（仅选中 digest 时显示） -->
+                <div class="form-group" id="digest-options" style="display:none;">
+                    <label>精选分类（可选，留空=按配置生成所有分类）</label>
+                    <input type="text" id="digest-category" placeholder="all / AI / 金融 / 技术">
+                    <div class="hint">留空将按系统配置的 daily_digest.categories 生成所有分类</div>
+                    <div class="form-group" style="margin-top:8px;">
+                        <label>
+                            <input type="checkbox" id="digest-force"> 强制重新生成（覆盖已有日报）
+                        </label>
+                    </div>
+                    <div class="form-group" style="margin-top:4px;">
+                        <label>日期默认为今天（每日精选按今天生成）</label>
+                    </div>
                 </div>
             </div>
         </div>
@@ -311,10 +528,11 @@
     // 报告类型切换
     function updateReportTypeOptions() {
         const reportType = document.getElementById('generate-report-type').value;
-        const isAggregated = reportType === 'aggregated';
+        const isDigest = reportType === 'digest';
 
-        // 聚合报告隐藏 arxiv 分类选项（因为不分分类）
-        updateSourceOptions();
+        document.getElementById('source-options-group').style.display = isDigest ? 'none' : 'block';
+        document.getElementById('digest-options').style.display = isDigest ? 'block' : 'none';
+        if (!isDigest) updateSourceOptions();  // 原有逻辑
     }
 
     // 数据源选择联动
@@ -376,7 +594,8 @@
             'reddit': 'Reddit',
             'weibo': '微博热搜',
             'rss': 'RSS',
-            'aggregated': '聚合报告'
+            'aggregated': '聚合报告',
+            'digest': '每日精选'
         };
         return labels[sourceType] || sourceType;
     }
@@ -388,7 +607,8 @@
             'reddit': '条讨论',
             'weibo': '条热搜',
             'rss': '篇内容',
-            'aggregated': '条内容'
+            'aggregated': '条内容',
+            'digest': '篇精选'
         };
         return labels[sourceType] || '篇';
     }
@@ -569,6 +789,40 @@
         const reportType = document.getElementById('generate-report-type').value;
         const isAggregated = reportType === 'aggregated';
 
+        // digest 分支：调用专用 API
+        if (reportType === 'digest') {
+            const category = document.getElementById('digest-category').value.trim() || null;
+            const force = document.getElementById('digest-force').checked;
+
+            const params = new URLSearchParams();
+            if (date) params.append('report_date', date);
+            if (category) params.append('category', category);
+            if (force) params.append('force', 'true');
+
+            document.getElementById('generate-btn').disabled = true;
+            document.getElementById('generate-btn').textContent = '启动中...';
+
+            try {
+                const res = await fetch(`${API_BASE}/digest/generate?${params}`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showToast(data.message || '每日精选生成任务已启动', 'success');
+                    closeGenerateModal();
+                    document.getElementById('filter-source').value = 'digest';
+                    loadReports();
+                } else {
+                    showToast(data.detail || '生成失败', 'error');
+                }
+            } catch(e) {
+                showToast('网络错误', 'error');
+            }
+            resetGenerateButton();
+            return;
+        }
+
         const body = {};
         if (date) body.report_date = date;
         if (sources.length > 0) body.source_types = sources;
@@ -694,6 +948,10 @@
 
     function renderMarkdown(md) {
         if (!md) return '<p style="color:#999;">暂无内容</p>';
+        // 检测 digest 格式：匹配 ResearchPulse 精选标题，或分类区块标题（带篇数）
+        const isDigest = /^#\s+.*ResearchPulse.*精选/m.test(md) ||
+                         /^##\s+\S+\s+.+（\d+篇/m.test(md);
+        if (isDigest) return parseDigestToHtml(md);
         return parseReportToHtml(md);
     }
 
@@ -901,6 +1159,483 @@
             return `<div class="stat-item">${label}</div>`;
         }).join('');
         return `<div class="report-stats-section"><h3 class="stats-title">📊 统计信息</h3><div class="stats-grid">${statsHtml}</div></div>`;
+    }
+
+    // ===== 每日精选解析器 =====
+
+    function getScoreClass(score) {
+        const n = parseFloat(score);
+        if (isNaN(n)) return 'score-low';
+        if (n >= 8) return 'score-high';
+        if (n >= 6) return 'score-mid';
+        return 'score-low';
+    }
+
+    function getSourceClass(src) {
+        const s = (src || '').toLowerCase();
+        if (s === 'arxiv') return 'src-arxiv';
+        if (s === 'hackernews' || s === 'hn') return 'src-hackernews';
+        if (s === 'reddit') return 'src-reddit';
+        if (s === 'rss') return 'src-rss';
+        if (s === 'cn_news') return 'src-cn_news';
+        return 'src-default';
+    }
+
+    function renderSourceTag(src) {
+        const label = src.length > 8 ? src.substring(0, 8) : src;
+        return `<span class="digest-source-tag ${getSourceClass(src)}">${escapeHtml(label)}</span>`;
+    }
+
+    // 解析内联 Markdown：**bold**, `code`, [text](url)
+    function parseInline(text) {
+        let s = escapeHtml(text);
+        s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        s = s.replace(/`([^`]+)`/g, '<code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;font-size:0.9em;">$1</code>');
+        s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:#2563eb;">$1</a>');
+        return s;
+    }
+
+    function parseDigestToHtml(md) {
+        const lines = md.split('\n');
+        const result = [];
+
+        // 状态
+        const STATE_NONE = 'none';
+        const STATE_INSIGHT = 'insight';
+        const STATE_CATEGORY = 'category';
+        const STATE_ARTICLE_HOT = 'hot';
+        const STATE_ARTICLE_NORMAL = 'normal';
+        const STATE_STATS = 'stats';
+
+        let state = STATE_NONE;
+
+        // 当前各状态的缓冲
+        let insightLines = [];
+        let categoryTitle = '';
+        let categoryEmoji = '';
+        let categoryName = '';
+        let categoryCount = '';
+        let categoryHotCount = '';
+        let categorySummary = '';
+        let categoryHasHeader = false;
+
+        // 热点文章字段
+        let hotRank = '';
+        let hotTitle = '';
+        let hotCluster = '';
+        let hotOverview = '';
+        let hotRepScore = '';
+        let hotRepSource = '';
+        let hotRepTime = '';
+        let hotRepUrl = '';
+        let hotRepSummaryLines = [];
+        let hotRelated = [];
+        let hotSection = 'none'; // 'rep' | 'related' | 'none'
+
+        // 普通文章字段
+        let normRank = '';
+        let normTitle = '';
+        let normScore = '';
+        let normSource = '';
+        let normTime = '';
+        let normUrl = '';
+        let normSummaryLines = [];
+
+        // 统计表行
+        let statsTableRows = [];
+
+        function flushInsight() {
+            if (insightLines.length > 0) {
+                result.push(renderDigestInsight(insightLines));
+                insightLines = [];
+            }
+        }
+
+        function flushHotArticle() {
+            if (!hotTitle) return;
+            result.push(renderDigestHotArticle({
+                rank: hotRank, title: hotTitle,
+                cluster: hotCluster, overview: hotOverview,
+                repScore: hotRepScore, repSource: hotRepSource,
+                repTime: hotRepTime, repUrl: hotRepUrl,
+                repSummary: hotRepSummaryLines.join(' '),
+                related: hotRelated
+            }));
+            hotRank = ''; hotTitle = ''; hotCluster = ''; hotOverview = '';
+            hotRepScore = ''; hotRepSource = ''; hotRepTime = ''; hotRepUrl = '';
+            hotRepSummaryLines = []; hotRelated = []; hotSection = 'none';
+        }
+
+        function flushNormalArticle() {
+            if (!normTitle) return;
+            result.push(renderDigestNormalArticle({
+                rank: normRank, title: normTitle,
+                score: normScore, source: normSource,
+                time: normTime, url: normUrl,
+                summary: normSummaryLines.join(' ')
+            }));
+            normRank = ''; normTitle = ''; normScore = ''; normSource = '';
+            normTime = ''; normUrl = ''; normSummaryLines = [];
+        }
+
+        function flushCategory() {
+            if (state === STATE_ARTICLE_HOT) flushHotArticle();
+            if (state === STATE_ARTICLE_NORMAL) flushNormalArticle();
+            if (categoryHasHeader) {
+                result.push('</div></div>'); // close articles-list + category-block
+                categoryHasHeader = false;
+            }
+        }
+
+        function openCategory() {
+            result.push(renderDigestCategoryHeader(categoryEmoji, categoryName, categoryCount, categoryHotCount));
+            if (categorySummary) {
+                result.push(`<div class="digest-category-summary">${parseInline(categorySummary)}</div>`);
+                categorySummary = '';
+            }
+            result.push('<div class="digest-articles-list">');
+            categoryHasHeader = true;
+        }
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmed = line.trim();
+
+            // ---- 标题行（# 一级，忽略）
+            if (line.match(/^#\s+/) && !line.match(/^##/)) continue;
+
+            // ---- 分隔线
+            if (line.match(/^---+$/)) continue;
+
+            // ---- 统计横幅（> 今日从 N 篇中精选 M 个重点）
+            if (state === STATE_NONE && trimmed.match(/^>.*从.*篇.*精选|^>.*精选.*篇/)) {
+                const text = trimmed.replace(/^>\s*/, '');
+                result.push(renderDigestStatsBanner(text));
+                continue;
+            }
+
+            // ---- 今日洞察标题
+            if (trimmed.match(/^##\s+.*今日洞察/)) {
+                flushCategory();
+                state = STATE_INSIGHT;
+                insightLines = [];
+                continue;
+            }
+
+            // ---- 数据一览标题
+            if (trimmed.match(/^##\s+.*数据一览/)) {
+                flushInsight();
+                flushCategory();
+                state = STATE_STATS;
+                statsTableRows = [];
+                continue;
+            }
+
+            // ---- 分类标题（## emoji Name（N篇...））
+            const catMatch = trimmed.match(/^##\s+(\S+)\s+(.+?)（(\d+篇[^）]*)）/);
+            if (catMatch) {
+                flushInsight();
+                flushCategory();
+
+                categoryEmoji = catMatch[1];
+                const fullName = catMatch[2].trim();
+                const countPart = catMatch[3];
+                categoryName = fullName;
+                // 解析 "8篇 · 3个热点"
+                const countMatch = countPart.match(/(\d+篇)/);
+                const hotMatch = countPart.match(/(\d+个热点)/);
+                categoryCount = countMatch ? countMatch[1] : '';
+                categoryHotCount = hotMatch ? hotMatch[1] : '';
+                categorySummary = '';
+                categoryHasHeader = false;
+                state = STATE_CATEGORY;
+                continue;
+            }
+
+            // ---- 热点文章（### 🔥 rank. Title）
+            const hotMatch = trimmed.match(/^###\s+🔥\s+(\d+)\.\s+(.+)$/);
+            if (hotMatch) {
+                flushInsight();
+                if (state === STATE_ARTICLE_HOT) flushHotArticle();
+                if (state === STATE_ARTICLE_NORMAL) flushNormalArticle();
+                if (!categoryHasHeader) openCategory();
+
+                state = STATE_ARTICLE_HOT;
+                hotRank = hotMatch[1];
+                hotTitle = hotMatch[2];
+                hotCluster = ''; hotOverview = '';
+                hotRepScore = ''; hotRepSource = ''; hotRepTime = ''; hotRepUrl = '';
+                hotRepSummaryLines = []; hotRelated = []; hotSection = 'none';
+                continue;
+            }
+
+            // ---- 普通文章（### rank. Title，无🔥）
+            const normMatch = trimmed.match(/^###\s+(\d+)\.\s+(.+)$/);
+            if (normMatch) {
+                flushInsight();
+                if (state === STATE_ARTICLE_HOT) flushHotArticle();
+                if (state === STATE_ARTICLE_NORMAL) flushNormalArticle();
+                if (!categoryHasHeader) openCategory();
+
+                state = STATE_ARTICLE_NORMAL;
+                normRank = normMatch[1];
+                normTitle = normMatch[2];
+                normScore = ''; normSource = ''; normTime = ''; normUrl = '';
+                normSummaryLines = [];
+                continue;
+            }
+
+            // ---- 处理各状态下的内容行
+
+            if (state === STATE_INSIGHT) {
+                if (trimmed && !trimmed.match(/^>$/)) {
+                    const text = trimmed.startsWith('>') ? trimmed.replace(/^>\s*/, '') : trimmed;
+                    if (text) insightLines.push(parseInline(text));
+                }
+                continue;
+            }
+
+            if (state === STATE_CATEGORY) {
+                // 分类小结（> 文字）
+                if (trimmed.match(/^>/)) {
+                    categorySummary = trimmed.replace(/^>\s*/, '');
+                }
+                continue;
+            }
+
+            if (state === STATE_ARTICLE_HOT) {
+                // 聚类信息：> 本话题共有...
+                if (trimmed.match(/^>.*本话题共有/) || trimmed.match(/^>.*篇报道/)) {
+                    hotCluster = trimmed.replace(/^>\s*/, '');
+                    hotSection = 'none';
+                    continue;
+                }
+                // 事件概述：> **事件概述**：...
+                if (trimmed.match(/^>.*事件概述/)) {
+                    hotOverview = trimmed.replace(/^>\s*/, '').replace(/\*\*事件概述\*\*[：:]\s*/, '');
+                    hotSection = 'none';
+                    continue;
+                }
+                // 代表报道标题行：**📌 代表报道**（评分 N）
+                if (trimmed.match(/^\*\*📌\s*代表报道\*\*|^\*\*代表报道\*\*/)) {
+                    const scoreMatch = trimmed.match(/综合评分\s*([\d.]+)/);
+                    if (scoreMatch) hotRepScore = scoreMatch[1];
+                    hotSection = 'rep';
+                    continue;
+                }
+                // 相关报道标题行：**🔗 相关报道**
+                if (trimmed.match(/^\*\*🔗\s*相关报道\*\*|^\*\*相关报道\*\*/)) {
+                    hotSection = 'related';
+                    continue;
+                }
+                // 代表报道的 meta 行：**来源** `SRC` · **时间** `TIME` · 🔗 [原文](URL)
+                if (hotSection === 'rep' && trimmed.match(/^\*\*来源\*\*/)) {
+                    const srcMatch = trimmed.match(/\*\*来源\*\*\s*`([^`]+)`/);
+                    const timeMatch = trimmed.match(/\*\*时间\*\*\s*`([^`]+)`/);
+                    const urlMatch = trimmed.match(/\[原文\]\(([^)]+)\)/);
+                    if (srcMatch) hotRepSource = srcMatch[1];
+                    if (timeMatch) hotRepTime = timeMatch[1];
+                    if (urlMatch) hotRepUrl = urlMatch[1];
+                    continue;
+                }
+                // 摘要行（> 文字）in rep section
+                if (hotSection === 'rep' && trimmed.match(/^>/)) {
+                    const text = trimmed.replace(/^>\s*/, '');
+                    if (text) hotRepSummaryLines.push(parseInline(text));
+                    continue;
+                }
+                // 相关报道列表项：- `SRC` [Title](URL) — 评分 N
+                if (hotSection === 'related' && trimmed.match(/^-\s/)) {
+                    const relMatch = trimmed.match(/^-\s+`([^`]+)`\s+\[([^\]]+)\]\(([^)]+)\)(?:\s*[—-]\s*评分\s*([\d.]+))?/);
+                    if (relMatch) {
+                        hotRelated.push({
+                            source: relMatch[1],
+                            title: relMatch[2],
+                            url: relMatch[3],
+                            score: relMatch[4] || ''
+                        });
+                    }
+                    continue;
+                }
+                continue;
+            }
+
+            if (state === STATE_ARTICLE_NORMAL) {
+                // meta 行：**评分** `N/10` · **来源** `SRC` · **时间** `TIME` · 🔗 [原文](URL)
+                if (trimmed.match(/^\*\*评分\*\*/)) {
+                    const scoreMatch = trimmed.match(/\*\*评分\*\*\s*`([^`]+)`/);
+                    const srcMatch = trimmed.match(/\*\*来源\*\*\s*`([^`]+)`/);
+                    const timeMatch = trimmed.match(/\*\*时间\*\*\s*`([^`]+)`/);
+                    const urlMatch = trimmed.match(/\[原文\]\(([^)]+)\)/);
+                    if (scoreMatch) normScore = scoreMatch[1].replace('/10', '');
+                    if (srcMatch) normSource = srcMatch[1];
+                    if (timeMatch) normTime = timeMatch[1];
+                    if (urlMatch) normUrl = urlMatch[1];
+                    continue;
+                }
+                // 摘要行（> 文字）
+                if (trimmed.match(/^>/)) {
+                    const text = trimmed.replace(/^>\s*/, '');
+                    if (text) normSummaryLines.push(parseInline(text));
+                    continue;
+                }
+                continue;
+            }
+
+            if (state === STATE_STATS) {
+                // Markdown 表格行
+                if (trimmed.match(/^\|/) && !trimmed.match(/^\|[-\s|]+$/)) {
+                    const cells = trimmed.split('|').map(c => c.trim()).filter(c => c);
+                    if (cells.length >= 2) {
+                        statsTableRows.push({ label: cells[0], value: cells[1] });
+                    }
+                }
+                // 底部水印行
+                if (trimmed.match(/^\*🤖|^\*.*ResearchPulse.*AI 生成/)) {
+                    result.push(renderDigestStatsSection(statsTableRows));
+                    result.push(`<div class="digest-footer">${parseInline(trimmed.replace(/^\*|\*$/g, ''))}</div>`);
+                    statsTableRows = [];
+                    state = STATE_NONE;
+                }
+                continue;
+            }
+        }
+
+        // 收尾
+        flushInsight();
+        if (state === STATE_ARTICLE_HOT) flushHotArticle();
+        if (state === STATE_ARTICLE_NORMAL) flushNormalArticle();
+        if (categoryHasHeader) result.push('</div></div>');
+        if (state === STATE_STATS && statsTableRows.length > 0) {
+            result.push(renderDigestStatsSection(statsTableRows));
+        }
+
+        return result.join('\n');
+    }
+
+    function renderDigestStatsBanner(text) {
+        // 从 "今日从 2000 篇内容中精选 25 个重点 · 发现 5 个热点事件" 解析数字
+        const totalMatch = text.match(/从\s*\*?\*?(\d[\d,]*)\*?\*?\s*篇/);
+        const selectedMatch = text.match(/精选\s*\*?\*?(\d+)\*?\*?\s*个重点/);
+        const hotMatch = text.match(/发现\s*\*?\*?(\d+)\*?\*?\s*个热点/);
+        const total = totalMatch ? totalMatch[1] : '?';
+        const selected = selectedMatch ? selectedMatch[1] : '?';
+        const hot = hotMatch ? hotMatch[1] : '?';
+        // 提取日期（从整个 md 文本上下文取不到，直接展示数字即可）
+        return `
+        <div class="digest-stats-banner">
+          <div class="dsb-inner">
+            <div class="dsb-date">📅 ResearchPulse 每日精选</div>
+            <div class="dsb-stats">
+              <div class="dsb-stat"><span class="dsb-num">${escapeHtml(total)}</span><span class="dsb-label">篇爬取</span></div>
+              <div class="dsb-stat"><span class="dsb-num">${escapeHtml(selected)}</span><span class="dsb-label">篇精选</span></div>
+              <div class="dsb-stat"><span class="dsb-num">${escapeHtml(hot)}</span><span class="dsb-label">个热点</span></div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function renderDigestInsight(lines) {
+        return `
+        <div class="digest-insight">
+          <div class="digest-insight-title">🔭 今日洞察</div>
+          <div class="digest-insight-body">${lines.join('<br>')}</div>
+        </div>`;
+    }
+
+    function renderDigestCategoryHeader(emoji, name, count, hotCount) {
+        const countHtml = count ? `<span class="digest-cat-count">${escapeHtml(count)}</span>` : '';
+        const hotHtml = hotCount ? `<span class="digest-cat-hot">🔥 ${escapeHtml(hotCount)}</span>` : '';
+        return `
+        <div class="digest-category-block">
+          <div class="digest-category-header">
+            <span class="digest-cat-emoji">${escapeHtml(emoji)}</span>
+            <span class="digest-cat-name">${escapeHtml(name)}</span>
+            ${countHtml}${hotHtml}
+          </div>`;
+    }
+
+    function renderDigestHotArticle(a) {
+        const clusterHtml = a.cluster
+            ? `<div class="dah-cluster-info">${parseInline(a.cluster)}</div>` : '';
+        const overviewHtml = a.overview
+            ? `<div class="dah-overview">📌 <strong>事件概述：</strong>${parseInline(a.overview)}</div>` : '';
+
+        const repMetaHtml = [
+            a.repSource ? renderSourceTag(a.repSource) : '',
+            a.repTime ? `<span class="dah-time">${escapeHtml(a.repTime)}</span>` : '',
+            a.repUrl ? `<a class="dah-link" href="${escapeHtml(a.repUrl)}" target="_blank">原文 →</a>` : ''
+        ].filter(Boolean).join('');
+
+        const repSummaryHtml = a.repSummary
+            ? `<div class="digest-summary">${a.repSummary}</div>` : '';
+
+        const repScoreBadge = a.repScore
+            ? `<span class="digest-score-badge ${getScoreClass(a.repScore)}">${escapeHtml(a.repScore)}</span>` : '';
+
+        const repHtml = (repMetaHtml || repSummaryHtml) ? `
+            <div class="dah-rep-section">
+              <div class="dah-rep-label">📌 代表报道 ${repScoreBadge}</div>
+              <div class="dah-rep-meta">${repMetaHtml}</div>
+              ${repSummaryHtml}
+            </div>` : '';
+
+        const relatedHtml = a.related && a.related.length > 0 ? `
+            <div class="dah-related">
+              <div class="dah-related-label">🔗 相关报道</div>
+              <div class="dah-related-list">
+                ${a.related.map(r => `
+                  <a class="dah-related-item" href="${escapeHtml(r.url || '#')}" target="_blank">
+                    ${renderSourceTag(r.source)}
+                    <span class="dah-related-title">${escapeHtml(r.title)}</span>
+                    ${r.score ? `<span class="dah-related-score">${escapeHtml(r.score)}</span>` : ''}
+                  </a>`).join('')}
+              </div>
+            </div>` : '';
+
+        return `
+        <div class="digest-article-hot">
+          <div class="dah-header">
+            <span class="digest-hot-badge">🔥 #${escapeHtml(a.rank)}</span>
+            <h4 class="dah-title">${escapeHtml(a.title)}</h4>
+          </div>
+          ${clusterHtml}${overviewHtml}${repHtml}${relatedHtml}
+        </div>`;
+    }
+
+    function renderDigestNormalArticle(a) {
+        const scoreBadge = a.score
+            ? `<span class="digest-score-badge ${getScoreClass(a.score)}">${escapeHtml(a.score)}</span>` : '';
+        const titleHtml = a.url
+            ? `<a href="${escapeHtml(a.url)}" target="_blank">${escapeHtml(a.title)}</a>`
+            : escapeHtml(a.title);
+        const summaryHtml = a.summary
+            ? `<div class="digest-summary">${a.summary}</div>` : '';
+        return `
+        <div class="digest-article-normal">
+          <div class="dan-header">
+            <span class="dan-rank">#${escapeHtml(a.rank)}</span>
+            <h4 class="dan-title">${titleHtml}</h4>
+            ${scoreBadge}
+          </div>
+          <div class="dan-meta">
+            ${a.source ? renderSourceTag(a.source) : ''}
+            ${a.time ? `<span class="dan-time">${escapeHtml(a.time)}</span>` : ''}
+          </div>
+          ${summaryHtml}
+        </div>`;
+    }
+
+    function renderDigestStatsSection(rows) {
+        if (!rows || rows.length === 0) return '';
+        const itemsHtml = rows.map(r =>
+            `<div class="dst-item"><span class="dst-label">${parseInline(r.label)}</span><span class="dst-value">${parseInline(r.value)}</span></div>`
+        ).join('');
+        return `
+        <div class="digest-stats-section">
+          <div class="digest-stats-title">📊 数据一览</div>
+          <div class="digest-stats-grid">${itemsHtml}</div>
+        </div>`;
     }
 
     function renderPaginationFn() {

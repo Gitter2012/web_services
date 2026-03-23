@@ -796,13 +796,9 @@
                         <span class="nav-icon"><i data-lucide="mail"></i></span>
                         <span>邮件推送</span>
                     </a>
-                    <a href="#" class="nav-item" data-section="reports">
-                        <span class="nav-icon"><i data-lucide="file-text"></i></span>
-                        <span>报告管理</span>
-                    </a>
-                    <a href="#" class="nav-item" data-section="daily-report">
-                        <span class="nav-icon"><i data-lucide="calendar-days"></i></span>
-                        <span>每日报告</span>
+                    <a href="#" class="nav-item" data-section="report-center">
+                        <span class="nav-icon"><i data-lucide="layout-dashboard"></i></span>
+                        <span>报告中心</span>
                     </a>
                     <a href="#" class="nav-item" data-section="backups">
                         <span class="nav-icon"><i data-lucide="hard-drive"></i></span>
@@ -951,15 +947,15 @@
                 </div>
 
                 <div class="tabs">
-                    <button class="tab active" onclick="switchSourceTab('arxiv')">ArXiv 分类</button>
+                    <button class="tab active" onclick="switchSourceTab('pending')">待审批 RSS</button>
                     <button class="tab" onclick="switchSourceTab('rss')">RSS 源</button>
-                    <button class="tab" onclick="switchSourceTab('wechat')">微信公众号</button>
+                    <button class="tab" onclick="switchSourceTab('arxiv')">ArXiv 分类</button>
                     <button class="tab" onclick="switchSourceTab('weibo')">微博热搜</button>
-                    <button class="tab" onclick="switchSourceTab('pending')">待审批 RSS</button>
+                    <button class="tab" onclick="switchSourceTab('news')">新闻源</button>
+                    <button class="tab" onclick="switchSourceTab('wechat')">微信公众号</button>
                     <button class="tab" onclick="switchSourceTab('hackernews')">HackerNews</button>
                     <button class="tab" onclick="switchSourceTab('reddit')">Reddit</button>
                     <button class="tab" onclick="switchSourceTab('twitter')">Twitter</button>
-                    <button class="tab" onclick="switchSourceTab('news')">新闻源</button>
                 </div>
 
                 <!-- ArXiv Categories -->
@@ -1826,62 +1822,66 @@
             </div>
 
             <!-- Reports Section -->
-            <div id="section-reports" class="section" style="display:none;">
+            <div id="section-report-center" class="section" style="display:none;">
                 <div class="page-header">
-                    <h1>报告管理</h1>
-                    <p>生成和管理研究报告</p>
+                    <h1>报告中心</h1>
+                    <p>管理周报/月报、每日报告与每日精选</p>
                 </div>
 
-                <div class="card">
-                    <div class="card-header">
-                        <h3>生成报告</h3>
+                <!-- 内部 Tab 导航 -->
+                <div class="tabs">
+                    <button class="tab active" onclick="switchReportTab('weekly-monthly', event)">报告管理</button>
+                    <button class="tab" onclick="switchReportTab('daily-report', event)">每日报告</button>
+                    <button class="tab" onclick="switchReportTab('daily-digest', event)">每日精选</button>
+                </div>
+
+                <!-- Tab 1：报告管理（原 section-reports 内容） -->
+                <div id="report-tab-weekly-monthly">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>生成报告</h3>
+                        </div>
+                        <div class="card-body">
+                            <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">报告类型</label>
+                                    <select class="form-select" id="report-type">
+                                        <option value="weekly">周报</option>
+                                        <option value="monthly">月报</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="display: flex; align-items: flex-end;">
+                                    <button class="btn btn-primary" onclick="generateReport()">生成报告</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <div style="display: flex; gap: 12px; margin-bottom: 16px;">
-                            <div class="form-group" style="flex: 1;">
-                                <label class="form-label">报告类型</label>
-                                <select class="form-select" id="report-type">
-                                    <option value="weekly">周报</option>
-                                    <option value="monthly">月报</option>
-                                </select>
-                            </div>
-                            <div class="form-group" style="display: flex; align-items: flex-end;">
-                                <button class="btn btn-primary" onclick="generateReport()">生成报告</button>
-                            </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>报告列表</h3>
+                        </div>
+                        <div class="card-body">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>报告名称</th>
+                                        <th>类型</th>
+                                        <th>时间范围</th>
+                                        <th>创建时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="report-list">
+                                    <tr><td colspan="5">加载中...</td></tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header">
-                        <h3>报告列表</h3>
-                    </div>
-                    <div class="card-body">
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>报告名称</th>
-                                    <th>类型</th>
-                                    <th>时间范围</th>
-                                    <th>创建时间</th>
-                                    <th>操作</th>
-                                </tr>
-                            </thead>
-                            <tbody id="report-list">
-                                <tr><td colspan="5">加载中...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Daily Report Section -->
-            <div id="section-daily-report" class="section" style="display:none;">
-                <div class="page-header">
-                    <h1>每日报告</h1>
-                    <p>管理每日自动报告的生成、调度和微信公众号推送</p>
-                </div>
-
+                <!-- Tab 2：每日报告（原 section-daily-report 内容） -->
+                <div id="report-tab-daily-report" style="display:none;">
                 <!-- Status Card -->
                 <div class="card">
                     <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
@@ -1991,7 +1991,138 @@
                         <div id="dr-history-pagination" style="margin-top:12px;display:flex;gap:8px;align-items:center;"></div>
                     </div>
                 </div>
+                </div>
+                <!-- /report-tab-daily-report -->
+
+                <!-- Tab 3：每日精选（全新） -->
+                <div id="report-tab-daily-digest" style="display:none;">
+
+                    <!-- 运行状态卡片 -->
+                    <div class="card">
+                        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
+                            <h3>运行状态</h3>
+                            <button class="btn btn-sm btn-secondary" onclick="loadDailyDigestStatus()">刷新</button>
+                        </div>
+                        <div class="card-body" id="daily-digest-status-body">
+                            <div style="text-align:center;color:#888;padding:20px;">加载中...</div>
+                        </div>
+                    </div>
+
+                    <!-- 配置卡片 -->
+                    <div class="card" style="margin-top:16px;">
+                        <div class="card-header">
+                            <h3>配置</h3>
+                        </div>
+                        <div class="card-body">
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        <input type="checkbox" id="dd-enabled"> 启用每日精选
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        <input type="checkbox" id="dd-ai-synthesis"> 启用 AI 合成摘要
+                                    </label>
+                                </div>
+                                <div class="form-group" style="grid-column:1/-1;">
+                                    <label class="form-label">精选分类（逗号分隔）</label>
+                                    <input type="text" class="form-input" id="dd-categories" placeholder="all,AI,金融,技术">
+                                    <small class="form-hint">all=全量跨源，其他值按 ai_category 过滤</small>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">精选数量（top_n）</label>
+                                    <input type="number" class="form-input" id="dd-top-n" min="5" max="100" value="25">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">候选文章时间窗口（小时）</label>
+                                    <input type="number" class="form-input" id="dd-candidate-window" min="1" max="72" value="28">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">最低重要性分数（1-10）</label>
+                                    <input type="number" class="form-input" id="dd-min-importance" min="1" max="10" value="4">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">早报小时（0-23）</label>
+                                    <input type="number" class="form-input" id="dd-morning-hour" min="0" max="23" value="8">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">早报分钟（0-59）</label>
+                                    <input type="number" class="form-input" id="dd-morning-minute" min="0" max="59" value="5">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">晚报小时（0-23）</label>
+                                    <input type="number" class="form-input" id="dd-evening-hour" min="0" max="23" value="20">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">晚报分钟（0-59）</label>
+                                    <input type="number" class="form-input" id="dd-evening-minute" min="0" max="59" value="10">
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" style="margin-top:12px;" onclick="saveDailyDigestConfig()">保存配置</button>
+                        </div>
+                    </div>
+
+                    <!-- 手动触发卡片 -->
+                    <div class="card" style="margin-top:16px;">
+                        <div class="card-header">
+                            <h3>手动触发</h3>
+                        </div>
+                        <div class="card-body" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+                            <div class="form-group" style="margin:0;">
+                                <label class="form-label">日期</label>
+                                <input type="date" class="form-input" id="dd-trigger-date" style="width:160px;">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label class="form-label">分类（留空=全部）</label>
+                                <input type="text" class="form-input" id="dd-trigger-category" placeholder="all / AI / 金融 ..." style="width:180px;">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label class="form-label">
+                                    <input type="checkbox" id="dd-trigger-force"> 强制重新生成
+                                </label>
+                            </div>
+                            <button class="btn btn-primary" onclick="triggerDailyDigest()">立即生成</button>
+                            <span id="dd-trigger-status" style="color:#888;font-size:13px;"></span>
+                        </div>
+                    </div>
+
+                    <!-- 历史记录卡片 -->
+                    <div class="card" style="margin-top:16px;">
+                        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                            <h3>历史记录</h3>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                <input type="date" class="form-input" id="dd-filter-date" style="width:160px;">
+                                <input type="text" class="form-input" id="dd-filter-category" placeholder="分类过滤" style="width:120px;">
+                                <button class="btn btn-sm btn-secondary" onclick="loadDailyDigestHistory()">查询</button>
+                            </div>
+                        </div>
+                        <div class="card-body" style="overflow-x:auto;">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>日期</th>
+                                        <th>分类</th>
+                                        <th>标题</th>
+                                        <th>文章数</th>
+                                        <th>状态</th>
+                                        <th>生成时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dd-history-body">
+                                    <tr><td colspan="7" style="text-align:center;color:#888;">点击查询加载数据</td></tr>
+                                </tbody>
+                            </table>
+                            <div id="dd-history-pagination" style="margin-top:12px;display:flex;gap:8px;align-items:center;"></div>
+                        </div>
+                    </div>
+
+                </div>
+                <!-- /report-tab-daily-digest -->
+
             </div>
+            <!-- /section-report-center -->
 
             <!-- Config Section -->
             <div id="section-config" class="section" style="display:none;">
@@ -2516,10 +2647,14 @@
             if (name === 'embedding') loadEmbeddingConfig();
             if (name === 'events') loadEvents();
             if (name === 'topics') loadTopics();
-            if (name === 'reports') loadReports();
             if (name === 'roles') loadRoles();
             if (name === 'pipeline') loadPipelineMonitor();
-            if (name === 'daily-report') { loadDailyReportStatus(); loadDailyReportHistory(); }
+            if (name === 'report-center') {
+                loadReports();
+                loadDailyReportStatus();
+                loadDailyReportHistory();
+                loadDailyDigestStatus();
+            }
         }
 
         // Navigation click handler (event delegation)
@@ -3040,7 +3175,7 @@
         async function loadRssCategories() {
             const token = localStorage.getItem('access_token');
             try {
-                const res = await fetch(`/api/categories?source_type=rss`, {
+                const res = await fetch(`${ADMIN_BASE}/sources/rss/categories`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
@@ -7057,6 +7192,17 @@
         }
 
         // ============================================
+        // Report Center Tab Switching
+        // ============================================
+
+        function switchReportTab(tab, evt) {
+            document.querySelectorAll('#section-report-center .tabs .tab').forEach(t => t.classList.remove('active'));
+            if (evt && evt.target) evt.target.classList.add('active');
+            document.querySelectorAll('#section-report-center > div[id^="report-tab-"]').forEach(p => p.style.display = 'none');
+            document.getElementById(`report-tab-${tab}`).style.display = 'block';
+        }
+
+        // ============================================
         // Daily Report Management
         // ============================================
 
@@ -7276,6 +7422,205 @@
                 loadDailyReportHistory();
             } catch (e) {
                 alert('请求失败: ' + e.message);
+            }
+        }
+
+        // ============================================
+        // Daily Digest Management
+        // ============================================
+
+        let ddHistoryCurrentPage = 1;
+
+        async function loadDailyDigestStatus() {
+            const token = localStorage.getItem('access_token');
+            const body = document.getElementById('daily-digest-status-body');
+            if (!body) return;
+            body.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">加载中...</div>';
+
+            // 首次加载时设置触发日期默认值为今天
+            const triggerDateEl = document.getElementById('dd-trigger-date');
+            if (triggerDateEl && !triggerDateEl.value) {
+                triggerDateEl.value = new Date().toISOString().split('T')[0];
+            }
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/daily-digest/status`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) { body.innerHTML = '<div style="color:red;">加载失败</div>'; return; }
+                const data = await res.json();
+
+                const cfg = data.config || {};
+                const sch = data.scheduler || {};
+                const todayDigests = data.today_digests || [];
+
+                // 填充配置表单
+                document.getElementById('dd-enabled').checked = cfg.enabled === true;
+                document.getElementById('dd-ai-synthesis').checked = cfg.ai_synthesis !== false;
+                document.getElementById('dd-categories').value = (cfg.categories || []).join(',');
+                document.getElementById('dd-top-n').value = cfg.top_n ?? 25;
+                document.getElementById('dd-morning-hour').value = cfg.morning_hour ?? 8;
+                document.getElementById('dd-morning-minute').value = cfg.morning_minute ?? 5;
+                document.getElementById('dd-evening-hour').value = cfg.evening_hour ?? 20;
+                document.getElementById('dd-evening-minute').value = cfg.evening_minute ?? 10;
+                document.getElementById('dd-candidate-window').value = cfg.candidate_window_hours ?? 28;
+                document.getElementById('dd-min-importance').value = cfg.min_importance_score ?? 4;
+
+                const morningJob = sch.morning_job || {};
+                const eveningJob = sch.evening_job || {};
+
+                const jobBadge = (j) => j.status === 'scheduled'
+                    ? `<span class="badge badge-success">已调度</span>`
+                    : `<span class="badge badge-danger">未找到</span>`;
+
+                const digestSummary = todayDigests.length > 0
+                    ? todayDigests.map(d => `<span class="badge badge-info" style="margin:2px;">${escapeHtml(d.category)}: ${d.article_count}篇</span>`).join(' ')
+                    : '<span style="color:#888;">今日暂无精选</span>';
+
+                body.innerHTML = `
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px;">
+                        <div style="background:var(--bg-secondary);border-radius:8px;padding:16px;">
+                            <div style="font-size:12px;color:#888;margin-bottom:4px;">早报任务</div>
+                            <div>${jobBadge(morningJob)}</div>
+                            <div style="font-size:11px;color:#aaa;margin-top:4px;">下次: ${morningJob.next_run_time ? formatDate(morningJob.next_run_time) : '-'}</div>
+                        </div>
+                        <div style="background:var(--bg-secondary);border-radius:8px;padding:16px;">
+                            <div style="font-size:12px;color:#888;margin-bottom:4px;">晚报任务</div>
+                            <div>${jobBadge(eveningJob)}</div>
+                            <div style="font-size:11px;color:#aaa;margin-top:4px;">下次: ${eveningJob.next_run_time ? formatDate(eveningJob.next_run_time) : '-'}</div>
+                        </div>
+                        <div style="background:var(--bg-secondary);border-radius:8px;padding:16px;grid-column:span 2;">
+                            <div style="font-size:12px;color:#888;margin-bottom:6px;">今日精选生成情况</div>
+                            <div>${digestSummary}</div>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                body.innerHTML = '<div style="color:red;">加载失败: ' + escapeHtml(e.message) + '</div>';
+            }
+        }
+
+        async function saveDailyDigestConfig() {
+            const token = localStorage.getItem('access_token');
+            const configs = {
+                'daily_digest.enabled': document.getElementById('dd-enabled').checked ? 'true' : 'false',
+                'daily_digest.ai_synthesis': document.getElementById('dd-ai-synthesis').checked ? 'true' : 'false',
+                'daily_digest.categories': document.getElementById('dd-categories').value.trim(),
+                'daily_digest.top_n': document.getElementById('dd-top-n').value,
+                'daily_digest.morning_hour': document.getElementById('dd-morning-hour').value,
+                'daily_digest.morning_minute': document.getElementById('dd-morning-minute').value,
+                'daily_digest.evening_hour': document.getElementById('dd-evening-hour').value,
+                'daily_digest.evening_minute': document.getElementById('dd-evening-minute').value,
+                'daily_digest.candidate_window_hours': document.getElementById('dd-candidate-window').value,
+                'daily_digest.min_importance_score': document.getElementById('dd-min-importance').value,
+            };
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/batch-config`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ configs }),
+                });
+                if (res.ok) {
+                    alert('配置已保存');
+                    loadDailyDigestStatus();
+                } else {
+                    const data = await res.json();
+                    let errorMsg = '未知错误';
+                    if (data.detail) {
+                        if (Array.isArray(data.detail)) {
+                            errorMsg = data.detail.map(e => e.msg || JSON.stringify(e)).join('; ');
+                        } else {
+                            errorMsg = data.detail;
+                        }
+                    }
+                    alert('保存失败：' + errorMsg);
+                }
+            } catch (e) {
+                alert('请求失败: ' + e.message);
+            }
+        }
+
+        async function triggerDailyDigest() {
+            const token = localStorage.getItem('access_token');
+            const statusEl = document.getElementById('dd-trigger-status');
+            const dateVal = document.getElementById('dd-trigger-date').value;
+            const categoryVal = document.getElementById('dd-trigger-category').value.trim();
+            const force = document.getElementById('dd-trigger-force').checked;
+
+            const params = new URLSearchParams();
+            if (dateVal) params.append('report_date', dateVal);
+            if (categoryVal) params.append('category', categoryVal);
+            if (force) params.append('force', 'true');
+
+            statusEl.textContent = '触发中...';
+            statusEl.style.color = '#888';
+
+            try {
+                const url = `${ADMIN_BASE}/daily-digest/trigger` + (params.toString() ? '?' + params.toString() : '');
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    statusEl.textContent = data.message || '已触发，请稍后查看历史记录';
+                    statusEl.style.color = '#4CAF50';
+                } else {
+                    statusEl.textContent = '触发失败：' + (data.detail || '未知错误');
+                    statusEl.style.color = '#f44336';
+                }
+            } catch (e) {
+                statusEl.textContent = '请求失败: ' + e.message;
+                statusEl.style.color = '#f44336';
+            }
+        }
+
+        async function loadDailyDigestHistory(page) {
+            if (page) ddHistoryCurrentPage = page;
+            const token = localStorage.getItem('access_token');
+            const tbody = document.getElementById('dd-history-body');
+            const paginationEl = document.getElementById('dd-history-pagination');
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;">加载中...</td></tr>';
+
+            const filterDate = document.getElementById('dd-filter-date').value;
+            const filterCategory = document.getElementById('dd-filter-category').value.trim();
+            let url = `${ADMIN_BASE}/daily-reports/history?page=${ddHistoryCurrentPage}&page_size=20&source_type=digest`;
+            if (filterDate) url += `&report_date=${filterDate}`;
+            if (filterCategory) url += `&category=${encodeURIComponent(filterCategory)}`;
+
+            try {
+                const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (!res.ok) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:red;">加载失败</td></tr>'; return; }
+                const data = await res.json();
+                const reports = data.reports || [];
+
+                if (reports.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;">暂无记录</td></tr>';
+                    paginationEl.innerHTML = '';
+                    return;
+                }
+
+                tbody.innerHTML = reports.map(r => `
+                    <tr>
+                        <td>${escapeHtml(r.report_date)}</td>
+                        <td>${escapeHtml(r.category || '-')}</td>
+                        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.title)}">${escapeHtml(r.title)}</td>
+                        <td>${r.article_count}</td>
+                        <td><span class="badge badge-${r.status === 'published' ? 'success' : 'secondary'}">${escapeHtml(r.status)}</span></td>
+                        <td>${r.created_at ? formatDate(r.created_at) : '-'}</td>
+                        <td><a href="${APP_BASE}/daily-digest/${r.id}" target="_blank" class="btn btn-sm">查看</a></td>
+                    </tr>
+                `).join('');
+
+                const totalPages = data.pages || 1;
+                let paginationHtml = `<span style="color:#888;font-size:13px;">共 ${data.total} 条，第 ${ddHistoryCurrentPage}/${totalPages} 页</span>`;
+                if (ddHistoryCurrentPage > 1) paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="loadDailyDigestHistory(${ddHistoryCurrentPage - 1})">上一页</button>`;
+                if (ddHistoryCurrentPage < totalPages) paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="loadDailyDigestHistory(${ddHistoryCurrentPage + 1})">下一页</button>`;
+                paginationEl.innerHTML = paginationHtml;
+
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:red;">加载失败: ${escapeHtml(e.message)}</td></tr>`;
             }
         }
 

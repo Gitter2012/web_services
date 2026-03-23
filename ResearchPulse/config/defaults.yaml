@@ -281,6 +281,25 @@ wechat_mp:
   retry_delay: 5
   notify_on_failure: true
 
+# Cross-Server Data Sync Configuration
+# Pipeline machine (A) syncs data to Display machine (B) via API
+sync:
+  enabled: false
+  sender:
+    api_url: ""              # Base URL of B's API (e.g., "https://display.example.com")
+    api_key: ""              # API key for B's sync endpoint
+    timeout: 60              # Request timeout (seconds)
+    batch_size: 100          # Articles per batch request
+    retry_times: 3           # Max retry attempts
+    retry_delay: 5           # Base retry delay (seconds, exponential backoff)
+    sync_articles: true      # Enable article sync
+    sync_daily_reports: true # Enable daily report sync
+    sync_reports: true       # Enable weekly/monthly report sync
+    auto_sync_after_pipeline: true  # Auto-sync after daily report generation
+  receiver:
+    api_key: ""              # Expected API key from A
+    default_username: ""     # Fallback username for reports when user not found
+
 # Video Generation Configuration (optional)
 video:
   enabled: false

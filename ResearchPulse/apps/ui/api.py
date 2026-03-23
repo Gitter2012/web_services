@@ -690,8 +690,8 @@ async def list_categories(
             .distinct()
             .order_by(RssFeed.category)
         )
-        # 过滤掉 None 值的分类
-        categories = [row[0] for row in result.fetchall() if row[0]]
+        # 过滤掉 None 值的分类（空字符串 "" 保留，避免被 bool() 误判）
+        categories = [row[0] for row in result.fetchall() if row[0] is not None]
 
         # 为 RSS 分类生成与 ArXiv 分类统一的数据结构
         # 使用 enumerate 生成临时 ID，方便前端统一处理

@@ -446,6 +446,16 @@ async def start_scheduler() -> None:
     else:
         logger.info("News report job skipped (daily_report.news_report.enabled disabled)")
 
+    # ---- 每日精选日报任务 ----
+    # 功能: 每天 08:05 生成早报，20:10 更新晚报
+    # 前置条件: 需要启用 daily_digest.enabled 功能开关
+    if feature_config.get_bool("daily_digest.enabled", False):
+        from apps.daily_digest.tasks import register_daily_digest_tasks
+        register_daily_digest_tasks(scheduler)
+        logger.info("Daily digest tasks registered")
+    else:
+        logger.info("Daily digest tasks skipped (daily_digest.enabled disabled)")
+
     # 所有任务注册完毕后，启动调度器开始按计划执行任务
     scheduler.start()
     logger.info("Scheduler started")

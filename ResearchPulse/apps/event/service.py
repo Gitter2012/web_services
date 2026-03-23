@@ -203,7 +203,7 @@ class EventService:
 
         # 第二步：获取最近的活跃事件聚类
         # 只匹配最近 3 天内更新过的活跃聚类，过旧的事件不再接受新文章
-        cutoff = datetime.now(timezone.utc) - timedelta(days=3)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
         cluster_result = await db.execute(
             select(EventCluster)
             .where(and_(EventCluster.is_active.is_(True), EventCluster.last_updated_at >= cutoff))
@@ -255,7 +255,7 @@ class EventService:
 
                 # 如果在同 category 中已找到高分匹配，无需搜索全量
                 min_similarity = feature_config.get_float("event.min_similarity", 0.7)
-                threshold_check = min_similarity * 0.5 if best_method in ("model", "entity") else min_similarity * 0.71
+                threshold_check = min_similarity * 0.5
                 if best_match and best_score >= threshold_check:
                     break
 
@@ -263,7 +263,7 @@ class EventService:
             # model 和 entity 匹配的置信度更高，使用较低阈值
             # keyword 和 title 匹配使用较高阈值
             min_similarity = feature_config.get_float("event.min_similarity", 0.7)
-            threshold = min_similarity * 0.5 if best_method in ("model", "entity") else min_similarity * 0.71
+            threshold = min_similarity * 0.5
             if best_match and best_score >= threshold:
                 # 匹配成功：加入已有聚类
                 member = EventMember(
@@ -283,7 +283,7 @@ class EventService:
                     )
                 )
                 clustered += 1
-            elif (article.importance_score or 0) >= 6:
+            elif (article.importance_score or 0) >= 8:
                 # 未匹配到已有聚类，但文章重要性 >= 6：创建新聚类
                 # 设计决策：只有重要性较高的文章才值得创建新事件
                 new_cluster = EventCluster(

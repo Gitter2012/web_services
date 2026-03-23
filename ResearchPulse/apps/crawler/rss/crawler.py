@@ -17,7 +17,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 import feedparser
 from bs4 import BeautifulSoup
@@ -143,6 +143,7 @@ class RssCrawler(BaseCrawler):
         category: str | None = None,
         feed_format: str = "rss",
         json_config: str | None = None,
+        site_url: str | None = None,
     ):
         """Initialize RSS crawler.
 
@@ -156,6 +157,7 @@ class RssCrawler(BaseCrawler):
             category: News category (e.g. "tech", "general").
             feed_format: 'rss' for XML/Atom feeds, 'json' for JSON API.
             json_config: JSON config string for JSON API parsing.
+            site_url: Base URL of the site, used to complete relative article links.
         """
         super().__init__(feed_id)
         self.feed_id = feed_id
@@ -165,6 +167,7 @@ class RssCrawler(BaseCrawler):
         self.news_category = category
         self.feed_format = feed_format
         self.json_config = json_config
+        self.site_url = site_url
         self._json_parser: JsonFeedParser | None = None
 
         if feed_format == "json" and json_config:
@@ -223,6 +226,24 @@ class RssCrawler(BaseCrawler):
             article = self._parse_entry(entry)
             if article:
                 articles.append(article)
+
+        # ---- 过滤超过 31 天的旧文章 ----
+        # publish_time 为 None 的条目（时间无法解析）保留，安全优先
+        # 此处过滤放在正文补全之前，避免对旧文章做无谓的全文 HTTP 请求
+        from datetime import timedelta
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(days=31)
+        articles = [
+            a for a in articles
+            if (
+                a.get("publish_time") is None
+                or (
+                    a["publish_time"].replace(tzinfo=timezone.utc)
+                    if a["publish_time"].tzinfo is None
+                    else a["publish_time"]
+                ) >= cutoff
+            )
+        ]
 
         # 对于 content 与 summary 相同（即 RSS 未提供完整正文）的文章，
         # 尝试访问原文 URL 提取完整内容
@@ -291,6 +312,12 @@ class RssCrawler(BaseCrawler):
             # 没有 HTML 链接时，使用第一个链接
             if not url and entry.links:
                 url = entry.links[0].get("href", "")
+
+        # ---- 相对路径补全 ----
+        # 当 URL 不含 scheme（如 /2024/01/article.html）时，补全为绝对路径
+        if url and not urlparse(url).scheme:
+            base = self.site_url or self.feed_url
+            url = urljoin(base, url)
 
         # ---- 提取作者 ----
         # 支持单作者字符串和多作者列表两种格式

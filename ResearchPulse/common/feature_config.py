@@ -55,6 +55,18 @@ DEFAULT_CONFIGS: Dict[str, tuple[str, str]] = {
     "feature.backup": ("true", "Database backup"),
     "feature.cleanup": ("true", "Data cleanup"),
     "feature.email_notification": ("false", "Email notifications"),
+    # ---- 每日精选日报配置 ----
+    "daily_digest.enabled": ("false", "Enable daily digest generation"),
+    "daily_digest.categories": ("all,AI,金融,技术", "Digest categories to generate (comma-separated). 'all'=cross-source aggregate; others filter by ai_category"),
+    "daily_digest.morning_hour": ("8", "Morning digest generation hour (0-23)"),
+    "daily_digest.morning_minute": ("5", "Morning digest generation minute (0-59)"),
+    "daily_digest.evening_hour": ("20", "Evening digest update hour (0-23)"),
+    "daily_digest.evening_minute": ("10", "Evening digest update minute (0-59)"),
+    "daily_digest.top_n": ("25", "Number of top articles to select per digest"),
+    "daily_digest.ai_synthesis": ("true", "Enable AI synthesis for digest (category summaries + global insight)"),
+    "daily_digest.candidate_window_hours": ("28", "Candidate article time window in hours"),
+    "daily_digest.min_importance_score": ("4", "Minimum importance score for digest candidates"),
+    "daily_digest.max_candidates": ("2000", "Max candidate articles to load per digest run"),
     # ---- 调度器参数 ----
     # 控制各定时任务的执行频率和时间点
     "scheduler.crawl_interval_hours": ("6", "Crawl interval in hours"),
@@ -126,7 +138,7 @@ DEFAULT_CONFIGS: Dict[str, tuple[str, str]] = {
     # ---- 事件聚类参数 ----
     "event.rule_weight": ("0.4", "Rule-based weight for clustering"),
     "event.semantic_weight": ("0.6", "Semantic weight for clustering"),
-    "event.min_similarity": ("0.7", "Minimum similarity threshold"),
+    "event.min_similarity": ("0.5", "Minimum similarity threshold"),
     # ---- 流水线批处理参数 ----
     "pipeline.ai_batch_limit": ("200", "AI processing batch limit per run"),
     "pipeline.embedding_batch_limit": ("500", "Embedding computation batch limit per run"),
