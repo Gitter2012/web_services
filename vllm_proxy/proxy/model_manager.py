@@ -431,15 +431,19 @@ class ModelManager:
         reserved_mb = self.config.gpu.reserved_memory_mb
         config_utilization = self.config.gpu.memory_utilization
 
-        # 实际可用显存 = 总显存 - 预留显存
-        usable_mb = gpu_total_mb - reserved_mb
-        # 计算实际应该使用的显存比例
-        actual_utilization = (usable_mb * config_utilization) / gpu_total_mb
-        actual_utilization = min(actual_utilization, 1.0)  # 确保不超过 1.0
+        if cfg.gpu_memory_utilization is not None:
+            # 模型级别显存利用率：直接使用指定值（基于 GPU 总显存）
+            actual_utilization = cfg.gpu_memory_utilization
+            logger.info(f"Using model-level GPU memory utilization: {actual_utilization:.3f}")
+        else:
+            # 全局显存利用率：可用显存 × 全局利用率 / 总显存
+            usable_mb = gpu_total_mb - reserved_mb
+            actual_utilization = (usable_mb * config_utilization) / gpu_total_mb
+            logger.info(f"Using global GPU memory calculation: total={gpu_total_mb}MB, reserved={reserved_mb}MB, "
+                        f"usable={usable_mb}MB, config_utilization={config_utilization}, "
+                        f"actual_utilization={actual_utilization:.3f}")
 
-        logger.info(f"GPU memory calculation: total={gpu_total_mb}MB, reserved={reserved_mb}MB, "
-                    f"usable={usable_mb}MB, config_utilization={config_utilization}, "
-                    f"actual_utilization={actual_utilization:.3f}")
+        actual_utilization = min(actual_utilization, 1.0)  # 确保不超过 1.0
 
         # 构建 vLLM 启动命令 - 使用当前 Python 解释器
         cmd = [

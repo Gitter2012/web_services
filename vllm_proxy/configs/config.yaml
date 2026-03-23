@@ -10,14 +10,17 @@ gpu:
   gpu_id: 0
 
   # 预留显存缓冲 (MB)
-  # 用于系统开销和突发请求，建议至少预留 2-4GB
-  # vLLM 启动时会从总显存中减去此预留量
+  # 作用1：参与「全局路径」下 --gpu-memory-utilization 的计算
+  #        实际利用率 = (总显存 - reserved) × memory_utilization / 总显存
+  # 作用2：LRU 淘汰判断中的安全边际（can_fit_model / calculate_eviction_plan）
+  # 注意：若模型配置了模型级别 gpu_memory_utilization，则绕过此计算（直接使用模型级值）
+  # T4 实测：CUDA context + PyTorch 基础开销约 800MB，2048 提供足够安全边际
   reserved_memory_mb: 1024
 
   # vLLM 显存利用率 (0.0 - 1.0)
-  # 控制 vLLM 进程使用「可用显存」的比例
-  # 实际显存使用 = (总显存 - 预留显存) × memory_utilization
-  # 例如: (15360 - 1024) × 0.95 = 13619MB
+  # 仅对未配置模型级别 gpu_memory_utilization 的模型生效（如 qwen3-4b、qwen2.5-7b 等）
+  # 实际传给 vLLM 的值 = (总显存 - reserved_memory_mb) × memory_utilization / 总显存
+  # T4 示例：(15360 - 2048) × 0.95 / 15360 ≈ 0.822（约 12.6 GiB）
   memory_utilization: 0.95
 
 #==============================================================================
@@ -99,6 +102,8 @@ models:
     num_attention_heads: 16
     num_kv_heads: 4
     explicit_memory_mb: 7000
+    gpu_memory_utilization: 0.86  # embedding 实占 1.40 GiB，空闲 ~13.07 GiB，前置检查余量 ~179 MB
+                                  # 0.86×15360=13210 MB≈12.90 GiB；权重 11.2 GiB，KV cache ~1.70 GiB
     extra_args:
       - "--trust-remote-code"
       # 启用工具调用支持
@@ -369,6 +374,35 @@ models:
     num_attention_heads: 32
     num_kv_heads: 4
     explicit_memory_mb: 7000
+
+  #--------------------------------------------------------------------------
+  # Qwen3-Embedding-0.6B-AWQ（轻量级嵌入模型）
+  #--------------------------------------------------------------------------
+  qwen3-embedding-0.6b-awq:
+    model_path: "Forturne/Qwen3-Embedding-0.6B-INT4-AWQ"
+    fla_use_default_norm: false  # 标准 Transformer，无 FLA 线性注意力层
+    fla_fix_block_size: false
+    param_count: 0.6
+    precision: "fp16"
+    quantization: "compressed-tensors"
+    tensor_parallel: 1
+    max_model_len: 2048 # 3064
+    max_num_seqs: 2  # 嵌入模型不做自回归生成，KV cache 开销低，可提高并发
+    enforce_eager: false  # compressed-tensors 格式，torch.compile + cudagraph 有正收益
+    num_layers: 28
+    hidden_size: 1024
+    num_attention_heads: 16
+    num_kv_heads: 8
+    explicit_memory_mb: 800  # INT4 权重约 522MB，预留 KV cache 余量
+    gpu_memory_utilization: 0.06  # max_model_len=3064：权重 0.51 GiB + KV cache ~0.33 GiB = 0.84 GiB
+                                  # 0.06×15360=922 MB=0.90 GiB，余量 ~80 MB
+    extra_args:
+      - "--trust-remote-code"
+      - "--runner"
+      - "pooling"  # vLLM 0.18+ 嵌入模式：使用 pooling runner 替代已废弃的 --task embedding
+      # cudagraph_mode=0：禁用 CUDA Graph（避免显存 OOM），保留 torch.compile 优化
+      - "--compilation-config"
+      - '{"cudagraph_mode": 0}'
 
   #--------------------------------------------------------------------------
   # DeepSeek-V2-Lite-AWQ（大模型示例，需要更多显存）

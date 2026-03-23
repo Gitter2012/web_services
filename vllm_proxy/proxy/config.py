@@ -89,6 +89,9 @@ class ModelConfig:
     num_kv_heads: int = 8
     # 显式指定显存需求（MB），覆盖自动计算
     explicit_memory_mb: Optional[int] = None
+    # 模型级别的 GPU 显存利用率（0.0 - 1.0），覆盖全局配置
+    # 用于多模型同时驻留场景，控制单个模型的显存占用上限
+    gpu_memory_utilization: Optional[float] = None
     # API Key 配置（用于访问受保护的模型）
     api_key: Optional[str] = None  # HuggingFace Token 或其他 API Key
     # 额外的 vLLM 命令行参数，支持任意 vLLM 参数透传
