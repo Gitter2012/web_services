@@ -58,10 +58,29 @@ class SyncClient:
         for attempt in range(self.retry_times + 1):
             try:
                 resp = await client.post(url, json=data)
+                # Log response body on 4xx for diagnosis, then raise
+                if resp.status_code >= 400:
+                    try:
+                        body = resp.text[:2000]
+                    except Exception:
+                        body = "<unreadable>"
+                    logger.error(
+                        "Sync request to %s returned %d. Response body: %s",
+                        url, resp.status_code, body,
+                    )
                 resp.raise_for_status()
                 return resp.json()
             except Exception as e:
                 last_error = e
+                # 4xx errors are client errors - no point retrying
+                if hasattr(e, 'response') and getattr(e, 'response', None) is not None:
+                    status = e.response.status_code  # type: ignore[attr-defined]
+                    if 400 <= status < 500:
+                        logger.error(
+                            "Sync request to %s failed with %d (not retrying): %s",
+                            url, status, e,
+                        )
+                        break
                 if attempt < self.retry_times:
                     delay = min(self.retry_delay * (2 ** attempt), 30)
                     logger.warning(

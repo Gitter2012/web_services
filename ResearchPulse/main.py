@@ -53,7 +53,7 @@ from apps.daily_report.api import router as daily_report_router
 # 每日精选日报模块路由
 from apps.daily_digest import router as daily_digest_router
 # 跨服务器数据同步模块路由
-from apps.sync import router as sync_router
+from apps.sync import router as sync_router, trigger_router as sync_trigger_router
 # 定时任务调度器的启动和停止函数
 from apps.scheduler import start_scheduler, stop_scheduler
 # Pipeline models — imported to ensure table is registered with Base.metadata
@@ -271,7 +271,8 @@ app.include_router(action_router, prefix="/researchpulse/api/actions", tags=["Ac
 app.include_router(report_router, prefix="/researchpulse/api/reports", tags=["Reports"])         # 报告自动生成
 app.include_router(daily_report_router, prefix="/researchpulse/api", tags=["Daily Reports"])    # 每日 arXiv 报告
 app.include_router(daily_digest_router, prefix="/researchpulse/api", tags=["Daily Digest"])      # 每日精选日报
-app.include_router(sync_router, prefix="/researchpulse/api", tags=["Sync"])                      # 跨服务器数据同步
+app.include_router(sync_router, prefix="/researchpulse/api", tags=["Sync"])                      # 跨服务器数据同步（机器间 API Key 认证）
+app.include_router(sync_trigger_router, prefix="/researchpulse/api", tags=["Sync"])             # 手动同步触发（用户权限认证）
 
 
 # 健康检查端点

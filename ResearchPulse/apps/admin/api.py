@@ -23,10 +23,10 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, HttpUrl, field_validator
 from sqlalchemy import desc, select, func, update, delete, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5824,3 +5824,95 @@ async def trigger_daily_digest(
         "status": "triggered",
         "message": f"每日精选生成任务已触发（日期：{date_str}，分类：{cat_str}），请稍后查看历史记录确认结果",
     }
+
+
+# ==========================================================================
+# 跨服务器同步管理端点
+# ==========================================================================
+
+
+@router.get("/sync/status")
+async def get_sync_status(
+    admin: Superuser,
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """获取同步状态统计：待同步/失败/全部报告数量。"""
+    total_result = await db.execute(select(func.count(DailyReport.id)))
+    pending_result = await db.execute(
+        select(func.count(DailyReport.id)).where(
+            DailyReport.sync_status.in_(["pending", "failed"])
+        )
+    )
+    failed_result = await db.execute(
+        select(func.count(DailyReport.id)).where(
+            DailyReport.sync_status == "failed"
+        )
+    )
+    success_result = await db.execute(
+        select(func.count(DailyReport.id)).where(
+            DailyReport.sync_status == "success"
+        )
+    )
+    return {
+        "total_reports": total_result.scalar() or 0,
+        "pending_count": pending_result.scalar() or 0,
+        "failed_count": failed_result.scalar() or 0,
+        "success_count": success_result.scalar() or 0,
+    }
+
+
+@router.post("/sync/trigger")
+async def trigger_manual_sync(
+    admin: Superuser,
+    db: AsyncSession = Depends(get_session),
+    report_date: str = Query(None, description="要同步的日期 (YYYY-MM-DD)，默认为今天"),
+    source_types: list[str] | None = Query(None, description="数据源类型过滤"),
+) -> dict:
+    """手动触发将指定日期的日报同步到 Display 服务器（超级管理员专用）。"""
+    from apps.sync.sender_service import SyncSenderService
+
+    target_date = date.today()
+    if report_date:
+        try:
+            target_date = date.fromisoformat(report_date)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid date format: {report_date!r}. Use YYYY-MM-DD.",
+            )
+
+    stmt = select(DailyReport).where(DailyReport.report_date == target_date)
+    if source_types:
+        stmt = stmt.where(DailyReport.source_type.in_(source_types))
+    result = await db.execute(stmt)
+    reports = list(result.scalars().all())
+
+    if not reports:
+        return {
+            "status": "no_reports",
+            "message": f"No reports found for {target_date}" + (
+                f" (source_types={source_types})" if source_types else ""
+            ),
+        }
+
+    logger.info(
+        "Admin manual sync triggered (user=%d, date=%s, reports=%d)",
+        admin.id, target_date, len(reports),
+    )
+
+    try:
+        sync_service = SyncSenderService()
+        await sync_service.sync_all(target_date, reports)
+        return {
+            "status": "success",
+            "synced_count": len(reports),
+            "report_date": target_date.isoformat(),
+            "message": f"Successfully synced {len(reports)} reports for {target_date}",
+        }
+    except Exception as e:
+        logger.error("Admin manual sync failed for %s: %s", target_date, e)
+        return {
+            "status": "failed",
+            "report_date": target_date.isoformat(),
+            "error": str(e),
+        }

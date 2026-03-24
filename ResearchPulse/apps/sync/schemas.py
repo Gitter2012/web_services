@@ -68,9 +68,9 @@ class ArticleSyncItem(BaseModel):
     ai_subcategory: str | None = None
     importance_score: int | None = None
     one_liner: str | None = None
-    key_points: dict | None = None
-    impact_assessment: dict | None = None
-    actionable_items: dict | None = None
+    key_points: dict | list | None = None
+    impact_assessment: dict | list | None = None
+    actionable_items: dict | list | None = None
     ai_processed_at: datetime | None = None
     ai_provider: str | None = None
     ai_model: str | None = None
@@ -168,3 +168,26 @@ class ReportSyncResponse(BaseModel):
     updated: int
     skipped: int = 0
     errors: list[str] = Field(default_factory=list)
+
+
+# =============================================================================
+# Manual Sync Trigger
+# =============================================================================
+
+class TriggerReportsSyncRequest(BaseModel):
+    """Request body for manually triggering report sync from Pipeline A to Display B."""
+
+    report_date: date = Field(description="要同步的报告日期（YYYY-MM-DD）")
+    source_types: list[str] | None = Field(
+        default=None,
+        description="数据源类型列表，为 None 时同步该日期的全部报告",
+    )
+
+
+class TriggerReportsSyncResponse(BaseModel):
+    """Response for manual sync trigger."""
+
+    report_date: str = Field(description="同步的报告日期")
+    synced_count: int = Field(description="成功同步的报告数量")
+    status: str = Field(description='"success" | "failed" | "no_reports"')
+    error: str | None = Field(default=None, description="失败时的错误信息")

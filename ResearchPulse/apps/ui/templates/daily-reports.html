@@ -410,10 +410,9 @@
                     <label>精选分类（可选，留空=按配置生成所有分类）</label>
                     <input type="text" id="digest-category" placeholder="all / AI / 金融 / 技术">
                     <div class="hint">留空将按系统配置的 daily_digest.categories 生成所有分类</div>
-                    <div class="form-group" style="margin-top:8px;">
-                        <label>
-                            <input type="checkbox" id="digest-force"> 强制重新生成（覆盖已有日报）
-                        </label>
+                    <div style="margin-top:8px; display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" id="digest-force" style="width:auto; flex-shrink:0;">
+                        <label for="digest-force" style="margin:0; cursor:pointer; font-weight:normal;">强制重新生成（覆盖已有日报）</label>
                     </div>
                     <div class="form-group" style="margin-top:4px;">
                         <label>日期默认为今天（每日精选按今天生成）</label>

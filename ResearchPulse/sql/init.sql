@@ -815,7 +815,9 @@ INSERT INTO `permissions` (`name`, `resource`, `action`, `description`) VALUES
 -- 每日报告权限
 ('daily_report:read', 'daily_report', 'read', 'View daily reports'),
 ('daily_report:generate', 'daily_report', 'generate', 'Generate daily reports'),
-('daily_report:export', 'daily_report', 'export', 'Export daily reports');
+('daily_report:export', 'daily_report', 'export', 'Export daily reports'),
+-- 跨服务器同步权限
+('sync:manual', 'sync', 'manual', 'Manually trigger cross-server sync');
 
 -- -----------------------------------------------------------------------------
 -- 插入默认角色
@@ -850,7 +852,8 @@ WHERE r.name = 'admin' AND p.name IN (
     'topic:read', 'topic:manage', 'topic:discover',
     'action:read', 'action:manage',
     'report:read', 'report:generate',
-    'daily_report:read', 'daily_report:generate', 'daily_report:export'
+    'daily_report:read', 'daily_report:generate', 'daily_report:export',
+    'sync:manual'
 );
 
 -- -----------------------------------------------------------------------------
