@@ -169,6 +169,22 @@ def _clean_text(text: str) -> str:
     return " ".join(cleaned.replace("\n", " ").split()).strip()
 
 
+def _extract_category_code(cat_str: str) -> str:
+    """Extract arXiv category code from full label or return as-is.
+
+    arXiv HTML list pages display categories as 'Computation and Language (cs.CL)'.
+    This function extracts the short code 'cs.CL' for consistent storage.
+
+    Args:
+        cat_str: Category string, e.g. 'Computation and Language (cs.CL)' or 'cs.CL'.
+
+    Returns:
+        str: Short category code like 'cs.CL', or original string if no code found.
+    """
+    match = re.search(r'\(([a-z][a-z0-9-]*\.[A-Z][A-Z0-9]*)\)', cat_str)
+    return match.group(1) if match else cat_str
+
+
 def _normalize_arxiv_id(arxiv_id: str) -> str:
     """Normalize arXiv IDs by removing version suffixes.
 
@@ -404,7 +420,7 @@ def _parse_html_list(html_text: str, run_date: str | None = None) -> List[Paper]
             # 回退到旧格式
             category_match = re.search(r"Subjects:</span>\s*(.*?)</div>", dd, re.S)
         categories_block = category_match.group(1) if category_match else ""
-        categories = [_clean_text(cat) for cat in re.split(r";|,", categories_block) if _clean_text(cat)]
+        categories = [_extract_category_code(_clean_text(cat)) for cat in re.split(r";|,", categories_block) if _clean_text(cat)]
         primary_category = categories[0] if categories else ""
 
         # 根据 arXiv ID 构造 PDF 下载链接

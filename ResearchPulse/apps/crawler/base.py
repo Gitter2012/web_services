@@ -186,7 +186,12 @@ class BaseCrawler(ABC):
                             existing_value = getattr(existing, key, None)
                             # 对于字符串类型，只有新值更长或旧值为空时才更新
                             if isinstance(value, str):
-                                if value and (not existing_value or len(value) >= len(str(existing_value))):
+                                # category/arxiv_primary_category 字段：简写格式（如 cs.CL）优先于完整格式
+                                # 完整格式含空格，如 "Computation and Language (cs.CL)"
+                                if key in ("category", "arxiv_primary_category"):
+                                    if value and (not existing_value or ' ' in str(existing_value)):
+                                        setattr(existing, key, value)
+                                elif value and (not existing_value or len(value) >= len(str(existing_value))):
                                     setattr(existing, key, value)
                             else:
                                 # 非字符串类型，仅当旧值为空时更新
