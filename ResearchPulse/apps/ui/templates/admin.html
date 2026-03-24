@@ -2164,7 +2164,11 @@
                             </div>
                             <div class="form-group">
                                 <label class="form-label">数据源过滤（可选）</label>
-                                <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+                                <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+                                    <label style="display: flex; align-items: center; gap: 6px; font-weight: 600; color: #333;">
+                                        <input type="checkbox" id="sync-source-all" onchange="toggleAllSyncSources(this)"> 全部（不过滤）
+                                    </label>
+                                    <span style="color:#ccc; margin: 0 4px;">|</span>
                                     <label style="display: flex; align-items: center; gap: 6px;">
                                         <input type="checkbox" name="sync-source" value="arxiv"> arXiv
                                     </label>
@@ -2177,7 +2181,20 @@
                                     <label style="display: flex; align-items: center; gap: 6px;">
                                         <input type="checkbox" name="sync-source" value="reddit"> Reddit
                                     </label>
+                                    <label style="display: flex; align-items: center; gap: 6px;">
+                                        <input type="checkbox" name="sync-source" value="weibo"> 微博热搜
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 6px;">
+                                        <input type="checkbox" name="sync-source" value="digest"> 每日精选
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 6px;">
+                                        <input type="checkbox" name="sync-source" value="aggregated"> 聚合报告
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 6px;">
+                                        <input type="checkbox" name="sync-source" value="cn_news_report"> 国内新闻
+                                    </label>
                                 </div>
+                                <small class="form-hint">不勾选任何选项等同于同步全部数据源</small>
                             </div>
                             <div style="display: flex; gap: 12px;">
                                 <button class="btn btn-primary" onclick="triggerSync()">开始同步</button>
@@ -7767,14 +7784,25 @@
             }
         }
 
+        function toggleAllSyncSources(allCheckbox) {
+            const checkboxes = document.querySelectorAll('input[name="sync-source"]');
+            checkboxes.forEach(cb => {
+                cb.disabled = allCheckbox.checked;
+                if (allCheckbox.checked) cb.checked = false;
+            });
+        }
+
         async function triggerSync() {
             const token = localStorage.getItem('access_token');
             const dateVal = document.getElementById('sync-date').value;
-            const sourcesChecked = [...document.querySelectorAll('input[name="sync-source"]:checked')]
-                .map(el => el.value);
+            const allChecked = document.getElementById('sync-source-all').checked;
+            const sourcesChecked = allChecked
+                ? []
+                : [...document.querySelectorAll('input[name="sync-source"]:checked')].map(el => el.value);
 
             const params = new URLSearchParams();
             if (dateVal) params.append('report_date', dateVal);
+            // 只有明确勾选了具体数据源时才过滤（空 = 同步全部）
             sourcesChecked.forEach(s => params.append('source_types', s));
 
             const resultCard = document.getElementById('sync-result-card');

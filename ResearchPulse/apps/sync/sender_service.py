@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.crawler.models.article import Article
@@ -58,25 +58,38 @@ class SyncSenderService:
 
             # Step 4: Mark synced reports as success
             if daily_reports:
+                report_ids = [r.id for r in daily_reports]
                 session_factory = get_session_factory()
                 async with session_factory() as db:
-                    for report in daily_reports:
-                        report.sync_status = "success"
-                        report.sync_attempted_at = datetime.now(timezone.utc)
+                    await db.execute(
+                        update(DailyReport)
+                        .where(DailyReport.id.in_(report_ids))
+                        .values(
+                            sync_status="success",
+                            sync_attempted_at=datetime.now(timezone.utc),
+                            sync_error=None,
+                        )
+                    )
                     await db.commit()
-                    logger.info("Marked %d reports as successfully synced", len(daily_reports))
+                    logger.info("Marked %d reports as successfully synced", len(report_ids))
 
             logger.info("Sync completed for %s", report_date)
         except Exception as e:
             logger.error("Sync failed for %s: %s", report_date, e)
             # Optionally mark reports as failed
             if daily_reports:
+                report_ids = [r.id for r in daily_reports]
                 session_factory = get_session_factory()
                 async with session_factory() as db:
-                    for report in daily_reports:
-                        report.sync_status = "failed"
-                        report.sync_error = str(e)
-                        report.sync_attempted_at = datetime.now(timezone.utc)
+                    await db.execute(
+                        update(DailyReport)
+                        .where(DailyReport.id.in_(report_ids))
+                        .values(
+                            sync_status="failed",
+                            sync_error=str(e)[:500],
+                            sync_attempted_at=datetime.now(timezone.utc),
+                        )
+                    )
                     await db.commit()
             raise
         finally:
