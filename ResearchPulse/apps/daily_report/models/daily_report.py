@@ -43,6 +43,9 @@ class DailyReport(Base, TimestampMixin):
         wechat_push_status: 微信推送状态（pending/success/failed/skipped）
         wechat_push_error: 微信推送错误信息
         wechat_pushed_at: 微信推送时间
+        sync_status: 跨服务器同步状态（pending/success/failed/skipped）
+        sync_error: 同步失败时的错误信息
+        sync_attempted_at: 最后一次同步尝试的时间
     """
 
     __tablename__ = "daily_reports"
@@ -141,12 +144,32 @@ class DailyReport(Base, TimestampMixin):
         comment="微信推送时间",
     )
 
+    # ---- 跨服务器同步状态 ----
+    sync_status: Mapped[str] = mapped_column(
+        String(20),
+        default="pending",
+        nullable=False,
+        comment="跨服务器同步状态: pending/success/failed/skipped",
+    )
+    sync_error: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="同步失败时的错误信息",
+    )
+    sync_attempted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="最后一次同步尝试的时间",
+    )
+
     # ---- 数据库索引定义 ----
     __table_args__ = (
         # 联合唯一索引：确保每天每个数据源每个分类只有一份报告
         Index("ix_daily_reports_date_source_category", "report_date", "source_type", "category", unique=True),
         # 状态索引：支持按状态筛选
         Index("ix_daily_reports_status", "status"),
+        # 同步状态索引：用于查询待同步或同步失败的报告
+        Index("ix_daily_reports_sync_status", "sync_status"),
     )
 
     def __repr__(self) -> str:

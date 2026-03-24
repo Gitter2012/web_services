@@ -35,6 +35,8 @@ class SyncSenderService:
     ) -> None:
         """Main entry: sync articles, daily reports, and reports.
 
+        Also updates sync_status on successfully synced reports.
+
         Args:
             report_date: The report date being synced.
             daily_reports: List of DailyReport instances from A's DB.
@@ -54,7 +56,29 @@ class SyncSenderService:
             if settings.sync_sender_sync_reports:
                 await self._sync_reports(client, report_date)
 
+            # Step 4: Mark synced reports as success
+            if daily_reports:
+                session_factory = get_session_factory()
+                async with session_factory() as db:
+                    for report in daily_reports:
+                        report.sync_status = "success"
+                        report.sync_attempted_at = datetime.now(timezone.utc)
+                    await db.commit()
+                    logger.info("Marked %d reports as successfully synced", len(daily_reports))
+
             logger.info("Sync completed for %s", report_date)
+        except Exception as e:
+            logger.error("Sync failed for %s: %s", report_date, e)
+            # Optionally mark reports as failed
+            if daily_reports:
+                session_factory = get_session_factory()
+                async with session_factory() as db:
+                    for report in daily_reports:
+                        report.sync_status = "failed"
+                        report.sync_error = str(e)
+                        report.sync_attempted_at = datetime.now(timezone.utc)
+                    await db.commit()
+            raise
         finally:
             await client.close()
 
@@ -105,6 +129,12 @@ class SyncSenderService:
             "Synced %d articles to display machine (mapped %d/%d)",
             len(articles), len(a_to_b_map), len(articles),
         )
+        unmapped = len(articles) - len(a_to_b_map)
+        if unmapped > 0:
+            logger.warning(
+                "Article sync incomplete: %d/%d articles not mapped on display machine",
+                unmapped, len(articles),
+            )
         return a_to_b_map
 
     async def _sync_daily_reports(
@@ -144,11 +174,18 @@ class SyncSenderService:
             # Translate A's article_ids to natural key strings
             article_ref_keys: list[str] = []
             if report.article_ids:
-                article_ref_keys = [
-                    id_to_natural_key[aid]
-                    for aid in report.article_ids
-                    if aid in id_to_natural_key
-                ]
+                missing_ids = []
+                for aid in report.article_ids:
+                    if aid in id_to_natural_key:
+                        article_ref_keys.append(id_to_natural_key[aid])
+                    else:
+                        missing_ids.append(aid)
+                if missing_ids:
+                    logger.warning(
+                        "Daily report %s/%s/%s: %d article IDs not found in DB: %s",
+                        report.report_date, report.source_type, report.category,
+                        len(missing_ids), missing_ids,
+                    )
 
             report_dicts.append({
                 "report_date": report.report_date.isoformat(),
@@ -210,8 +247,17 @@ class SyncSenderService:
         for report in reports:
             username = id_to_username.get(report.user_id, "")
             if not username:
-                logger.warning("Report %d: user %d not found, skipping", report.id, report.user_id)
-                continue
+                # Try to use the receiver-side default username if configured
+                default_user = settings.sync_receiver_default_username
+                if default_user:
+                    logger.warning(
+                        "Report %d: user %d not found locally, sending with default user '%s'",
+                        report.id, report.user_id, default_user,
+                    )
+                    username = default_user
+                else:
+                    logger.warning("Report %d: user %d not found, skipping", report.id, report.user_id)
+                    continue
 
             report_dicts.append({
                 "username": username,

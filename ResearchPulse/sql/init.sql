@@ -443,13 +443,17 @@ CREATE TABLE `daily_reports` (
   `wechat_push_status` VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '微信推送状态: pending/success/failed/skipped',
   `wechat_push_error` TEXT DEFAULT NULL COMMENT '微信推送错误信息',
   `wechat_pushed_at` DATETIME DEFAULT NULL COMMENT '微信推送时间',
+  `sync_status` VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '跨服务器同步状态: pending/success/failed/skipped',
+  `sync_error` TEXT DEFAULT NULL COMMENT '同步失败时的错误信息',
+  `sync_attempted_at` DATETIME DEFAULT NULL COMMENT '最后一次同步尝试的时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `ix_daily_reports_date_source_category` (`report_date`, `source_type`, `category`),
   KEY `ix_daily_reports_status` (`status`),
   KEY `ix_daily_reports_wechat_push_status` (`wechat_push_status`),
-  KEY `ix_daily_reports_source_type` (`source_type`)
+  KEY `ix_daily_reports_source_type` (`source_type`),
+  KEY `ix_daily_reports_sync_status` (`sync_status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='每日报告表（支持多数据源）';
 
 -- -----------------------------------------------------------------------------

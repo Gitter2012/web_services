@@ -64,7 +64,6 @@ class SyncReceiverService:
         for item in items:
             try:
                 values = item.model_dump()
-                natural_key = f"{item.source_type}|{item.source_id}|{item.external_id}"
 
                 stmt = mysql_insert(Article).values(**values)
                 update_dict = {
@@ -72,8 +71,15 @@ class SyncReceiverService:
                     for k in self._ARTICLE_UPDATE_COLS
                 }
                 stmt = stmt.on_duplicate_key_update(**update_dict)
-                await db.execute(stmt)
-                created += 1  # MySQL returns affected-rows=1 for new, 2 for update
+                result = await db.execute(stmt)
+                # MySQL rowcount: 1 = inserted, 2 = updated (old+new row affected)
+                if result.rowcount == 1:
+                    created += 1
+                elif result.rowcount == 2:
+                    updated += 1
+                else:
+                    # rowcount=0 means nothing changed (identical data), count as updated
+                    updated += 1
             except Exception as e:
                 logger.warning("Failed to upsert article %s|%s|%s: %s",
                                item.source_type, item.source_id, item.external_id, e)
@@ -101,12 +107,6 @@ class SyncReceiverService:
             key = f"{row[0]}|{row[1]}|{row[2]}"
             id_map[key] = row[3]
 
-        # Estimate created vs updated based on total vs id_map
-        updated = len(id_map) - created if len(id_map) > created else 0
-        if updated < 0:
-            updated = 0
-            created = len(id_map)
-
         logger.info("Upserted %d articles (%d created, %d updated)",
                      len(id_map), created, updated)
         return created, updated, id_map
@@ -118,6 +118,9 @@ class SyncReceiverService:
     ) -> tuple[int, int, list[str]]:
         """Upsert daily reports, resolving article_ref_keys to local article IDs.
 
+        Uses savepoint for transaction isolation: each report upsert is isolated.
+        If one fails, others continue without rollback.
+
         Returns:
             (created, updated, errors)
         """
@@ -126,67 +129,75 @@ class SyncReceiverService:
         errors: list[str] = []
 
         for item in items:
-            try:
-                # Resolve article_ref_keys to local article IDs
-                b_article_ids = await self._resolve_article_ids(db, item.article_ref_keys)
-                if len(b_article_ids) != len(item.article_ref_keys):
-                    missing = len(item.article_ref_keys) - len(
-                        [aid for aid in b_article_ids if aid is not None]
-                    )
-                    errors.append(
-                        f"{item.report_date}/{item.source_type}/{item.category}: "
-                        f"{missing} articles not found"
-                    )
-                    b_article_ids = [aid for aid in b_article_ids if aid is not None]
+            # Use savepoint for transaction isolation
+            async with db.begin_nested():  # Create savepoint, auto-rollback on exception
+                try:
+                    # Resolve article_ref_keys to local article IDs
+                    b_article_ids = await self._resolve_article_ids(db, item.article_ref_keys)
+                    if len(b_article_ids) != len(item.article_ref_keys):
+                        missing = len(item.article_ref_keys) - len(
+                            [aid for aid in b_article_ids if aid is not None]
+                        )
+                        errors.append(
+                            f"{item.report_date}/{item.source_type}/{item.category}: "
+                            f"{missing} articles not found"
+                        )
+                        b_article_ids = [aid for aid in b_article_ids if aid is not None]
 
-                # Check existing by natural key
-                existing = await db.execute(
-                    select(DailyReport).where(
-                        DailyReport.report_date == item.report_date,
-                        DailyReport.source_type == item.source_type,
-                        DailyReport.category == item.category,
+                    # Check existing by natural key
+                    existing = await db.execute(
+                        select(DailyReport).where(
+                            DailyReport.report_date == item.report_date,
+                            DailyReport.source_type == item.source_type,
+                            DailyReport.category == item.category,
+                        )
                     )
-                )
-                report = existing.scalar_one_or_none()
+                    report = existing.scalar_one_or_none()
 
-                if report:
-                    report.title = item.title
-                    report.category_name = item.category_name
-                    report.content_markdown = item.content_markdown
-                    report.content_wechat = item.content_wechat
-                    report.article_count = item.article_count
-                    report.article_ids = b_article_ids
-                    report.status = item.status
-                    report.published_at = item.published_at
-                    report.wechat_draft_media_id = item.wechat_draft_media_id
-                    report.wechat_push_status = item.wechat_push_status
-                    report.wechat_push_error = item.wechat_push_error
-                    report.wechat_pushed_at = item.wechat_pushed_at
-                    updated += 1
-                else:
-                    report = DailyReport(
-                        report_date=item.report_date,
-                        source_type=item.source_type,
-                        category=item.category,
-                        category_name=item.category_name,
-                        title=item.title,
-                        content_markdown=item.content_markdown,
-                        content_wechat=item.content_wechat,
-                        article_count=item.article_count,
-                        article_ids=b_article_ids,
-                        status=item.status,
-                        published_at=item.published_at,
-                        wechat_draft_media_id=item.wechat_draft_media_id,
-                        wechat_push_status=item.wechat_push_status,
-                        wechat_push_error=item.wechat_push_error,
-                        wechat_pushed_at=item.wechat_pushed_at,
-                    )
-                    db.add(report)
-                    created += 1
-            except Exception as e:
-                errors.append(f"{item.report_date}/{item.source_type}/{item.category}: {e}")
-                logger.warning("Failed to upsert daily report %s/%s/%s: %s",
-                               item.report_date, item.source_type, item.category, e)
+                    if report:
+                        report.title = item.title
+                        report.category_name = item.category_name
+                        report.content_markdown = item.content_markdown
+                        report.content_wechat = item.content_wechat
+                        report.article_count = item.article_count
+                        report.article_ids = b_article_ids
+                        report.status = item.status
+                        report.published_at = item.published_at
+                        report.wechat_draft_media_id = item.wechat_draft_media_id
+                        report.wechat_push_status = item.wechat_push_status
+                        report.wechat_push_error = item.wechat_push_error
+                        report.wechat_pushed_at = item.wechat_pushed_at
+                        # Mark sync as pending (will be updated after successful sync)
+                        report.sync_status = "pending"
+                        report.sync_attempted_at = None
+                        updated += 1
+                    else:
+                        report = DailyReport(
+                            report_date=item.report_date,
+                            source_type=item.source_type,
+                            category=item.category,
+                            category_name=item.category_name,
+                            title=item.title,
+                            content_markdown=item.content_markdown,
+                            content_wechat=item.content_wechat,
+                            article_count=item.article_count,
+                            article_ids=b_article_ids,
+                            status=item.status,
+                            published_at=item.published_at,
+                            wechat_draft_media_id=item.wechat_draft_media_id,
+                            wechat_push_status=item.wechat_push_status,
+                            wechat_push_error=item.wechat_push_error,
+                            wechat_pushed_at=item.wechat_pushed_at,
+                            # Mark sync as pending for new reports
+                            sync_status="pending",
+                        )
+                        db.add(report)
+                        created += 1
+                except Exception as e:
+                    errors.append(f"{item.report_date}/{item.source_type}/{item.category}: {e}")
+                    logger.warning("Failed to upsert daily report %s/%s/%s: %s",
+                                   item.report_date, item.source_type, item.category, e)
+                    # Savepoint auto-rolls back, continue with next item
 
         await db.commit()
         logger.info("Upserted %d daily reports (%d created, %d updated)",
@@ -271,6 +282,7 @@ class SyncReceiverService:
 
         conditions = []
         key_parts = []
+        malformed_keys = []
         for key in ref_keys:
             parts = key.split("|", 2)
             if len(parts) == 3:
@@ -281,8 +293,13 @@ class SyncReceiverService:
                 ))
                 key_parts.append(parts)
             else:
+                malformed_keys.append(key)
                 conditions.append(None)
                 key_parts.append(None)
+
+        if malformed_keys:
+            logger.warning("Malformed article ref keys (expected 'source_type|source_id|external_id'): %s",
+                           malformed_keys)
 
         if not conditions:
             return [None] * len(ref_keys)

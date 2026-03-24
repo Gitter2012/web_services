@@ -23,7 +23,12 @@ class SyncClient:
         retry_times: int | None = None,
         retry_delay: int | None = None,
     ):
-        self.base_url = (base_url or settings.sync_sender_api_url).rstrip("/")
+        resolved_url = base_url or settings.sync_sender_api_url
+        if not resolved_url:
+            raise ValueError(
+                "sync_sender_api_url must be configured (set SYNC_SENDER_API_URL or sync.sender.api_url)"
+            )
+        self.base_url = resolved_url.rstrip("/")
         self.api_key = api_key or settings.sync_sender_api_key
         self.timeout = timeout or settings.sync_sender_timeout
         self.retry_times = retry_times if retry_times is not None else settings.sync_sender_retry_times
@@ -32,6 +37,9 @@ class SyncClient:
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
+            # Close the old client explicitly to avoid resource leaks
+            if self._client is not None and self._client.is_closed:
+                await self._client.aclose()
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(self.timeout),
                 headers={
@@ -55,7 +63,7 @@ class SyncClient:
             except Exception as e:
                 last_error = e
                 if attempt < self.retry_times:
-                    delay = self.retry_delay * (2 ** attempt)
+                    delay = min(self.retry_delay * (2 ** attempt), 30)
                     logger.warning(
                         "Sync request to %s failed (attempt %d/%d): %s, retry in %ds",
                         url, attempt + 1, self.retry_times + 1, e, delay,
