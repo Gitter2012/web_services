@@ -1971,10 +1971,22 @@
                             <button class="btn btn-sm btn-secondary" onclick="loadDailyReportHistory()">查询</button>
                         </div>
                     </div>
+                    <!-- 批量操作工具栏 -->
+                    <div style="padding:8px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border-color);background:var(--bg-secondary);">
+                        <button id="dr-batch-push-btn" class="btn btn-sm btn-primary" disabled onclick="batchPushWechat(null)">批量推送微信</button>
+                        <button id="dr-batch-push-scheduled-btn" class="btn btn-sm btn-secondary" disabled onclick="showScheduledPushDialog()">定时推送</button>
+                        <select id="dr-theme-select" class="form-select" style="width:140px;height:32px;font-size:13px;">
+                            <option value="">-- 默认主题 --</option>
+                        </select>
+                        <span style="font-size:12px;color:#888;">选择主题后批量推送</span>
+                    </div>
                     <div class="card-body" style="overflow-x:auto;">
                         <table class="table">
                             <thead>
                                 <tr>
+                                    <th style="width:36px;text-align:center;">
+                                        <input type="checkbox" id="dr-select-all" onchange="toggleSelectAllReports(this.checked)" title="全选" />
+                                    </th>
                                     <th>日期</th>
                                     <th>数据源</th>
                                     <th>分类</th>
@@ -1986,7 +1998,7 @@
                                 </tr>
                             </thead>
                             <tbody id="dr-history-body">
-                                <tr><td colspan="8" style="text-align:center;color:#888;">点击查询加载数据</td></tr>
+                                <tr><td colspan="9" style="text-align:center;color:#888;">点击查询加载数据</td></tr>
                             </tbody>
                         </table>
                         <div id="dr-history-pagination" style="margin-top:12px;display:flex;gap:8px;align-items:center;"></div>
@@ -2746,6 +2758,7 @@
                 loadDailyReportStatus();
                 loadDailyReportHistory();
                 loadDailyDigestStatus();
+                loadWechatThemes();
             }
         }
 
@@ -7300,6 +7313,7 @@
         // ============================================
 
         let drHistoryCurrentPage = 1;
+        let _availableThemes = [];
 
         async function loadDailyReportStatus() {
             const token = localStorage.getItem('access_token');
@@ -7434,12 +7448,233 @@
             }
         }
 
+        // 加载可用主题列表
+        async function loadWechatThemes() {
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/content-themes?formatter_type=wechat_html&content_type=daily_report`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                _availableThemes = data.themes || [];
+
+                const select = document.getElementById('dr-theme-select');
+                if (select) {
+                    select.innerHTML = '<option value="">-- 使用默认主题 --</option>';
+                    _availableThemes.forEach(t => {
+                        const opt = document.createElement('option');
+                        opt.value = t.id;
+                        opt.textContent = t.display_name;
+                        if (t.is_default) opt.selected = true;
+                        select.appendChild(opt);
+                    });
+                }
+            } catch (e) {
+                console.error('Failed to load themes:', e);
+            }
+        }
+
+        // 获取选中的报告 IDs
+        function getSelectedReportIds() {
+            return Array.from(document.querySelectorAll('.dr-row-checkbox:checked'))
+                .map(cb => parseInt(cb.value));
+        }
+
+        // 全选/取消全选
+        function toggleSelectAllReports(checked) {
+            document.querySelectorAll('.dr-row-checkbox').forEach(cb => cb.checked = checked);
+            updateBatchPushButtonState();
+        }
+
+        // 更新批量推送按钮状态
+        function updateBatchPushButtonState() {
+            const selected = getSelectedReportIds();
+            const btn = document.getElementById('dr-batch-push-btn');
+            const btnScheduled = document.getElementById('dr-batch-push-scheduled-btn');
+            if (btn) btn.disabled = selected.length === 0;
+            if (btnScheduled) btnScheduled.disabled = selected.length === 0;
+        }
+
+        // 批量推送（立即）
+        async function batchPushWechat(scheduledTime) {
+            const token = localStorage.getItem('access_token');
+            const selected = getSelectedReportIds();
+            if (selected.length === 0) { alert('请至少选择一条记录'); return; }
+
+            const themeId = document.getElementById('dr-theme-select') ?
+                parseInt(document.getElementById('dr-theme-select').value) || null : null;
+
+            const confirmMsg = scheduledTime
+                ? `确认将 ${selected.length} 条报告定时推送到微信草稿（时间：${scheduledTime}）？`
+                : `确认将 ${selected.length} 条报告推送到微信草稿？`;
+            if (!confirm(confirmMsg)) return;
+
+            try {
+                const res = await fetch(`${ADMIN_BASE}/daily-reports/batch-wechat-push`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        report_ids: selected,
+                        theme_id: themeId,
+                        scheduled_time: scheduledTime || null,
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert(`推送失败：${data.detail || '未知错误'}`);
+                    return;
+                }
+
+                if (data.status === 'scheduled') {
+                    alert(`已设置定时推送（${data.push_time}），Batch ID: ${data.batch_id}`);
+                    loadDailyReportHistory();
+                    return;
+                }
+
+                // 立即推送 - 显示进度对话框
+                showPushProgressDialog(data.batch_id, data.total_count);
+
+            } catch (e) {
+                alert('请求失败: ' + e.message);
+            }
+        }
+
+        // 显示定时推送对话框
+        function showScheduledPushDialog() {
+            const selected = getSelectedReportIds();
+            if (selected.length === 0) { alert('请至少选择一条记录'); return; }
+
+            const dialogHtml = `
+                <div id="dr-schedule-dialog" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;">
+                    <div style="background:var(--bg-primary);border-radius:12px;padding:24px;width:360px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+                        <h3 style="margin:0 0 16px;">设置定时推送</h3>
+                        <p style="font-size:14px;color:#888;margin:0 0 12px;">已选 ${selected.length} 条报告</p>
+                        <label style="display:block;font-size:14px;margin-bottom:8px;">推送时间：</label>
+                        <input type="datetime-local" id="dr-schedule-time" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);font-size:14px;" />
+                        <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+                            <button class="btn btn-secondary" onclick="document.getElementById('dr-schedule-dialog').remove()">取消</button>
+                            <button class="btn btn-primary" onclick="confirmScheduledPush()">确认定时</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', dialogHtml);
+        }
+
+        function confirmScheduledPush() {
+            const timeEl = document.getElementById('dr-schedule-time');
+            if (!timeEl || !timeEl.value) { alert('请选择推送时间'); return; }
+            const scheduledTime = new Date(timeEl.value).toISOString();
+            document.getElementById('dr-schedule-dialog').remove();
+            batchPushWechat(scheduledTime);
+        }
+
+        // 显示推送进度对话框
+        function showPushProgressDialog(batchId, totalCount) {
+            const dialogHtml = `
+                <div id="dr-progress-dialog" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;">
+                    <div style="background:var(--bg-primary);border-radius:12px;padding:24px;width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+                        <h3 style="margin:0 0 16px;">推送进度</h3>
+                        <div style="margin-bottom:12px;">
+                            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                                <span id="dr-progress-text" style="font-size:14px;color:#888;">初始化中...</span>
+                                <span id="dr-progress-pct" style="font-size:14px;font-weight:600;">0%</span>
+                            </div>
+                            <div style="background:#eee;border-radius:4px;height:8px;overflow:hidden;">
+                                <div id="dr-progress-bar" style="background:#4CAF50;height:100%;width:0%;transition:width 0.3s;"></div>
+                            </div>
+                        </div>
+                        <div id="dr-progress-message" style="font-size:13px;color:#888;min-height:20px;"></div>
+                        <div id="dr-progress-actions" style="margin-top:16px;display:flex;justify-content:flex-end;">
+                            <button class="btn btn-secondary" id="dr-progress-close-btn" style="display:none;" onclick="closePushProgressDialog()">关闭</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', dialogHtml);
+            startPushProgressMonitor(batchId, totalCount);
+        }
+
+        function closePushProgressDialog() {
+            const dialog = document.getElementById('dr-progress-dialog');
+            if (dialog) dialog.remove();
+            loadDailyReportHistory();
+        }
+
+        // 启动推送进度轮询（每 1 秒查询一次）
+        function startPushProgressMonitor(batchId, totalCount) {
+            const token = localStorage.getItem('access_token');
+            const pollInterval = setInterval(async () => {
+                try {
+                    const res = await fetch(`${ADMIN_BASE}/daily-reports/push-status/${batchId}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!res.ok) return;
+                    const status = await res.json();
+
+                    // 更新 UI
+                    const pct = Math.round(status.progress_pct || 0);
+                    const bar = document.getElementById('dr-progress-bar');
+                    const pctEl = document.getElementById('dr-progress-pct');
+                    const textEl = document.getElementById('dr-progress-text');
+                    const msgEl = document.getElementById('dr-progress-message');
+
+                    if (bar) bar.style.width = pct + '%';
+                    if (pctEl) pctEl.textContent = pct + '%';
+                    if (textEl) textEl.textContent = `${status.success_count}/${status.total_count} 篇`;
+                    if (msgEl) msgEl.textContent = status.message || '';
+
+                    // 失败时进度条变红
+                    if (status.failed_count > 0 && bar) {
+                        bar.style.background = status.status === 'failed' ? '#f44336' : '#FF9800';
+                    }
+
+                    if (status.completed) {
+                        clearInterval(pollInterval);
+                        const closeBtn = document.getElementById('dr-progress-close-btn');
+                        if (closeBtn) closeBtn.style.display = 'block';
+
+                        const msg = `推送完成：${status.success_count} 成功，${status.failed_count} 失败`;
+                        if (msgEl) msgEl.textContent = msg;
+                    }
+
+                } catch (e) {
+                    console.error('Progress poll failed:', e);
+                }
+            }, 1000);
+        }
+
+        // 取消定时推送
+        async function cancelScheduledPush(reportId) {
+            if (!confirm(`确认取消报告 #${reportId} 的定时推送？`)) return;
+            const token = localStorage.getItem('access_token');
+            try {
+                const res = await fetch(`${ADMIN_BASE}/daily-reports/${reportId}/cancel-scheduled-push`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(data.message || '已取消定时推送');
+                } else {
+                    alert(`取消失败：${data.detail || '未知错误'}`);
+                }
+                loadDailyReportHistory();
+            } catch (e) {
+                alert('请求失败: ' + e.message);
+            }
+        }
+
         async function loadDailyReportHistory(page) {
             if (page) drHistoryCurrentPage = page;
             const token = localStorage.getItem('access_token');
             const tbody = document.getElementById('dr-history-body');
             const paginationEl = document.getElementById('dr-history-pagination');
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;">加载中...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#888;">加载中...</td></tr>';
 
             const filterDate = document.getElementById('dr-filter-date').value;
             const filterSource = document.getElementById('dr-filter-source').value;
@@ -7449,38 +7684,45 @@
 
             try {
                 const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-                if (!res.ok) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:red;">加载失败</td></tr>'; return; }
+                if (!res.ok) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:red;">加载失败</td></tr>'; return; }
                 const data = await res.json();
                 const reports = data.reports || [];
 
                 if (reports.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;">暂无记录</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#888;">暂无记录</td></tr>';
                     paginationEl.innerHTML = '';
                     return;
                 }
 
-                const wechatBadge = (status, error) => {
+                const wechatBadge = (status, error, scheduledTime) => {
                     const map = {
-                        'success': '<span class="badge badge-success">推送成功</span>',
-                        'failed': `<span class="badge badge-danger" title="${escapeHtml(error || '')}">推送失败</span>`,
-                        'pending': '<span class="badge badge-warning">待推送</span>',
-                        'skipped': '<span class="badge badge-secondary">已跳过</span>',
+                        'success':   '<span class="badge badge-success">推送成功</span>',
+                        'failed':    `<span class="badge badge-danger" title="${escapeHtml(error || '')}">推送失败</span>`,
+                        'pending':   '<span class="badge badge-warning">待推送</span>',
+                        'skipped':   '<span class="badge badge-secondary">已跳过</span>',
+                        'scheduled': `<span class="badge" style="background:#FF9800;color:#fff;" title="${scheduledTime ? '定时: ' + scheduledTime : ''}">定时推送</span>`,
                     };
                     return map[status] || `<span class="badge">${escapeHtml(status)}</span>`;
                 };
 
                 tbody.innerHTML = reports.map(r => `
                     <tr>
+                        <td style="text-align:center;">
+                            <input type="checkbox" class="dr-row-checkbox" value="${r.id}" onchange="updateBatchPushButtonState()" />
+                        </td>
                         <td>${escapeHtml(r.report_date)}</td>
                         <td><span class="badge badge-info">${escapeHtml(r.source_type)}</span></td>
                         <td>${escapeHtml(r.category)}</td>
                         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.title)}">${escapeHtml(r.title)}</td>
                         <td>${r.article_count}</td>
                         <td><span class="badge badge-${r.status === 'published' ? 'success' : 'secondary'}">${escapeHtml(r.status)}</span></td>
-                        <td>${wechatBadge(r.wechat_push_status, r.wechat_push_error)}</td>
+                        <td>${wechatBadge(r.wechat_push_status, r.wechat_push_error, r.wechat_scheduled_push_time)}</td>
                         <td>
                             ${(r.wechat_push_status === 'failed' || r.wechat_push_status === 'pending')
-                                ? `<button class="btn btn-sm btn-secondary" onclick="retryWechatPush(${r.id})">重试推送</button>`
+                                ? `<button class="btn btn-sm btn-secondary" onclick="retryWechatPush(${r.id})">重试</button>`
+                                : ''}
+                            ${r.wechat_push_status === 'scheduled'
+                                ? `<button class="btn btn-sm btn-danger" onclick="cancelScheduledPush(${r.id})">取消定时</button>`
                                 : ''}
                         </td>
                     </tr>
@@ -7493,8 +7735,10 @@
                 if (drHistoryCurrentPage < totalPages) paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="loadDailyReportHistory(${drHistoryCurrentPage + 1})">下一页</button>`;
                 paginationEl.innerHTML = paginationHtml;
 
+                updateBatchPushButtonState();
+
             } catch (e) {
-                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:red;">加载失败: ${escapeHtml(e.message)}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:red;">加载失败: ${escapeHtml(e.message)}</td></tr>`;
             }
         }
 

@@ -359,6 +359,32 @@ CREATE TABLE `event_members` (
 -- -----------------------------------------------------------------------------
 -- reports 表 - 报告
 -- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+-- content_themes 表 - 通用内容主题
+-- -----------------------------------------------------------------------------
+DROP TABLE IF EXISTS `content_themes`;
+CREATE TABLE `content_themes` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(50) NOT NULL COMMENT '主题唯一标识符，如 classic_blue',
+  `display_name` VARCHAR(100) NOT NULL COMMENT '界面显示名称，如 经典蓝',
+  `description` VARCHAR(200) DEFAULT NULL COMMENT '主题描述',
+  `content_types` JSON NOT NULL COMMENT '适用内容类型列表，如 ["daily_report", "weekly_report"]',
+  `formatter_types` JSON NOT NULL COMMENT '适用格式化器类型，如 ["wechat_html", "email_html"]',
+  `config` JSON NOT NULL COMMENT '主题配置 JSON，包含 colors、typography、effects 子对象',
+  `is_default` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否为默认主题',
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+  `priority` INT NOT NULL DEFAULT 0 COMMENT '排序优先级，越大越靠前',
+  `preview_url` VARCHAR(500) DEFAULT NULL COMMENT '预览图 URL',
+  `author` VARCHAR(100) DEFAULT NULL COMMENT '主题作者',
+  `created_at` DATETIME(6) NOT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_content_themes_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通用内容主题表，支持日报、周报、邮件等所有内容类型';
+
+-- -----------------------------------------------------------------------------
+-- reports 表 - 周报/月报
+-- -----------------------------------------------------------------------------
 DROP TABLE IF EXISTS `reports`;
 CREATE TABLE `reports` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
@@ -370,11 +396,14 @@ CREATE TABLE `reports` (
   `content` TEXT NOT NULL COMMENT 'Markdown格式内容',
   `stats` JSON DEFAULT NULL COMMENT '统计数据',
   `generated_at` DATETIME NOT NULL COMMENT '生成时间',
+  `theme_id` INT DEFAULT NULL COMMENT '关联的内容主题',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `ix_reports_user_id` (`user_id`),
-  CONSTRAINT `reports_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+  KEY `ix_reports_theme_id` (`theme_id`),
+  CONSTRAINT `reports_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_reports_theme_id` FOREIGN KEY (`theme_id`) REFERENCES `content_themes` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='报告表';
 
 -- -----------------------------------------------------------------------------
@@ -446,6 +475,9 @@ CREATE TABLE `daily_reports` (
   `sync_status` VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '跨服务器同步状态: pending/success/failed/skipped',
   `sync_error` TEXT DEFAULT NULL COMMENT '同步失败时的错误信息',
   `sync_attempted_at` DATETIME DEFAULT NULL COMMENT '最后一次同步尝试的时间',
+  `wechat_theme_id` INT DEFAULT NULL COMMENT '关联的微信 HTML 主题',
+  `wechat_scheduled_push_time` DATETIME(6) DEFAULT NULL COMMENT '定时推送时间，为 null 表示未设置',
+  `wechat_scheduled_push_job_id` VARCHAR(200) DEFAULT NULL COMMENT 'APScheduler job_id，用于取消定时推送任务',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -453,7 +485,9 @@ CREATE TABLE `daily_reports` (
   KEY `ix_daily_reports_status` (`status`),
   KEY `ix_daily_reports_wechat_push_status` (`wechat_push_status`),
   KEY `ix_daily_reports_source_type` (`source_type`),
-  KEY `ix_daily_reports_sync_status` (`sync_status`)
+  KEY `ix_daily_reports_sync_status` (`sync_status`),
+  KEY `ix_daily_reports_wechat_theme_id` (`wechat_theme_id`),
+  CONSTRAINT `fk_daily_reports_wechat_theme` FOREIGN KEY (`wechat_theme_id`) REFERENCES `content_themes` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='每日报告表（支持多数据源）';
 
 -- -----------------------------------------------------------------------------
@@ -1695,3 +1729,175 @@ INSERT IGNORE INTO `rss_feeds` (`title`, `feed_url`, `site_url`, `category`, `de
   ('Better Explained', 'https://betterexplained.com/feed/', '', 'math', '', 0, 'EN', NULL),
   ('Terence Tao\'s Blog', 'https://terrytao.wordpress.com/feed/', '', 'math', '', 0, 'EN', NULL),
   ('ccjou', 'https://ccjou.wordpress.com/feed/', '', 'math', '', 0, 'EN', NULL);
+
+-- =============================================================================
+-- content_themes 初始数据
+-- 预置 5 套主题：经典蓝（默认）、深色雅致、科技蓝、暖色系、清爽薄荷
+-- 适用范围: daily_report, weekly_report, email_digest
+-- 格式化器: wechat_html, email_html
+-- =============================================================================
+
+-- 先删除旧数据（避免重复插入）
+DELETE FROM `content_themes` WHERE name IN (
+  'classic_blue', 'elegant_dark', 'tech_blue', 'warm_brown', 'mint_fresh'
+);
+
+INSERT INTO `content_themes`
+  (`name`, `display_name`, `description`, `content_types`, `formatter_types`, `config`,
+   `is_default`, `is_active`, `priority`, `preview_url`, `author`, `created_at`, `updated_at`)
+VALUES
+
+-- 1. 经典蓝（默认）
+(
+  'classic_blue', '经典蓝', '清爽简洁的蓝色风格，系统默认主题',
+  JSON_ARRAY('daily_report', 'weekly_report', 'email_digest'),
+  JSON_ARRAY('wechat_html', 'email_html'),
+  JSON_OBJECT(
+    'colors', JSON_OBJECT(
+      'title_color',         '#1a1a1a',
+      'title_color_dark',    '#1a1a2e',
+      'subtitle_color',      '#3e3e3e',
+      'section_title_color', '#1e6bb8',
+      'text_color',          '#3e3e3e',
+      'meta_color',          '#888888',
+      'link_color',          '#576b95',
+      'link_color_cyan',     '#4ecdc4',
+      'accent_color',        '#1e6bb8',
+      'border_color',        '#e5e5e5',
+      'bg_light',            '#f7f7f7',
+      'bg_email',            '#f5f5f7',
+      'bg_email_light',      '#f0f2f5',
+      'success_color',       '#2ecc71',
+      'error_color',         '#e74c3c',
+      'warning_color',       '#f59e0b',
+      'source_arxiv',        '#b31b1b',
+      'source_rss',          '#f5a623',
+      'source_wechat',       '#07c160'
+    )
+  ),
+  1, 1, 100, NULL, 'ResearchPulse', NOW(), NOW()
+),
+
+-- 2. 深色雅致
+(
+  'elegant_dark', '深色雅致', '高雅深色风格，适合夜间阅读',
+  JSON_ARRAY('daily_report', 'weekly_report', 'email_digest'),
+  JSON_ARRAY('wechat_html', 'email_html'),
+  JSON_OBJECT(
+    'colors', JSON_OBJECT(
+      'title_color',         '#e8e8e8',
+      'title_color_dark',    '#1a1a1a',
+      'subtitle_color',      '#c0c0c0',
+      'section_title_color', '#7a9ec4',
+      'text_color',          '#b0b0b0',
+      'meta_color',          '#808080',
+      'link_color',          '#7a9ec4',
+      'link_color_cyan',     '#5eb3b3',
+      'accent_color',        '#7a9ec4',
+      'border_color',        '#333333',
+      'bg_light',            '#2a2a2a',
+      'bg_email',            '#1a1a1a',
+      'bg_email_light',      '#222222',
+      'success_color',       '#66bb6a',
+      'error_color',         '#ef5350',
+      'warning_color',       '#ffa726',
+      'source_arxiv',        '#ef5350',
+      'source_rss',          '#ff9800',
+      'source_wechat',       '#66bb6a'
+    )
+  ),
+  0, 1, 90, NULL, 'ResearchPulse', NOW(), NOW()
+),
+
+-- 3. 科技蓝
+(
+  'tech_blue', '科技蓝', '现代科技感风格，视觉冲击力强',
+  JSON_ARRAY('daily_report', 'weekly_report', 'email_digest'),
+  JSON_ARRAY('wechat_html', 'email_html'),
+  JSON_OBJECT(
+    'colors', JSON_OBJECT(
+      'title_color',         '#1f2937',
+      'title_color_dark',    '#0f172a',
+      'subtitle_color',      '#4b5563',
+      'section_title_color', '#2563eb',
+      'text_color',          '#374151',
+      'meta_color',          '#6b7280',
+      'link_color',          '#2563eb',
+      'link_color_cyan',     '#06b6d4',
+      'accent_color',        '#2563eb',
+      'border_color',        '#e5e7eb',
+      'bg_light',            '#f3f4f6',
+      'bg_email',            '#f9fafb',
+      'bg_email_light',      '#f3f4f6',
+      'success_color',       '#10b981',
+      'error_color',         '#ef4444',
+      'warning_color',       '#f59e0b',
+      'source_arxiv',        '#dc2626',
+      'source_rss',          '#fb923c',
+      'source_wechat',       '#16a34a'
+    )
+  ),
+  0, 1, 80, NULL, 'ResearchPulse', NOW(), NOW()
+),
+
+-- 4. 暖色系
+(
+  'warm_brown', '暖色系', '温暖舒适的棕色风格，亲切自然',
+  JSON_ARRAY('daily_report', 'weekly_report', 'email_digest'),
+  JSON_ARRAY('wechat_html', 'email_html'),
+  JSON_OBJECT(
+    'colors', JSON_OBJECT(
+      'title_color',         '#5a3a1a',
+      'title_color_dark',    '#3e2723',
+      'subtitle_color',      '#6d4c41',
+      'section_title_color', '#c97c5c',
+      'text_color',          '#5a3a1a',
+      'meta_color',          '#8d6e63',
+      'link_color',          '#d7723e',
+      'link_color_cyan',     '#d7723e',
+      'accent_color',        '#c97c5c',
+      'border_color',        '#d7ccc8',
+      'bg_light',            '#efebe9',
+      'bg_email',            '#fafaf8',
+      'bg_email_light',      '#f5f5f1',
+      'success_color',       '#81c784',
+      'error_color',         '#e57373',
+      'warning_color',       '#ffb74d',
+      'source_arxiv',        '#e64a19',
+      'source_rss',          '#fb8500',
+      'source_wechat',       '#52b788'
+    )
+  ),
+  0, 1, 70, NULL, 'ResearchPulse', NOW(), NOW()
+),
+
+-- 5. 清爽薄荷
+(
+  'mint_fresh', '清爽薄荷', '清新薄荷绿风格，清爽怡人',
+  JSON_ARRAY('daily_report', 'weekly_report', 'email_digest'),
+  JSON_ARRAY('wechat_html', 'email_html'),
+  JSON_OBJECT(
+    'colors', JSON_OBJECT(
+      'title_color',         '#0d3b3d',
+      'title_color_dark',    '#004d4d',
+      'subtitle_color',      '#2a6b6e',
+      'section_title_color', '#2d9597',
+      'text_color',          '#2a5a5d',
+      'meta_color',          '#5a8b8e',
+      'link_color',          '#2d9597',
+      'link_color_cyan',     '#00bcd4',
+      'accent_color',        '#1db7b9',
+      'border_color',        '#b2dfdb',
+      'bg_light',            '#e0f2f1',
+      'bg_email',            '#f1f8f7',
+      'bg_email_light',      '#e0f2f1',
+      'success_color',       '#26a69a',
+      'error_color',         '#ef5350',
+      'warning_color',       '#ffa726',
+      'source_arxiv',        '#d32f2f',
+      'source_rss',          '#ff9800',
+      'source_wechat',       '#00897b'
+    )
+  ),
+  0, 1, 60, NULL, 'ResearchPulse', NOW(), NOW()
+);

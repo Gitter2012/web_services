@@ -21,10 +21,10 @@
   </noscript>
   <![endif]-->
 </head>
-<body style="margin:0; padding:0; background-color:#f5f5f7; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+<body style="margin:0; padding:0; {{ 'bg_email' | bg_color_style }} -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
 
   {# 外层 table：全宽灰色背景 + 居中 #}
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f5f7;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="{{ 'bg_email' | bg_color_style }}">
     <tr>
       <td align="center" style="padding:20px 10px;">
 
@@ -35,7 +35,7 @@
           {# ===== Header ===== #}
           {% block header %}
           <tr>
-            <td style="background-color:#1a1a2e; padding:24px 30px;">
+            <td style="{{ 'title_color_dark' | bg_color_style }} padding:24px 30px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td>
@@ -61,10 +61,10 @@
           {% block footer %}
           <tr>
             <td style="padding:20px 30px; border-top:1px solid #eeeeee; text-align:center;">
-              <p style="margin:0; font-size:12px; color:#888888; line-height:1.6; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+              <p style="margin:0; font-size:12px; {{ 'meta_color' | color_style }} line-height:1.6; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
                 此邮件由 ResearchPulse v2 自动发送。<br>
                 {% if url_prefix is defined and url_prefix %}
-                <a href="{{ url_prefix }}" style="color:#4ecdc4; text-decoration:none;">管理您的订阅</a>
+                <a href="{{ url_prefix }}" style="{{ 'link_color_cyan' | color_style }} text-decoration:none;">管理您的订阅</a>
                 {% endif %}
               </p>
             </td>

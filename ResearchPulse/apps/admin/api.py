@@ -25,8 +25,10 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
+import asyncio
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, HttpUrl, field_validator
 from sqlalchemy import desc, select, func, update, delete, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,6 +58,7 @@ from apps.crawler.models import (
 )
 from apps.crawler.models.source import NewsSource
 from apps.daily_report.models.daily_report import DailyReport
+from core.models.content_theme import ContentTheme
 from common.feature_config import feature_config
 
 logger = logging.getLogger(__name__)
@@ -1499,6 +1502,7 @@ async def list_daily_report_history(
 @router.post("/daily-reports/{report_id}/retry-wechat")
 async def retry_wechat_push(
     report_id: int,
+    request: Request,
     admin: Superuser = None,
     session: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
@@ -1560,14 +1564,33 @@ async def retry_wechat_push(
         results = await draft_service.push_reports([report], session=session)
         await session.commit()
 
-        if results and results[0].get("status") == "success":
+        push_result = results[0] if results else {}
+        is_success = push_result.get("status") == "success"
+
+        # 审计日志
+        audit = AuditLog(
+            user_id=admin.id,
+            action="retry_push_wechat",
+            resource_type="daily_report",
+            resource_id=report_id,
+            details={
+                "result": "success" if is_success else "failed",
+                "media_id": push_result.get("media_id"),
+                "error": push_result.get("error"),
+            },
+            ip_address=request.client.host if request.client else None,
+        )
+        session.add(audit)
+        await session.commit()
+
+        if is_success:
             return {
                 "status": "success",
-                "message": f"微信推送成功，media_id: {results[0].get('media_id')}",
-                "media_id": results[0].get("media_id"),
+                "message": f"微信推送成功，media_id: {push_result.get('media_id')}",
+                "media_id": push_result.get("media_id"),
             }
         else:
-            error = results[0].get("error", "Unknown error") if results else "No result"
+            error = push_result.get("error", "Unknown error")
             return {
                 "status": "failed",
                 "message": f"微信推送失败：{error}",
@@ -1901,6 +1924,400 @@ async def delete_backup(
     return {
         "status": "ok",
         "message": "Backup record deleted",
+    }
+
+
+# ============================================================================
+# WeChat Batch Push & Content Themes
+# ============================================================================
+# 微信批量推送、进度查询、定时推送、主题管理
+
+# 内存进度缓存：batch_id -> 推送进度信息
+# 仅适用于单进程部署；多进程部署请替换为 Redis
+_push_batch_cache: Dict[str, Dict[str, Any]] = {}
+
+
+class BatchPushRequest(BaseModel):
+    """Request body for batch WeChat push.
+
+    Attributes:
+        report_ids: DailyReport IDs to push.
+        theme_id: ContentTheme ID to apply (optional).
+        scheduled_time: ISO datetime string for delayed push (optional).
+    """
+
+    report_ids: List[int]
+    theme_id: Optional[int] = None
+    scheduled_time: Optional[str] = None  # ISO format string
+
+
+async def _run_batch_push(
+    batch_id: str,
+    report_ids: List[int],
+    theme_id: Optional[int],
+) -> None:
+    """Background task: execute batch WeChat push and update progress cache.
+
+    后台任务：执行批量微信推送并更新进度缓存。
+
+    Args:
+        batch_id: 批次标识符。
+        report_ids: 报告 ID 列表。
+        theme_id: 可选主题 ID。
+    """
+    from core.database import async_session_factory
+    from settings import settings
+    from common.wechat_mp.client import WeChatMPClient
+    from common.wechat_mp.draft_service import WeChatDraftService
+    from apps.daily_report.formatters.wechat_html import WeChatHTMLFormatter
+    import json
+
+    cache = _push_batch_cache.get(batch_id)
+    if not cache:
+        return
+
+    try:
+        appid = getattr(settings, "wechat_mp_appid", "")
+        secret = getattr(settings, "wechat_mp_secret", "")
+        category_thumbs_raw = getattr(settings, "wechat_mp_category_thumbs", "{}")
+        try:
+            category_thumbs = json.loads(category_thumbs_raw) if isinstance(category_thumbs_raw, str) else category_thumbs_raw
+        except (json.JSONDecodeError, TypeError):
+            category_thumbs = {}
+        default_thumb = getattr(settings, "wechat_mp_default_thumb", "")
+
+        client = WeChatMPClient(appid=appid, secret=secret)
+        draft_service = WeChatDraftService(
+            client=client,
+            category_thumbs=category_thumbs,
+            default_thumb=default_thumb,
+        )
+
+        async with async_session_factory() as session:
+            # 查询主题配置
+            theme_config_data = None
+            if theme_id:
+                theme = await session.get(ContentTheme, theme_id)
+                if theme:
+                    theme_config_data = theme.config
+
+            # 查询所有报告
+            result = await session.execute(
+                select(DailyReport).where(DailyReport.id.in_(report_ids))
+            )
+            reports = result.scalars().all()
+
+            total = len(reports)
+            success_count = 0
+            failed_count = 0
+
+            for i, report in enumerate(reports):
+                cache["message"] = f"正在推送第 {i + 1}/{total} 篇..."
+                cache["current_report_id"] = report.id
+
+                # 为该报告设置主题
+                if theme_id:
+                    report.wechat_theme_id = theme_id
+
+                try:
+                    results = await draft_service.push_reports([report], session=session)
+                    await session.commit()
+
+                    if results and results[0].get("status") == "success":
+                        success_count += 1
+                    else:
+                        failed_count += 1
+                except Exception as e:
+                    logger.error("Batch push failed for report #%d: %s", report.id, e)
+                    failed_count += 1
+
+                cache["success_count"] = success_count
+                cache["failed_count"] = failed_count
+
+        cache["status"] = "completed" if failed_count == 0 else "partial"
+        cache["message"] = f"推送完成：{success_count} 成功，{failed_count} 失败"
+
+    except Exception as e:
+        logger.error("Batch push task failed (batch_id=%s): %s", batch_id, e, exc_info=True)
+        cache["status"] = "failed"
+        cache["message"] = f"推送任务异常：{e}"
+
+
+@router.post("/daily-reports/batch-wechat-push")
+async def batch_wechat_push(
+    request: Request,
+    body: BatchPushRequest,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Batch push multiple daily reports to WeChat as drafts.
+
+    批量推送多条日报到微信草稿。
+
+    Args:
+        body: Batch push request with report IDs, optional theme, and optional schedule time.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict with batch_id for progress tracking, or scheduled status.
+    """
+    from settings import settings
+
+    if not getattr(settings, "wechat_mp_enabled", False):
+        raise HTTPException(status_code=400, detail="WeChat MP is not enabled in settings")
+
+    if not body.report_ids:
+        raise HTTPException(status_code=400, detail="report_ids cannot be empty")
+
+    # 验证报告存在
+    result = await session.execute(
+        select(DailyReport).where(DailyReport.id.in_(body.report_ids))
+    )
+    reports = result.scalars().all()
+    if not reports:
+        raise HTTPException(status_code=404, detail="No reports found for given IDs")
+
+    batch_id = f"batch_{uuid.uuid4().hex[:8]}"
+
+    # 审计日志
+    audit = AuditLog(
+        user_id=admin.id,
+        action="batch_push_wechat",
+        resource_type="daily_report",
+        details={
+            "report_ids": body.report_ids,
+            "theme_id": body.theme_id,
+            "batch_id": batch_id,
+            "scheduled_time": body.scheduled_time,
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+    session.add(audit)
+    await session.commit()
+
+    # 定时推送
+    if body.scheduled_time:
+        try:
+            push_time = datetime.fromisoformat(body.scheduled_time)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid scheduled_time format, use ISO 8601")
+
+        if push_time <= datetime.now(tz=push_time.tzinfo):
+            raise HTTPException(status_code=400, detail="scheduled_time must be in the future")
+
+        from apps.scheduler.tasks import get_scheduler
+        scheduler = get_scheduler()
+        job_id = f"wechat_push_{batch_id}"
+
+        scheduler.add_job(
+            func=_run_batch_push,
+            trigger="date",
+            run_date=push_time,
+            args=[batch_id, body.report_ids, body.theme_id],
+            id=job_id,
+            replace_existing=True,
+        )
+
+        # 更新报告的定时状态
+        for report in reports:
+            report.wechat_push_status = "scheduled"
+            report.wechat_scheduled_push_time = push_time
+            report.wechat_scheduled_push_job_id = job_id
+            if body.theme_id:
+                report.wechat_theme_id = body.theme_id
+        await session.commit()
+
+        logger.info(
+            "Admin scheduled batch WeChat push (batch_id=%s, count=%d, push_time=%s, user=%d)",
+            batch_id, len(reports), push_time, admin.id,
+        )
+        return {
+            "status": "scheduled",
+            "batch_id": batch_id,
+            "total_count": len(reports),
+            "push_time": push_time.isoformat(),
+        }
+
+    # 立即推送 - 初始化进度缓存
+    _push_batch_cache[batch_id] = {
+        "status": "processing",
+        "total_count": len(reports),
+        "success_count": 0,
+        "failed_count": 0,
+        "report_ids": body.report_ids,
+        "current_report_id": None,
+        "message": "正在初始化...",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # 触发后台任务
+    asyncio.create_task(_run_batch_push(batch_id, body.report_ids, body.theme_id))
+
+    logger.info(
+        "Admin triggered batch WeChat push (batch_id=%s, count=%d, user=%d)",
+        batch_id, len(reports), admin.id,
+    )
+    return {
+        "status": "processing",
+        "batch_id": batch_id,
+        "total_count": len(reports),
+    }
+
+
+@router.get("/daily-reports/push-status/{batch_id}")
+async def get_push_status(
+    batch_id: str,
+    admin: Superuser = None,
+) -> Dict[str, Any]:
+    """Get the progress of a batch WeChat push.
+
+    查询批量微信推送的进度。
+
+    Args:
+        batch_id: Batch ID returned by batch_wechat_push.
+        admin: Superuser dependency.
+
+    Returns:
+        Dict with progress details.
+    """
+    batch = _push_batch_cache.get(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail=f"Batch '{batch_id}' not found or expired")
+
+    total = batch["total_count"]
+    success = batch["success_count"]
+    failed = batch["failed_count"]
+
+    return {
+        "batch_id": batch_id,
+        "status": batch["status"],
+        "total_count": total,
+        "success_count": success,
+        "failed_count": failed,
+        "progress_pct": round((success + failed) / total * 100, 1) if total > 0 else 0,
+        "completed": batch["status"] in ("completed", "partial", "failed"),
+        "message": batch.get("message", ""),
+        "current_report_id": batch.get("current_report_id"),
+    }
+
+
+@router.post("/daily-reports/{report_id}/cancel-scheduled-push")
+async def cancel_scheduled_push(
+    report_id: int,
+    request: Request,
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Cancel a scheduled WeChat push for a specific report.
+
+    取消指定报告的定时微信推送。
+
+    Args:
+        report_id: DailyReport ID.
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict with cancellation result.
+    """
+    report = await session.get(DailyReport, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail=f"Daily report #{report_id} not found")
+
+    if report.wechat_push_status != "scheduled":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Report is not scheduled for push (current status: {report.wechat_push_status})",
+        )
+
+    # 取消 APScheduler job
+    if report.wechat_scheduled_push_job_id:
+        try:
+            from apps.scheduler.tasks import get_scheduler
+            scheduler = get_scheduler()
+            scheduler.remove_job(report.wechat_scheduled_push_job_id)
+            logger.info(
+                "Cancelled scheduled push job %s for report #%d",
+                report.wechat_scheduled_push_job_id, report_id,
+            )
+        except Exception as e:
+            logger.warning("Failed to remove job %s: %s", report.wechat_scheduled_push_job_id, e)
+
+    # 重置报告状态
+    report.wechat_push_status = "pending"
+    report.wechat_scheduled_push_time = None
+    report.wechat_scheduled_push_job_id = None
+
+    # 审计日志
+    audit = AuditLog(
+        user_id=admin.id,
+        action="cancel_scheduled_push",
+        resource_type="daily_report",
+        resource_id=report_id,
+        details={"cancelled_at": datetime.now(timezone.utc).isoformat()},
+        ip_address=request.client.host if request.client else None,
+    )
+    session.add(audit)
+    await session.commit()
+
+    return {"status": "ok", "message": f"已取消报告 #{report_id} 的定时推送"}
+
+
+@router.get("/content-themes")
+async def list_content_themes(
+    content_type: Optional[str] = None,
+    formatter_type: str = "wechat_html",
+    admin: Superuser = None,
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """List active content themes.
+
+    查询可用的内容主题列表。
+
+    Args:
+        content_type: 可选，过滤适用内容类型（如 daily_report、weekly_report）。
+        formatter_type: 格式化器类型，默认 wechat_html。
+        admin: Superuser dependency.
+        session: Async database session.
+
+    Returns:
+        Dict with themes list.
+    """
+    from sqlalchemy import text
+
+    query = select(ContentTheme).where(ContentTheme.is_active == True)
+    query = query.order_by(ContentTheme.priority.desc(), ContentTheme.name)
+
+    result = await session.execute(query)
+    themes = result.scalars().all()
+
+    # 在 Python 层面过滤 content_types 和 formatter_types（JSON 字段）
+    filtered = []
+    for t in themes:
+        # 过滤 formatter_type
+        if formatter_type and t.formatter_types and formatter_type not in t.formatter_types:
+            continue
+        # 过滤 content_type
+        if content_type and t.content_types and content_type not in t.content_types:
+            continue
+        filtered.append(t)
+
+    return {
+        "themes": [
+            {
+                "id": t.id,
+                "name": t.name,
+                "display_name": t.display_name,
+                "description": t.description,
+                "is_default": t.is_default,
+                "priority": t.priority,
+                "preview_url": t.preview_url,
+                "content_types": t.content_types,
+                "formatter_types": t.formatter_types,
+            }
+            for t in filtered
+        ]
     }
 
 

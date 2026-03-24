@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.mysql import JSON
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.models.base import Base, TimestampMixin
 
@@ -71,4 +71,20 @@ class Report(Base, TimestampMixin):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),  # 默认值: 当前 UTC 时间
         nullable=False,
+    )
+
+    # ---- 内容主题 ----
+    theme_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("content_themes.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="关联的内容主题",
+    )
+
+    # ---- 关系 ----
+    theme: Mapped["ContentTheme | None"] = relationship(
+        "ContentTheme",
+        foreign_keys=[theme_id],
+        lazy="selectin",
+        back_populates="reports",
     )

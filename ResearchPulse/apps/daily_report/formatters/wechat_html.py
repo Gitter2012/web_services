@@ -27,7 +27,7 @@ from .base import BaseFormatter
 class WeChatHTMLFormatter(BaseFormatter):
     """Formatter that converts Markdown report to WeChat MP HTML.
 
-    微信公众号 HTML 格式化器。
+    微信公众号 HTML 格式化器，支持通用主题配置。
 
     微信公众号对 HTML 的限制：
     - 不支持 JavaScript
@@ -37,8 +37,8 @@ class WeChatHTMLFormatter(BaseFormatter):
     - 正文最大 20000 字符 / 1MB
     """
 
-    # 微信公众号常用配色
-    STYLE = {
+    # 默认颜色配置（对应 ContentTheme.config.colors 的键名）
+    DEFAULT_COLORS: dict[str, str] = {
         "title_color": "#1a1a1a",
         "subtitle_color": "#3e3e3e",
         "section_title_color": "#1e6bb8",
@@ -49,6 +49,28 @@ class WeChatHTMLFormatter(BaseFormatter):
         "bg_light": "#f7f7f7",
         "accent_color": "#1e6bb8",
     }
+
+    def __init__(self, theme_config: dict | None = None) -> None:
+        """Initialize the formatter with an optional theme configuration.
+
+        使用可选的主题配置初始化格式化器。
+
+        Args:
+            theme_config: 来自 ContentTheme.config 的配置字典，格式为
+                          ``{"colors": {...}, "typography": {...}}``。
+                          如果为 None，则使用 DEFAULT_COLORS。
+                          只有在 DEFAULT_COLORS 中存在的键才会被覆盖，
+                          以保证未知颜色键不影响渲染。
+        """
+        if theme_config:
+            theme_colors = theme_config.get("colors", {})
+            # 只覆盖已知的颜色键，忽略未知键
+            self.STYLE = {
+                **self.DEFAULT_COLORS,
+                **{k: v for k, v in theme_colors.items() if k in self.DEFAULT_COLORS},
+            }
+        else:
+            self.STYLE = dict(self.DEFAULT_COLORS)
 
     def format(self, content: str, truncate: bool = False, max_length: int = 19000) -> str:
         """Format Markdown content to WeChat-compatible HTML.

@@ -14,9 +14,9 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Date, DateTime, Index, Integer, String, Text
+from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.mysql import JSON
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.models.base import Base, TimestampMixin
 
@@ -160,6 +160,34 @@ class DailyReport(Base, TimestampMixin):
         DateTime(timezone=True),
         nullable=True,
         comment="最后一次同步尝试的时间",
+    )
+
+    # ---- 内容主题 ----
+    wechat_theme_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("content_themes.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="关联的微信 HTML 主题",
+    )
+
+    # ---- 定时推送 ----
+    wechat_scheduled_push_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="定时推送时间，为 null 表示未设置定时推送",
+    )
+    wechat_scheduled_push_job_id: Mapped[str | None] = mapped_column(
+        String(200),
+        nullable=True,
+        comment="APScheduler job_id，用于取消定时推送任务",
+    )
+
+    # ---- 关系 ----
+    wechat_theme: Mapped["ContentTheme | None"] = relationship(
+        "ContentTheme",
+        foreign_keys=[wechat_theme_id],
+        lazy="selectin",
+        back_populates="daily_reports",
     )
 
     # ---- 数据库索引定义 ----
